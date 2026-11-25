@@ -569,7 +569,13 @@ private fun WorkspaceNavContainer(
                                 MainTab.CALCULATOR -> CalculatorScreen(snapshot, todayIso, vm)
                                 MainTab.FACTORY -> FactoryScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.RawMaterialPurchase) }, { navigateTo(AppRoute.FormulaStore) })
                                 MainTab.PAYMENTS -> PaymentsScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.AddEntity) }, { navigateTo(AppRoute.PaymentTransfer) }, { ent -> navigateTo(AppRoute.EntityDetail(ent)) }, { name -> navigateTo(AppRoute.ExpenseDetail(name)) })
-                                MainTab.REP_SALES -> RepSalesScreen(snapshot, todayIso, vm) { cust -> navigateTo(AppRoute.RepCustomerManagement(cust)) }
+                                MainTab.REP_SALES -> RepSalesScreen(
+                                    snapshot = snapshot,
+                                    todayIso = todayIso,
+                                    vm = vm,
+                                    onOpenCustomer = { cust -> navigateTo(AppRoute.RepCustomerManagement(cust)) },
+                                    onEditCustomer = { cust -> navigateTo(AppRoute.EditCustomer(cust, isRepClient = true)) }
+                                )
                             }
                         }
                         composable<AppRoute.DailyLedger> {

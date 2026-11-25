@@ -347,14 +347,16 @@ class SarimViewModel(
         lng: Double?,
         accuracy: Double?,
         confirmed: Boolean,
-        notes: String
+        notes: String,
+        customerPhone: String = "",
+        expiredUnitPrice: Double = 0.0
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
             handleResult(
                 dispatcher.saveRepRecord(
                     snap, date, repName, paymentType, customer, store, qty, rate,
-                    collectedAmount, expiredKg, lat, lng, accuracy, confirmed, notes
+                    collectedAmount, expiredKg, lat, lng, accuracy, confirmed, notes, customerPhone, expiredUnitPrice
                 ),
                 "Rep entry saved"
             )
@@ -635,15 +637,33 @@ class SarimViewModel(
         collectedAmount: Double,
         expiredKg: Double,
         notes: String,
+        customerPhone: String = "",
+        expiredUnitPrice: Double = 0.0,
         onSuccess: () -> Unit = {}
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
             val res = editActions.editRepRecord(
-                snap, original, date, paymentType, customerName, store, quantityKg, unitPrice, collectedAmount, expiredKg, notes
+                snap, original, date, paymentType, customerName, store, quantityKg, unitPrice, collectedAmount, expiredKg, notes, customerPhone, expiredUnitPrice
             )
             handleResult(res, "Rep entry updated")
             if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun deleteRepRecord(
+        rec: SalesRecord,
+        displayAmount: String,
+        onBlocked: (String) -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.deleteRepRecordWithLinks(snap, rec, displayAmount)
+            if (res.isFailure) {
+                onBlocked(res.exceptionOrNull()?.localizedMessage ?: "Cannot delete rep entry")
+            } else {
+                handleResult(res, "Moved to Recycle Bin")
+            }
         }
     }
 

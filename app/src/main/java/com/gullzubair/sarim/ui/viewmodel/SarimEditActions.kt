@@ -18,6 +18,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import java.time.Instant
 import java.util.Locale
@@ -576,7 +577,7 @@ class SarimEditActions(
         return res
     }
 
-    // --- Rep Sale / Collection Edit ---
+    // --- Rep Sale / Collection Edit & Safe Delete ---
 
     suspend fun editRepRecord(
         snapshot: WorkspaceSnapshot,
@@ -589,32 +590,216 @@ class SarimEditActions(
         unitPrice: Double,
         collectedAmount: Double,
         expiredKg: Double,
-        notes: String
+        notes: String,
+        customerPhone: String = "",
+        expiredUnitPrice: Double = 0.0
     ): Result<String> {
-        if (original.usedInCalcId.isNotBlank()) {
-            return Result.failure(IllegalArgumentException("Already reconciled in Calculator ($date). Undo that calculation first."))
-        }
-        if (original.paymentType == "PARTIAL_PAYMENT" && original.relatedSaleId.isNotBlank() &&
-            abs(original.totalValue - collectedAmount) > 0.005
-        ) {
-            return Result.failure(IllegalArgumentException("Partial payment is linked to a credit sale. Delete and re-enter it instead."))
+        val blockReason = RepSalesAnalyticsEngine.getRepSaleBlockReason(snapshot, original, forEdit = true)
+        if (blockReason.isNotBlank()) {
+            return Result.failure(IllegalArgumentException(blockReason))
         }
         val cleanCust = InputGuards.sanitizeName(customerName)
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val cleanPhone = InputGuards.sanitizePhone(customerPhone).ifBlank { original.customerPhone }
         val normType = paymentType.trim().uppercase(Locale.ROOT)
         val storeKey = store?.let(dispatcher::resolvedStoreKey).orEmpty()
+        val cleanNotes = InputGuards.sanitizeNotes(notes)
+        val iso = nowIso()
+        val repProfile = original.salesRep.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
+
+        if (normType == "COLLECTION" || normType == "PARTIAL_PAYMENT") {
+            if (collectedAmount < 0.0 || expiredKg < 0.0) {
+                return Result.failure(IllegalArgumentException("Amount and expired quantity cannot be negative"))
+            }
+            if (collectedAmount <= 0.0 && expiredKg <= 0.0) {
+                return Result.failure(IllegalArgumentException("Enter cash collected and/or expired quantity"))
+            }
+            if (original.paymentType == "PARTIAL_PAYMENT" && original.relatedSaleId.isNotBlank() &&
+                abs(original.totalValue - collectedAmount) > 0.005
+            ) {
+                return Result.failure(IllegalArgumentException("Partial payment is linked to a credit sale. Delete and re-enter it instead."))
+            }
+
+            // Build updated virtual state after reversing original's FIFO allocations so we re-allocate cleanly
+            val virtualRep = snapshot.repRecords.map { s ->
+                val allocAmt = original.allocations[s.id]
+                if (allocAmt != null && allocAmt > 0.0) {
+                    val nextPartial = InputGuards.round2(max(0.0, s.partialPaymentReceived - allocAmt))
+                    s.copy(
+                        partialPaymentReceived = nextPartial,
+                        creditReceived = false,
+                        collectionAllocs = s.collectionAllocs - original.id,
+                        collectionAllocFull = s.collectionAllocFull - original.id
+                    )
+                } else s
+            }
+
+            if (snapshot.profile.isAdmin && original.allocations.isNotEmpty()) {
+                virtualRep.filter { original.allocations.containsKey(it.id) }.forEach { revertedSale ->
+                    ops.submitOrExecuteWrite(
+                        profile = snapshot.profile,
+                        targetCollection = "rep",
+                        docId = revertedSale.id,
+                        summaryTitle = "Reverse FIFO: ${revertedSale.customerName}",
+                        summaryDetail = "$date • Re-edit ${original.id}",
+                        payload = WorkspaceJsonCodec.saleToMap(revertedSale),
+                        isEdit = true
+                    )
+                }
+            }
+
+            val effExpRate = when {
+                expiredUnitPrice > 0.0 -> InputGuards.round2(expiredUnitPrice)
+                expiredKg > 0.0 -> RepSalesAnalyticsEngine.computeRepGoodsCreditUnitPrice(
+                    repProfile = repProfile,
+                    customerName = cleanCust,
+                    snapshot = snapshot.copy(repRecords = virtualRep),
+                    excludeRecordId = original.id,
+                    fallbackStore = store
+                )
+                else -> 0.0
+            }
+            val repOutstanding = RepSalesAnalyticsEngine.computeRepClientOutstanding(
+                customerName = cleanCust,
+                repProfile = repProfile,
+                snapshot = snapshot.copy(repRecords = virtualRep),
+                excludeRecordId = original.id
+            )
+            val goodsPlan = if (expiredKg > 0.0) {
+                SalesAnalyticsEngine.planGoodsCredit(expiredKg, effExpRate, max(0.0, repOutstanding - collectedAmount))
+            } else {
+                SalesAnalyticsEngine.GoodsCreditPlan(0.0, 0.0, false)
+            }
+            val expVal = goodsPlan.value
+            val totalPool = InputGuards.round2(collectedAmount + expVal)
+
+            val openSales = virtualRep.filter {
+                it.deletedAt == null &&
+                    it.id != original.id &&
+                    !it.isMerged &&
+                    it.usedInCalcId.isBlank() &&
+                    !it.creditReceived &&
+                    RepSalesAnalyticsEngine.isSameRep(it.salesRep, repProfile) &&
+                    it.customerName.equals(cleanCust, ignoreCase = true) &&
+                    (it.paymentType == "CREDIT" || it.transactionType == "OLD_DEBT")
+            }
+            val newPlan = if (snapshot.profile.isAdmin && totalPool > 0.0) {
+                FinanceEngine.computeCollectionFifoPlan(
+                    paymentAmount = totalPool,
+                    openCreditRows = openSales,
+                    customers = snapshot.clients.ifEmpty { snapshot.customers },
+                    stores = snapshot.stores
+                )
+            } else emptyMap()
+
+            val appliedCash = InputGuards.round2(min(collectedAmount, newPlan.values.sumOf { it.first }))
+            val unappliedCash = InputGuards.round2(max(0.0, collectedAmount - appliedCash))
+            val expAppliedAmt = InputGuards.round2(max(0.0, newPlan.values.sumOf { it.first } - appliedCash))
+
+            if (snapshot.profile.isAdmin && newPlan.isNotEmpty()) {
+                val byId = openSales.associateBy { it.id }
+                newPlan.forEach { (saleId, pair) ->
+                    val s = byId[saleId] ?: return@forEach
+                    val (amt, full) = pair
+                    val updatedSale = s.copy(
+                        partialPaymentReceived = if (full) s.totalValue else InputGuards.round2(s.partialPaymentReceived + amt),
+                        creditReceived = full,
+                        collectionAllocs = s.collectionAllocs + (original.id to amt),
+                        collectionAllocFull = s.collectionAllocFull + (original.id to full),
+                        updatedAtEpoch = System.currentTimeMillis()
+                    )
+                    ops.submitOrExecuteWrite(
+                        profile = snapshot.profile,
+                        targetCollection = "rep",
+                        docId = s.id,
+                        summaryTitle = "Rep FIFO Settle: ${s.customerName}",
+                        summaryDetail = "$date • Applied ${InputGuards.fmtNum(amt)}",
+                        payload = WorkspaceJsonCodec.saleToMap(updatedSale),
+                        isEdit = true
+                    )
+                }
+            }
+
+            val prevExpApplied = if (original.expiredApplied > 0.0) original.expiredApplied else 0.0
+            val expDelta = InputGuards.round6(expiredKg - prevExpApplied)
+            if (snapshot.profile.isAdmin && abs(expDelta) > 1e-6) {
+                dispatcher.addChoraToInventory(snapshot, expDelta)
+            }
+
+            val diff = FinanceEngine.buildEditDiff(
+                listOf("date" to "Date", "customerName" to "Customer", "collectedAmount" to "Collected", "expiredQty" to "Expired", "notes" to "Notes"),
+                mapOf(
+                    "date" to original.date,
+                    "customerName" to original.customerName,
+                    "collectedAmount" to original.collectedAmount,
+                    "expiredQty" to original.expiredQty,
+                    "notes" to original.notes
+                ),
+                mapOf(
+                    "date" to date,
+                    "customerName" to cleanCust,
+                    "collectedAmount" to InputGuards.round2(collectedAmount),
+                    "expiredQty" to InputGuards.round2(expiredKg),
+                    "notes" to cleanNotes
+                )
+            )
+            val updated = original.copy(
+                date = date,
+                supplyDate = date,
+                customerName = cleanCust,
+                customerPhone = cleanPhone,
+                supplyStore = storeKey,
+                paymentType = "COLLECTION",
+                quantity = 0.0,
+                unitPrice = 0.0,
+                totalValue = if (newPlan.isEmpty()) InputGuards.round2(collectedAmount) else unappliedCash,
+                totalCost = 0.0,
+                profit = if (newPlan.isEmpty()) InputGuards.round2(collectedAmount) else unappliedCash,
+                creditReceived = true,
+                isCollection = true,
+                collectedAmount = InputGuards.round2(collectedAmount),
+                allocations = newPlan.mapValues { it.value.first },
+                allocationFull = newPlan.mapValues { it.value.second },
+                expiredQty = InputGuards.round2(expiredKg),
+                expiredValue = expVal,
+                expiredUnitPrice = effExpRate,
+                expiredApplied = if (snapshot.profile.isAdmin) InputGuards.round2(expiredKg) else original.expiredApplied,
+                expiredAllocated = expAppliedAmt,
+                notes = cleanNotes,
+                updatedAtEpoch = System.currentTimeMillis(),
+                isEdited = true,
+                editedAt = iso,
+                editHistory = FinanceEngine.pushEditHistory(original.editHistory, actorName(snapshot), diff, iso)
+            )
+            return ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "rep",
+                docId = original.id,
+                summaryTitle = "Edit Rep COLLECTION: $cleanCust",
+                summaryDetail = "$date • ${InputGuards.fmtNum(collectedAmount)}",
+                payload = WorkspaceJsonCodec.saleToMap(updated),
+                isEdit = true
+            )
+        }
+
+        // Sale / Return / Money Out edit
         val totalVal = when (normType) {
-            "COLLECTION", "PARTIAL_PAYMENT", "MONEY_OUT" -> InputGuards.round2(collectedAmount)
+            "MONEY_OUT" -> InputGuards.round2(collectedAmount)
             else -> InputGuards.round2(quantityKg * unitPrice)
         }
-        if (totalVal <= 0.0 && expiredKg <= 0.0) {
-            return Result.failure(IllegalArgumentException("Enter valid quantity/rate or collected amount"))
+        if (normType in setOf("CASH", "CREDIT")) {
+            if (quantityKg <= 0.0 || unitPrice <= 0.0) {
+                return Result.failure(IllegalArgumentException("Enter valid quantity and rate"))
+            }
+        } else if (totalVal <= 0.0 && expiredKg <= 0.0) {
+            return Result.failure(IllegalArgumentException("Enter valid quantity/rate or amount"))
         }
         val costLookup = FormulaEngine.costSourceFromIndex(FormulaEngine.buildCostIndex(snapshot.production), storeKey, date)
         val totalCost = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(quantityKg * costLookup.cp) else 0.0
         val profit = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(totalVal - totalCost) else 0.0
-        val cleanNotes = InputGuards.sanitizeNotes(notes)
-        val iso = nowIso()
+        if (normType in setOf("CASH", "CREDIT") && costLookup.cp > 0.0 && profit < -0.01) {
+            return Result.failure(IllegalArgumentException("This sale would result in a loss. Check sale price vs cost price."))
+        }
 
         val diff = FinanceEngine.buildEditDiff(
             listOf("date" to "Date", "customerName" to "Customer", "paymentType" to "Type", "quantity" to "Quantity", "unitPrice" to "Rate", "totalValue" to "Total Value", "notes" to "Notes"),
@@ -625,6 +810,7 @@ class SarimEditActions(
             date = date,
             supplyDate = date,
             customerName = cleanCust,
+            customerPhone = cleanPhone,
             supplyStore = storeKey,
             paymentType = normType,
             quantity = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(quantityKg) else 0.0,
@@ -633,9 +819,9 @@ class SarimEditActions(
             totalCost = totalCost,
             profit = profit,
             costSource = if (normType in setOf("CASH", "CREDIT")) costLookup.source else "",
-            creditReceived = normType == "CASH" || normType == "COLLECTION",
-            isCollection = normType == "COLLECTION",
-            collectedAmount = if (normType == "COLLECTION" || normType == "CASH") totalVal else 0.0,
+            creditReceived = normType == "CASH",
+            isCollection = false,
+            collectedAmount = if (normType == "CASH" || normType == "MONEY_OUT") totalVal else 0.0,
             expiredQty = InputGuards.round2(expiredKg),
             isRepReturn = normType == "REP_RETURN",
             returnedQty = if (normType == "REP_RETURN") InputGuards.round2(quantityKg) else 0.0,
@@ -655,6 +841,77 @@ class SarimEditActions(
             payload = WorkspaceJsonCodec.saleToMap(updated),
             isEdit = true
         )
+    }
+
+    suspend fun deleteRepRecordWithLinks(
+        snapshot: WorkspaceSnapshot,
+        rec: SalesRecord,
+        displayAmount: String
+    ): Result<String> {
+        val blockReason = RepSalesAnalyticsEngine.getRepSaleBlockReason(snapshot, rec, forEdit = false)
+        if (blockReason.isNotBlank()) {
+            return Result.failure(IllegalArgumentException(blockReason))
+        }
+
+        if (snapshot.profile.isAdmin) {
+            if (rec.isCollection || rec.paymentType == "COLLECTION") {
+                rec.allocations.forEach { (saleId, allocAmt) ->
+                    if (allocAmt <= 0.0) return@forEach
+                    val parent = snapshot.repRecords.firstOrNull { it.id == saleId && it.deletedAt == null } ?: return@forEach
+                    val nextPartial = InputGuards.round2(max(0.0, parent.partialPaymentReceived - allocAmt))
+                    val updatedParent = parent.copy(
+                        partialPaymentReceived = nextPartial,
+                        creditReceived = false,
+                        collectionAllocs = parent.collectionAllocs - rec.id,
+                        collectionAllocFull = parent.collectionAllocFull - rec.id,
+                        updatedAtEpoch = System.currentTimeMillis()
+                    )
+                    ops.submitOrExecuteWrite(
+                        profile = snapshot.profile,
+                        targetCollection = "rep",
+                        docId = parent.id,
+                        summaryTitle = "Reverse Rep FIFO: ${parent.customerName}",
+                        summaryDetail = "Deleted collection ${rec.date}",
+                        payload = WorkspaceJsonCodec.saleToMap(updatedParent),
+                        isEdit = true
+                    )
+                }
+                val expRev = if (rec.expiredQty > 0.0 && rec.expiredApplied > 0.0) rec.expiredApplied else 0.0
+                if (expRev > 0.0) {
+                    dispatcher.addChoraToInventory(snapshot, -expRev)
+                }
+            } else if (rec.paymentType == "PARTIAL_PAYMENT" && rec.relatedSaleId.isNotBlank()) {
+                val parent = snapshot.repRecords.firstOrNull { it.id == rec.relatedSaleId && it.deletedAt == null }
+                if (parent != null) {
+                    val paidAmt = if (rec.collectedAmount > 0.0) rec.collectedAmount else rec.totalValue
+                    val nextPartial = InputGuards.round2(max(0.0, parent.partialPaymentReceived - paidAmt))
+                    val updatedParent = parent.copy(
+                        partialPaymentReceived = nextPartial,
+                        creditReceived = false,
+                        updatedAtEpoch = System.currentTimeMillis()
+                    )
+                    ops.submitOrExecuteWrite(
+                        profile = snapshot.profile,
+                        targetCollection = "rep",
+                        docId = parent.id,
+                        summaryTitle = "Detach Rep Payment: ${parent.customerName}",
+                        summaryDetail = "Deleted partial ${rec.date}",
+                        payload = WorkspaceJsonCodec.saleToMap(updatedParent),
+                        isEdit = true
+                    )
+                }
+            }
+        }
+
+        return ops.softDeleteToRecycleBin(
+            profile = snapshot.profile,
+            collection = "rep",
+            docId = rec.id,
+            displayName = rec.customerName,
+            displayDetail = "${rec.date} • ${rec.paymentType} • ${rec.salesRep}",
+            displayAmount = displayAmount,
+            snapshotMap = WorkspaceJsonCodec.saleToMap(rec)
+        ).map { rec.id }
     }
 
     // --- Factory Batch & Raw Material / Purchase Lot Edits ---

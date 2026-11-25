@@ -262,6 +262,10 @@ fun EditCustomerScreen(
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
     val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
     val isAdmin = session.mode == "admin"
+    val isOwnRepOnly = remember(session) { FinanceEngine.hasOwnRepAccess(session) && !isAdmin }
+    val lockedRepName = remember(snapshot.settings.repProfile, snapshot.profile.displayName) {
+        snapshot.settings.repProfile.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
+    }
 
     val sourceList = if (isRepClient) snapshot.clients else snapshot.customers
     val existing = remember(sourceList, customerName) {
@@ -293,7 +297,9 @@ fun EditCustomerScreen(
     var name by remember(existing) { mutableStateOf(existing.name) }
     var phone by remember(existing) { mutableStateOf(existing.phone) }
     var address by remember(existing) { mutableStateOf(existing.address) }
-    var salesRep by remember(existing) { mutableStateOf(existing.salesRep) }
+    var salesRep by remember(existing, isRepClient, isOwnRepOnly, lockedRepName) {
+        mutableStateOf(if (isRepClient && isOwnRepOnly) existing.salesRep.ifBlank { lockedRepName } else existing.salesRep)
+    }
     var openingStr by remember(existing) {
         val currentBal = if (existing.id.isNotBlank()) existing.oldDebit
         else FinanceEngine.computeCustomerBalance(
@@ -425,7 +431,22 @@ fun EditCustomerScreen(
                             }
                         }
                     }
-                    if (snapshot.settings.reps.isNotEmpty()) {
+                    if (isRepClient && isOwnRepOnly) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = accents.softPillFill,
+                            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth().testTag("ec_rep_locked")
+                        ) {
+                            Text(
+                                text = "Assigned Sales Rep (Locked): $lockedRepName",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = accents.emerald,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                            )
+                        }
+                    } else if (snapshot.settings.reps.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         PickerField(
                             label = "Assigned Sales Rep",

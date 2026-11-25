@@ -25,7 +25,9 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
+import com.gullzubair.sarim.util.LocationHelper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -807,41 +809,158 @@ class SarimActionDispatcher(
         gpsLng: Double?,
         gpsAccuracy: Double?,
         gpsConfirmed: Boolean,
-        notes: String
+        notes: String,
+        customerPhone: String = "",
+        expiredUnitPrice: Double = 0.0
     ): Result<String> {
         val cleanCust = InputGuards.sanitizeName(customerName)
         val cleanRep = InputGuards.sanitizeName(repName).ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val normType = paymentType.trim().uppercase(Locale.ROOT)
         val now = System.currentTimeMillis()
         val storeKey = store?.let(::resolvedStoreKey).orEmpty()
 
         val existingClient = snapshot.clients.firstOrNull {
+            it.deletedAt == null &&
+                it.name.equals(cleanCust, ignoreCase = true) &&
+                (it.salesRep.isBlank() || it.salesRep.equals(cleanRep, ignoreCase = true))
+        } ?: snapshot.clients.firstOrNull {
             it.deletedAt == null && it.name.equals(cleanCust, ignoreCase = true)
         }
-        if (existingClient == null) {
-            val newClient = CustomerRecord(
-                id = ops.newId("client"),
-                name = cleanCust,
+        val resolvedPhone = cleanPhone.ifBlank { existingClient?.phone ?: "" }
+
+        if (normType == "COLLECTION" || normType == "PARTIAL_PAYMENT") {
+            if (collectedAmount < 0.0 || expiredKg < 0.0) {
+                return Result.failure(IllegalArgumentException("Amount and expired quantity cannot be negative"))
+            }
+            if (collectedAmount <= 0.0 && expiredKg <= 0.0) {
+                return Result.failure(IllegalArgumentException("Enter amount collected and/or expired quantity"))
+            }
+            val effExpRate = when {
+                expiredUnitPrice > 0.0 -> InputGuards.round2(expiredUnitPrice)
+                expiredKg > 0.0 -> RepSalesAnalyticsEngine.computeRepGoodsCreditUnitPrice(cleanRep, cleanCust, snapshot, fallbackStore = store)
+                else -> 0.0
+            }
+            val repOutstanding = RepSalesAnalyticsEngine.computeRepClientOutstanding(cleanCust, cleanRep, snapshot)
+            val goodsPlan = if (expiredKg > 0.0) {
+                SalesAnalyticsEngine.planGoodsCredit(expiredKg, effExpRate, max(0.0, repOutstanding - collectedAmount))
+            } else {
+                SalesAnalyticsEngine.GoodsCreditPlan(0.0, 0.0, false)
+            }
+            val expVal = goodsPlan.value
+            val totalPool = InputGuards.round2(collectedAmount + expVal)
+            val colId = ops.newId("rep")
+
+            val openSales = snapshot.repRecords.filter {
+                it.deletedAt == null &&
+                    !it.isMerged &&
+                    it.usedInCalcId.isBlank() &&
+                    !it.creditReceived &&
+                    it.salesRep.equals(cleanRep, ignoreCase = true) &&
+                    it.customerName.equals(cleanCust, ignoreCase = true) &&
+                    (it.paymentType == "CREDIT" || it.transactionType == "OLD_DEBT")
+            }
+            val plan = if (snapshot.profile.isAdmin && totalPool > 0.0) {
+                FinanceEngine.computeCollectionFifoPlan(
+                    paymentAmount = totalPool,
+                    openCreditRows = openSales,
+                    customers = snapshot.clients.ifEmpty { snapshot.customers },
+                    stores = snapshot.stores
+                )
+            } else emptyMap()
+
+            val appliedCash = InputGuards.round2(min(collectedAmount, plan.values.sumOf { it.first }))
+            val unappliedCash = InputGuards.round2(max(0.0, collectedAmount - appliedCash))
+            val expAppliedAmt = InputGuards.round2(max(0.0, plan.values.sumOf { it.first } - appliedCash))
+
+            if (snapshot.profile.isAdmin && plan.isNotEmpty()) {
+                val byId = openSales.associateBy { it.id }
+                plan.forEach { (saleId, pair) ->
+                    val s = byId[saleId] ?: return@forEach
+                    val (amt, full) = pair
+                    val updatedSale = s.copy(
+                        partialPaymentReceived = if (full) s.totalValue else InputGuards.round2(s.partialPaymentReceived + amt),
+                        creditReceived = full,
+                        collectionAllocs = s.collectionAllocs + (colId to amt),
+                        collectionAllocFull = s.collectionAllocFull + (colId to full),
+                        updatedAtEpoch = now
+                    )
+                    ops.submitOrExecuteWrite(
+                        profile = snapshot.profile,
+                        targetCollection = "rep",
+                        docId = s.id,
+                        summaryTitle = "Rep FIFO Settle: ${s.customerName}",
+                        summaryDetail = "$date • Applied ${InputGuards.fmtNum(amt)}",
+                        payload = WorkspaceJsonCodec.saleToMap(updatedSale),
+                        isEdit = true
+                    )
+                }
+            }
+
+            var choraAdded = false
+            if (expiredKg > 0.0 && snapshot.profile.isAdmin) {
+                choraAdded = addChoraToInventory(snapshot, expiredKg)
+            }
+
+            val rec = SalesRecord(
+                id = colId,
+                date = date,
+                supplyDate = date,
+                time = DateUtils.nowTimeStr(),
+                customerName = cleanCust,
+                customerPhone = resolvedPhone,
+                quantity = 0.0,
+                supplyStore = storeKey,
+                paymentType = "COLLECTION",
                 salesRep = cleanRep,
+                currentRepProfile = cleanRep,
+                unitPrice = 0.0,
+                totalValue = if (plan.isEmpty()) InputGuards.round2(collectedAmount) else unappliedCash,
+                totalCost = 0.0,
+                profit = if (plan.isEmpty()) InputGuards.round2(collectedAmount) else unappliedCash,
+                creditReceived = true,
+                isCollection = true,
+                collectedAmount = InputGuards.round2(collectedAmount),
+                allocations = plan.mapValues { it.value.first },
+                allocationFull = plan.mapValues { it.value.second },
+                expiredQty = InputGuards.round2(expiredKg),
+                expiredValue = expVal,
+                expiredUnitPrice = effExpRate,
+                expiredApplied = if (choraAdded) InputGuards.round2(expiredKg) else 0.0,
+                expiredAllocated = expAppliedAmt,
+                affectsInventory = false,
                 gpsLat = gpsLat,
                 gpsLng = gpsLng,
-                visitCount = 1L,
-                createdAt = now,
-                timestamp = now
+                gpsAccuracy = gpsAccuracy,
+                gpsConfirmed = gpsConfirmed,
+                notes = InputGuards.sanitizeNotes(notes),
+                timestamp = now,
+                createdAt = now
             )
-            ops.submitOrExecuteWrite(
+
+            syncRepClientOnVisit(snapshot, existingClient, cleanCust, cleanRep, resolvedPhone, gpsLat, gpsLng, now)
+
+            return ops.submitOrExecuteWrite(
                 profile = snapshot.profile,
-                targetCollection = "clients",
-                docId = newClient.id,
-                summaryTitle = "New Rep Customer: $cleanCust",
-                summaryDetail = "Rep: $cleanRep",
-                payload = WorkspaceJsonCodec.customerToMap(newClient)
+                targetCollection = "rep",
+                docId = rec.id,
+                summaryTitle = "Rep COLLECTION: $cleanCust",
+                summaryDetail = "$date • $cleanRep • ${InputGuards.fmtNum(collectedAmount)}",
+                payload = WorkspaceJsonCodec.saleToMap(rec)
             )
         }
 
+        if (normType in setOf("CASH", "CREDIT")) {
+            if (quantityKg <= 0.0 || unitPrice <= 0.0) {
+                return Result.failure(IllegalArgumentException("Enter valid quantity and sale rate"))
+            }
+        } else if (collectedAmount <= 0.0 && quantityKg <= 0.0 && expiredKg <= 0.0) {
+            return Result.failure(IllegalArgumentException("Enter a valid amount or quantity"))
+        }
+
         val totalVal = when (normType) {
-            "COLLECTION", "PARTIAL_PAYMENT", "MONEY_OUT" -> InputGuards.round2(collectedAmount)
+            "MONEY_OUT" -> InputGuards.round2(collectedAmount)
             "REP_RETURN" -> InputGuards.round2(quantityKg * unitPrice)
             else -> InputGuards.round2(quantityKg * unitPrice)
         }
@@ -849,6 +968,11 @@ class SarimActionDispatcher(
         val costLookup = FormulaEngine.costSourceFromIndex(costIdx, storeKey, date)
         val totalCost = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(quantityKg * costLookup.cp) else 0.0
         val profit = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(totalVal - totalCost) else 0.0
+        if (normType in setOf("CASH", "CREDIT") && costLookup.cp > 0.0 && profit < -0.01) {
+            return Result.failure(IllegalArgumentException("This sale would result in a loss. Check sale price vs cost price."))
+        }
+
+        syncRepClientOnVisit(snapshot, existingClient, cleanCust, cleanRep, resolvedPhone, gpsLat, gpsLng, now)
 
         val rec = SalesRecord(
             id = ops.newId("rep"),
@@ -856,7 +980,7 @@ class SarimActionDispatcher(
             supplyDate = date,
             time = DateUtils.nowTimeStr(),
             customerName = cleanCust,
-            customerPhone = existingClient?.phone ?: "",
+            customerPhone = resolvedPhone,
             quantity = if (normType in setOf("CASH", "CREDIT")) InputGuards.round2(quantityKg) else 0.0,
             supplyStore = storeKey,
             paymentType = normType,
@@ -867,13 +991,14 @@ class SarimActionDispatcher(
             totalCost = totalCost,
             profit = profit,
             costSource = if (normType in setOf("CASH", "CREDIT")) costLookup.source else "",
-            creditReceived = normType == "CASH" || normType == "COLLECTION",
-            isCollection = normType == "COLLECTION",
-            collectedAmount = if (normType == "COLLECTION") totalVal else if (normType == "CASH") totalVal else 0.0,
+            creditReceived = normType == "CASH",
+            isCollection = false,
+            collectedAmount = if (normType == "CASH" || normType == "MONEY_OUT") totalVal else 0.0,
             expiredQty = InputGuards.round2(expiredKg),
             isRepReturn = normType == "REP_RETURN",
             returnedQty = if (normType == "REP_RETURN") InputGuards.round2(quantityKg) else 0.0,
             returnValue = if (normType == "REP_RETURN") totalVal else 0.0,
+            affectsInventory = false,
             gpsLat = gpsLat,
             gpsLng = gpsLng,
             gpsAccuracy = gpsAccuracy,
@@ -890,6 +1015,86 @@ class SarimActionDispatcher(
             summaryDetail = "$date • $cleanRep • ${InputGuards.fmtNum(totalVal)}",
             payload = WorkspaceJsonCodec.saleToMap(rec)
         )
+    }
+
+    private suspend fun syncRepClientOnVisit(
+        snapshot: WorkspaceSnapshot,
+        existingClient: CustomerRecord?,
+        cleanCust: String,
+        cleanRep: String,
+        resolvedPhone: String,
+        gpsLat: Double?,
+        gpsLng: Double?,
+        now: Long
+    ) {
+        if (existingClient == null) {
+            val newClient = CustomerRecord(
+                id = ops.newId("client"),
+                name = cleanCust,
+                phone = resolvedPhone,
+                salesRep = cleanRep,
+                gpsLat = gpsLat,
+                gpsLng = gpsLng,
+                visitCount = 1L,
+                createdAt = now,
+                updatedAt = now,
+                timestamp = now
+            )
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "clients",
+                docId = newClient.id,
+                summaryTitle = "New Rep Customer: $cleanCust",
+                summaryDetail = "Rep: $cleanRep",
+                payload = WorkspaceJsonCodec.customerToMap(newClient)
+            )
+            return
+        }
+
+        // Check 3+ consistent visits within 150m to confirm GPS address (port of autoUpdateCustomerLocation)
+        var nextAddress = existingClient.address
+        var nextLat = existingClient.gpsLat
+        var nextLng = existingClient.gpsLng
+        val isManualAddress = existingClient.address.length > 5 && !existingClient.address.startsWith("GPS:")
+        if (!isManualAddress && gpsLat != null && gpsLng != null) {
+            val cluster = snapshot.repRecords.filter { rec ->
+                rec.deletedAt == null &&
+                    rec.customerName.equals(cleanCust, ignoreCase = true) &&
+                    rec.gpsLat != null && rec.gpsLng != null &&
+                    LocationHelper.distanceMeters(gpsLat, gpsLng, rec.gpsLat, rec.gpsLng) <= 150.0
+            }.take(3)
+            if (cluster.size >= 3) {
+                val avgLat = (cluster.sumOf { it.gpsLat ?: 0.0 } + gpsLat) / (cluster.size + 1)
+                val avgLng = (cluster.sumOf { it.gpsLng ?: 0.0 } + gpsLng) / (cluster.size + 1)
+                nextAddress = "GPS: ${String.format(Locale.US, "%.6f", avgLat)}, ${String.format(Locale.US, "%.6f", avgLng)}"
+                nextLat = avgLat
+                nextLng = avgLng
+            } else if (nextLat == null || nextLng == null) {
+                nextLat = gpsLat
+                nextLng = gpsLng
+            }
+        }
+        val phoneUpdateNeeded = existingClient.phone.isBlank() && resolvedPhone.isNotBlank()
+        val addressChanged = nextAddress != existingClient.address || nextLat != existingClient.gpsLat || nextLng != existingClient.gpsLng
+        val updatedClient = existingClient.copy(
+            phone = if (phoneUpdateNeeded) resolvedPhone else existingClient.phone,
+            address = nextAddress,
+            gpsLat = nextLat,
+            gpsLng = nextLng,
+            visitCount = existingClient.visitCount + 1L,
+            updatedAt = now
+        )
+        if (snapshot.profile.isAdmin || phoneUpdateNeeded || addressChanged) {
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "clients",
+                docId = existingClient.id,
+                summaryTitle = "Update Rep Client: $cleanCust",
+                summaryDetail = "Visit #${updatedClient.visitCount}",
+                payload = WorkspaceJsonCodec.customerToMap(updatedClient),
+                isEdit = true
+            )
+        }
     }
 
     suspend fun saveFactoryBatch(

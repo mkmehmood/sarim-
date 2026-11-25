@@ -2,13 +2,16 @@ package com.gullzubair.sarim.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +26,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -48,12 +54,13 @@ import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
-import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
-import com.gullzubair.sarim.ui.components.EditHistorySection
-import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
+import com.gullzubair.sarim.ui.components.RepBlockingAlertDialog
+import com.gullzubair.sarim.ui.components.RepDetailSheet
+import com.gullzubair.sarim.ui.components.RepHistoryRowCard
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimDangerButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
@@ -61,7 +68,10 @@ import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.util.PdfExporter
+import com.gullzubair.sarim.util.StatementRow
 import java.util.Locale
+import kotlin.math.abs
 
 private val REP_MODE_FILTERS = listOf(
     "all" to "All",
@@ -85,49 +95,120 @@ fun RepCustomerManagementScreen(
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
     val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
     val isAdmin = session.mode == "admin"
+    val isOwnRepOnly = remember(session) { FinanceEngine.hasOwnRepAccess(session) && !isAdmin }
+    val lockedRepName = remember(snapshot.settings.repProfile, snapshot.profile.displayName) {
+        snapshot.settings.repProfile.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
+    }
 
     var query by remember { mutableStateOf("") }
     var modeFilter by remember { mutableStateOf("all") }
     var confirmDelete by remember { mutableStateOf(false) }
-    var expandedHistoryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedRecord by remember { mutableStateOf<SalesRecord?>(null) }
+    var blockingAlert by remember { mutableStateOf<Pair<String, String>?>(null) }
 
-    val client = remember(snapshot.clients, snapshot.customers, customerName) {
-        snapshot.clients.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
+    val client = remember(snapshot.clients, snapshot.customers, customerName, isOwnRepOnly, lockedRepName) {
+        snapshot.clients.firstOrNull {
+            it.deletedAt == null &&
+                it.name.equals(customerName, ignoreCase = true) &&
+                (!isOwnRepOnly || it.salesRep.isBlank() || it.salesRep.equals(lockedRepName, true))
+        } ?: snapshot.clients.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
             ?: snapshot.customers.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
     }
-    val clientPhotoUri = remember(client, snapshot.photos) {
-        client?.id?.let { cid ->
-            (snapshot.photos["client:$cid"] ?: snapshot.photos["cust:$cid"])?.takeIf { !it.deleted }?.dataUri
+    val effectiveRepScope = remember(isOwnRepOnly, lockedRepName, client) {
+        when {
+            isOwnRepOnly -> lockedRepName
+            !client?.salesRep.isNullOrBlank() -> client!!.salesRep
+            else -> ""
+        }
+    }
+    val clientPhotoUri = remember(client, snapshot.photos, effectiveRepScope, customerName) {
+        val cid = client?.id.orEmpty()
+        val key1 = if (cid.isNotBlank()) "client:$cid" else ""
+        val key2 = "rep-cust:${effectiveRepScope.lowercase(Locale.ROOT)}:${customerName.trim().lowercase(Locale.ROOT)}"
+        val key3 = if (cid.isNotBlank()) "cust:$cid" else ""
+        listOf(key1, key2, key3).firstNotNullOfOrNull { k ->
+            if (k.isBlank()) null else snapshot.photos[k]?.takeIf { !it.deleted }?.dataUri
         }
     }
     val ledgerPage = remember(client) {
         client?.ledgerPage?.takeIf { it.isNotBlank() }
             ?: Regex("page:([^;\\n]+)").find(client?.notes ?: "")?.groupValues?.getOrNull(1)?.trim().orEmpty()
     }
-    val records = remember(snapshot.repRecords, customerName) {
-        snapshot.repRecords
-            .filter { it.deletedAt == null && it.customerName.equals(customerName, ignoreCase = true) }
+
+    val records = remember(snapshot.repRecords, customerName, isOwnRepOnly, lockedRepName) {
+        val base = if (isOwnRepOnly) {
+            RepSalesAnalyticsEngine.scopedRepRecords(snapshot.repRecords, lockedRepName)
+        } else {
+            snapshot.repRecords.filter { it.deletedAt == null }
+        }
+        base.filter { it.customerName.equals(customerName, ignoreCase = true) }
             .sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
-    }
-    val balance = remember(snapshot, customerName) {
-        FinanceEngine.computeCustomerBalance(
-            customerName = customerName,
-            customers = snapshot.customers,
-            sales = snapshot.sales,
-            repRecords = snapshot.repRecords,
-            calculator = snapshot.calculator,
-            stores = snapshot.stores,
-            clients = snapshot.clients,
-            includeClients = true
-        )
     }
 
     val customerListForPricing = remember(snapshot.clients, snapshot.customers) {
         snapshot.clients.ifEmpty { snapshot.customers }
     }
-    val soldKg = remember(records) {
-        InputGuards.round3(records.sumOf { FinanceEngine.soldQuantity(it) })
+    val honor = remember(records) { FinanceEngine.allocHonor(records) }
+    val reconciledIds = remember(snapshot.calculator) { FinanceEngine.reconciledRepReturnIds(snapshot.calculator) }
+
+    val hasOldDebtTx = remember(records) { records.any { it.transactionType == "OLD_DEBT" } }
+    val openingDebit = remember(hasOldDebtTx, client) {
+        if (hasOldDebtTx) 0.0 else (client?.oldDebit ?: 0.0)
     }
+
+    // Chronological running balance map + PDF statement rows
+    val (runningBalanceById, pdfRows) = remember(records, openingDebit, reconciledIds, honor, customerListForPricing, snapshot.stores, masked) {
+        val balMap = LinkedHashMap<String, Double>()
+        val rowsOut = mutableListOf<StatementRow>()
+        var run = openingDebit
+        if (abs(openingDebit) > 0.005) {
+            rowsOut.add(
+                StatementRow(
+                    date = "Opening",
+                    description = "Opening Balance",
+                    debit = if (openingDebit > 0.0 && !masked) InputGuards.fmtNum(openingDebit) else "-",
+                    credit = if (openingDebit < 0.0 && !masked) InputGuards.fmtNum(-openingDebit) else "-",
+                    balance = if (masked) "••••" else InputGuards.fmtNum(run)
+                )
+            )
+        }
+        val asc = records.sortedWith(compareBy<SalesRecord> { it.date }.thenBy { it.timestamp }.thenBy { it.id })
+        asc.forEach { s ->
+            val gross = FinanceEngine.effectiveSaleValue(s, customerListForPricing, snapshot.stores)
+            val split = FinanceEngine.ledgerSplit(s, gross, reconciledIds, honor)
+            run = InputGuards.round2(run + split.delta)
+            balMap[s.id] = run
+            val qtyTxt = when {
+                s.quantity > 0.0 -> " • ${InputGuards.formatKg(s.quantity)}"
+                s.returnedQty > 0.0 -> " • Ret ${InputGuards.formatKg(s.returnedQty)}"
+                s.expiredQty > 0.0 -> " • Exp ${InputGuards.formatKg(s.expiredQty)}"
+                else -> ""
+            }
+            val desc = buildString {
+                append(s.paymentType)
+                if (s.salesRep.isNotBlank()) append(" (${s.salesRep})")
+                append(qtyTxt)
+                if (s.notes.isNotBlank()) append(" — ${s.notes.take(40)}")
+            }
+            rowsOut.add(
+                StatementRow(
+                    date = s.date,
+                    description = desc,
+                    debit = if (split.debit > 0.005) (if (masked) "••••" else InputGuards.fmtNum(split.debit)) else "-",
+                    credit = if (split.credit > 0.005) (if (masked) "••••" else InputGuards.fmtNum(split.credit)) else "-",
+                    balance = if (masked) "••••" else InputGuards.fmtNum(run)
+                )
+            )
+        }
+        balMap to rowsOut
+    }
+
+    val balance = remember(records, openingDebit, runningBalanceById) {
+        val lastAsc = records.sortedWith(compareBy<SalesRecord> { it.date }.thenBy { it.timestamp }.thenBy { it.id }).lastOrNull()
+        if (lastAsc != null) (runningBalanceById[lastAsc.id] ?: openingDebit) else InputGuards.round2(openingDebit)
+    }
+
+    val soldKg = remember(records) { InputGuards.round3(records.sumOf { FinanceEngine.soldQuantity(it) }) }
     val soldValue = remember(records, customerListForPricing, snapshot.stores) {
         InputGuards.round2(
             records.filter { !FinanceEngine.isLedgerRow(it) }
@@ -142,11 +223,18 @@ fun RepCustomerManagementScreen(
             }
         )
     }
-    val returned = remember(records) {
-        InputGuards.round2(
-            records.filter { it.isRepReturn || it.paymentType == "REP_RETURN" }
-                .sumOf { it.returnValue }
-        )
+    val totalExpiredKg = remember(records) { InputGuards.round2(records.sumOf { it.expiredQty }) }
+    val collPct = remember(soldValue, collected, openingDebit) {
+        val denom = soldValue + openingDebit.coerceAtLeast(0.0)
+        if (denom <= 0.0) 1f else (collected / denom).toFloat().coerceIn(0f, 1f)
+    }
+
+    val bestGps: Pair<Double, Double>? = remember(client, records) {
+        if (client?.gpsLat != null && client.gpsLng != null) {
+            client.gpsLat to client.gpsLng
+        } else {
+            records.firstOrNull { it.gpsLat != null && it.gpsLng != null }?.let { it.gpsLat!! to it.gpsLng!! }
+        }
     }
 
     val visible = remember(records, query, modeFilter) {
@@ -175,39 +263,60 @@ fun RepCustomerManagementScreen(
             subtitle = listOfNotNull(
                 client?.phone?.takeIf { it.isNotBlank() },
                 client?.address?.takeIf { it.isNotBlank() },
-                client?.salesRep?.takeIf { it.isNotBlank() }?.let { "Rep: $it" },
+                effectiveRepScope.takeIf { it.isNotBlank() }?.let { "Rep: $it" },
                 ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
-            ).joinToString(" • ").ifBlank { "No contact details" },
+            ).joinToString(" • ").ifBlank { "Rep customer ledger" },
             onBack = onBack,
             trailingContent = {
-                Surface(
-                    onClick = onEdit,
-                    shape = RoundedCornerShape(14.dp),
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.testTag("rep_cust_edit_btn")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            if (pdfRows.isEmpty()) {
+                                Toast.makeText(context, "No ledger rows to export", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val footer = "Total Sold: ${InputGuards.formatKg(soldKg)} • Sale Value: " +
+                                    "${InputGuards.formatMoney(soldValue, currency, masked)} • Collected: " +
+                                    "${InputGuards.formatMoney(collected, currency, masked)} • Balance: " +
+                                    InputGuards.formatMoney(balance, currency, masked)
+                                PdfExporter.exportAndShareStatement(
+                                    context = context,
+                                    title = "$customerName — Rep Statement",
+                                    subtitle = listOfNotNull(
+                                        effectiveRepScope.takeIf { it.isNotBlank() }?.let { "Rep: $it" },
+                                        client?.phone?.takeIf { it.isNotBlank() },
+                                        ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
+                                    ).joinToString(" • "),
+                                    rows = pdfRows,
+                                    summaryFooter = footer
+                                )
+                            }
+                        },
+                        modifier = Modifier.size(48.dp).testTag("rep_cust_export_pdf")
                     ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Edit customer",
-                            tint = accents.emerald,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF statement", tint = accents.cyan)
+                    }
+                    Surface(
+                        onClick = onEdit,
+                        shape = RoundedCornerShape(14.dp),
+                        color = accents.softPillFill,
+                        border = BorderStroke(1.dp, accents.emerald),
+                        modifier = Modifier.testTag("rep_cust_edit_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit customer", tint = accents.emerald, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                        }
                     }
                 }
             }
         )
 
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
@@ -237,7 +346,7 @@ fun RepCustomerManagementScreen(
                         SarimHalfRingKpiBox(
                             label = "BALANCE DUE",
                             value = InputGuards.formatMoney(balance, currency, masked),
-                            ringColor = if (balance > 0) accents.gold else accents.emerald,
+                            ringColor = if (balance > 0.01) accents.gold else accents.emerald,
                             modifier = Modifier.weight(1f)
                         )
                         SarimHalfRingKpiBox(
@@ -262,36 +371,91 @@ fun RepCustomerManagementScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    if (returned > 0.0) {
-                        Spacer(Modifier.height(8.dp))
+
+                    // Collection progress meter
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Collection progress", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                         Text(
-                            "Returns credited: ${InputGuards.formatMoney(returned, currency, masked)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = accents.textMuted
+                            text = if (masked) "••%" else "${(collPct * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = accents.emerald
                         )
                     }
-                    if ((client?.oldDebit ?: 0.0) > 0.0) {
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(accents.inputFill)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(collPct).fillMaxHeight().background(accents.emerald)
+                        )
+                    }
+
+                    if (totalExpiredKg > 0.0) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Expired -> CHORA returned: ${InputGuards.formatKg(totalExpiredKg)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.cyan
+                        )
+                    }
+                    if (openingDebit > 0.0) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Opening debit: ${InputGuards.formatMoney(client?.oldDebit ?: 0.0, currency, masked)}",
+                            "Opening debit: ${InputGuards.formatMoney(openingDebit, currency, masked)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = accents.textMuted
                         )
                     }
-                    if (!client?.phone.isNullOrBlank()) {
+
+                    if (!client?.phone.isNullOrBlank() || bestGps != null) {
                         Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}")))
-                                },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("rep_cust_call_btn")
-                            ) {
-                                Icon(Icons.Default.Call, contentDescription = "Call customer", tint = accents.emerald)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!client?.phone.isNullOrBlank()) {
+                                Surface(
+                                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}"))) } },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.4f)),
+                                    modifier = Modifier.weight(1f).testTag("rep_cust_call_btn")
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Default.Call, contentDescription = "Call customer", tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(client?.phone.orEmpty(), style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                                    }
+                                }
                             }
-                            Text(client?.phone.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = accents.emerald)
+                            if (bestGps != null) {
+                                Surface(
+                                    onClick = {
+                                        val uri = Uri.parse("geo:${bestGps.first},${bestGps.second}?q=${bestGps.first},${bestGps.second}(${Uri.encode(customerName)})")
+                                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = accents.inputFill,
+                                    border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.45f)),
+                                    modifier = Modifier.weight(1f).testTag("rep_cust_maps_btn")
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = "Open in Maps", tint = accents.cyan, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Open Maps", style = MaterialTheme.typography.labelLarge, color = accents.cyan)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -302,6 +466,7 @@ fun RepCustomerManagementScreen(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = "Search rep history...",
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "rep_cust_search"
                 )
@@ -328,104 +493,15 @@ fun RepCustomerManagementScreen(
                 }
             } else {
                 items(visible, key = { it.id }) { r ->
-                    val isReturn = r.isRepReturn || r.paymentType == "REP_RETURN"
-                    val isColl = FinanceEngine.isCollectionRow(r)
-                    val isOut = r.paymentType == "MONEY_OUT"
-                    val effectiveVal = FinanceEngine.effectiveSaleValue(r, customerListForPricing, snapshot.stores)
-                    val displayAmount = when {
-                        isColl -> if (r.collectedAmount > 0.0) r.collectedAmount else r.totalValue
-                        isReturn -> r.returnValue
-                        else -> effectiveVal
-                    }
-                    val storeLabel = FormulaEngine.storeLabelFor(r.supplyStore, snapshot.stores)
-                    val kgShown = if (isReturn) r.returnedQty else r.quantity
-                    val historyOpen = r.id in expandedHistoryIds
-                    val hasHistory = r.editHistory.isNotEmpty() || r.timestamp > 0L
-
-                    SarimCard(
-                        modifier = Modifier
-                            .clickable(enabled = hasHistory) {
-                                expandedHistoryIds = if (historyOpen) expandedHistoryIds - r.id else expandedHistoryIds + r.id
-                            }
-                            .testTag("rep_cust_row_${r.id}")
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = buildString {
-                                            append(r.paymentType.uppercase(Locale.ROOT))
-                                            if (r.salesRep.isNotBlank()) append(" • ${r.salesRep}")
-                                        },
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    EditedBadge(r.isEdited)
-                                }
-                                Text(
-                                    text = buildString {
-                                        append(DateUtils.formatPretty(r.date))
-                                        if (kgShown > 0.0) append(" • ${InputGuards.formatKg(kgShown)}")
-                                        if (storeLabel.isNotBlank()) append(" • $storeLabel")
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = accents.textMuted
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = InputGuards.formatMoney(displayAmount, currency, masked),
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = when {
-                                    isOut -> accents.danger
-                                    isReturn || isColl || r.paymentType == "CASH" -> accents.emerald
-                                    else -> accents.gold
-                                }
-                            )
-                        }
-                        if (!FinanceEngine.isLedgerRow(r) && r.paymentType == "CREDIT") {
-                            Spacer(Modifier.height(4.dp))
-                            val paidPart = if (r.creditReceived) effectiveVal else r.partialPaymentReceived
-                            val unpaidPart = (effectiveVal - paidPart).coerceAtLeast(0.0)
-                            Text(
-                                "Paid ${InputGuards.formatMoney(paidPart, currency, masked)} • Due ${InputGuards.formatMoney(unpaidPart, currency, masked)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = accents.textMuted
-                            )
-                        }
-                        if (r.expiredQty > 0.0) {
-                            Spacer(Modifier.height(4.dp))
-                            Text("Expired / Chora: ${InputGuards.formatKg(r.expiredQty)}", style = MaterialTheme.typography.bodySmall, color = accents.gold)
-                        }
-                        if (r.gpsLat != null && r.gpsLng != null) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "GPS: ${String.format(Locale.US, "%.5f, %.5f", r.gpsLat, r.gpsLng)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = accents.cyan
-                            )
-                        }
-                        if (r.notes.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(r.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                        }
-                        AnimatedVisibility(visible = historyOpen) {
-                            Column {
-                                Spacer(Modifier.height(10.dp))
-                                EditHistorySection(
-                                    editHistory = r.editHistory,
-                                    createdAtEpoch = r.timestamp,
-                                    addedLabel = "Recorded",
-                                    canDelete = isAdmin,
-                                    masked = masked,
-                                    onDeleteEntry = { idx -> vm.deleteRecordEditHistory("rep", r.id, idx) }
-                                )
-                            }
-                        }
-                    }
+                    RepHistoryRowCard(
+                        r = r,
+                        stores = snapshot.stores,
+                        runningBalanceAfter = runningBalanceById[r.id],
+                        isSelectedDate = false,
+                        currency = currency,
+                        masked = masked,
+                        onClick = { selectedRecord = r }
+                    )
                 }
             }
 
@@ -433,7 +509,14 @@ fun RepCustomerManagementScreen(
                 item {
                     SarimDangerButton(
                         text = "Delete Customer & Rep History",
-                        onClick = { confirmDelete = true },
+                        onClick = {
+                            val blockedRec = records.firstOrNull { RepSalesAnalyticsEngine.getRepSaleBlockReason(snapshot, it, forEdit = false).isNotBlank() }
+                            if (blockedRec != null) {
+                                blockingAlert = "Cannot Delete Customer" to RepSalesAnalyticsEngine.getRepSaleBlockReason(snapshot, blockedRec, forEdit = false)
+                            } else {
+                                confirmDelete = true
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         testTag = "rep_cust_delete_btn"
                     )
@@ -441,6 +524,28 @@ fun RepCustomerManagementScreen(
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    selectedRecord?.let { r ->
+        RepDetailSheet(
+            r = r,
+            snapshot = snapshot,
+            runningBalanceAfter = runningBalanceById[r.id],
+            currency = currency,
+            masked = masked,
+            isAdmin = isAdmin,
+            vm = vm,
+            onEditEntry = {
+                Toast.makeText(context, "Open Rep tab History to edit ${r.customerName} in-place.", Toast.LENGTH_SHORT).show()
+            },
+            onOpenCustomerLedger = { /* already on customer ledger */ },
+            onBlockedAction = { msg -> blockingAlert = "Action Blocked" to msg },
+            onDismiss = { selectedRecord = null }
+        )
+    }
+
+    blockingAlert?.let { (title, msg) ->
+        RepBlockingAlertDialog(title = title, message = msg, onDismiss = { blockingAlert = null })
     }
 
     if (confirmDelete) {
@@ -456,14 +561,7 @@ fun RepCustomerManagementScreen(
             confirmButton = {
                 TextButton(onClick = {
                     records.forEach { rec ->
-                        vm.softDeleteRecord(
-                            collection = "rep",
-                            docId = rec.id,
-                            displayName = "${rec.customerName} (${rec.salesRep})",
-                            displayDetail = "${rec.date} • ${rec.paymentType}",
-                            displayAmount = InputGuards.fmtNum(rec.totalValue),
-                            snapshotMap = WorkspaceJsonCodec.saleToMap(rec)
-                        )
+                        vm.deleteRepRecord(rec, InputGuards.formatMoney(rec.totalValue, currency, masked))
                     }
                     client?.let { c ->
                         val col = if (snapshot.clients.any { it.id == c.id }) "clients" else "customers"
