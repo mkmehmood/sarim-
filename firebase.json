@@ -1,7 +1,7 @@
 {
   "firestore": [
     {
-      "database": "ai-studio-android-sarim-3b322bd0-3fde-4b9d-9ac8-0d42165b3ba7",
+      "database": "(default)",
       "rules": "firestore.rules"
     }
   ],

@@ -11,7 +11,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.aistudio.sarim.gzndkx"
+        applicationId = "com.gullzubair.sarim"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
