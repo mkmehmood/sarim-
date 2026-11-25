@@ -1,0 +1,127 @@
+name: Release Latest Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-latest-apk
+  cancel-in-progress: true
+
+jobs:
+  release-latest-apk:
+    name: Build & Update Latest APK Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Restore stable repository signing keystore
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+      - name: Build & Verify Release and Debug APKs
+        run: gradle :app:testDebugUnitTest assembleRelease assembleDebug --no-daemon
+
+      - name: Package & Sign Latest APKs
+        id: pkg
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          mkdir -p release-dist
+          RAW_RELEASE=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          RAW_DEBUG=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+
+          OUT_RELEASE="release-dist/GullZubair-Sarim-release.apk"
+          OUT_DEBUG="release-dist/GullZubair-Sarim-debug.apk"
+          cp "$RAW_DEBUG" "$OUT_DEBUG"
+
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ]; then
+            echo "Signing release APK with repository secret keystore..."
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore
+            BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n 1)
+            "$BUILD_TOOLS_DIR/zipalign" -p -f 4 "$RAW_RELEASE" /tmp/aligned-release.apk
+            "$BUILD_TOOLS_DIR/apksigner" sign \
+              --ks /tmp/release.keystore \
+              --ks-pass "pass:${RELEASE_STORE_PASSWORD}" \
+              --ks-key-alias "${RELEASE_KEY_ALIAS}" \
+              --key-pass "pass:${RELEASE_KEY_PASSWORD:-$RELEASE_STORE_PASSWORD}" \
+              --out "$OUT_RELEASE" \
+              /tmp/aligned-release.apk
+            "$BUILD_TOOLS_DIR/apksigner" verify "$OUT_RELEASE"
+            rm -f /tmp/release.keystore /tmp/aligned-release.apk
+            SIGN_MODE="Custom release keystore (GitHub Secrets)"
+          else
+            cp "$RAW_RELEASE" "$OUT_RELEASE"
+            SIGN_MODE="Stable repository keystore (debug.keystore.base64)"
+          fi
+
+          SHA1_FP=$(keytool -printcert -jarfile "$OUT_RELEASE" | grep -m1 "SHA1:" | sed 's/.*SHA1:[[:space:]]*//')
+          (cd release-dist && sha256sum *.apk > SHA256SUMS.txt)
+          echo "sign_mode=${SIGN_MODE}" >> "$GITHUB_OUTPUT"
+          echo "sha1=${SHA1_FP}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          ls -lh release-dist
+
+      - name: Point rolling 'latest' tag to current commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+
+      - name: Remove stale extra assets from 'latest' release if any
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            ASSETS=$(gh release view latest --json assets -q '.assets[].name')
+            for asset in $ASSETS; do
+              case "$asset" in
+                GullZubair-Sarim-release.apk|GullZubair-Sarim-debug.apk|SHA256SUMS.txt) ;;
+                *) gh release delete-asset latest "$asset" -y || true ;;
+              esac
+            done
+          fi
+
+      - name: Update Single Latest GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Gull & Zubair Naswar Dealers (Latest APK)"
+          make_latest: "true"
+          body: |
+            Latest Android APK build from `${{ github.ref_name }}` (`${{ steps.pkg.outputs.short_sha }}`).
+
+            - **Signing**: ${{ steps.pkg.outputs.sign_mode }}
+            - **Certificate SHA-1**: `${{ steps.pkg.outputs.sha1 }}`
+            - Downloading and installing updates cleanly in place using the same stable signing key.
+          files: |
+            release-dist/GullZubair-Sarim-release.apk
+            release-dist/GullZubair-Sarim-debug.apk
+            release-dist/SHA256SUMS.txt

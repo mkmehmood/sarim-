@@ -1,0 +1,43 @@
+name: Android PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  verify:
+    name: Compile & Verify PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Restore stable repository signing keystore
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+      - name: Compile Kotlin, Build Debug APK & Run Tests
+        run: gradle :app:compileDebugKotlin assembleDebug :app:testDebugUnitTest --no-daemon
+
+      - name: Upload PR Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarim-pr-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
