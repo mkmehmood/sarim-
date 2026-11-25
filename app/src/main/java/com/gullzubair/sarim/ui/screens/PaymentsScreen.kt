@@ -71,7 +71,8 @@ fun PaymentsScreen(
     vm: SarimViewModel,
     onOpenAddEntity: () -> Unit,
     onOpenPaymentTransfer: () -> Unit,
-    onOpenEntityDetail: (String) -> Unit
+    onOpenEntityDetail: (String) -> Unit,
+    onOpenExpenseDetail: (String) -> Unit = {}
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
@@ -464,6 +465,22 @@ fun PaymentsScreen(
                         Text("Description", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
                         Text("${tx.notes} • ${tx.date}", style = MaterialTheme.typography.titleSmall)
                     }
+                }
+                if (tx.txType == "expense") {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "View all \"${tx.entityName}\" records",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = accents.emerald,
+                        modifier = Modifier
+                            .clickable {
+                                val name = tx.entityName
+                                selectedTx = null
+                                onOpenExpenseDetail(name)
+                            }
+                            .padding(vertical = 6.dp)
+                            .testTag("pay_view_expense_${tx.id}")
+                    )
                 }
             },
             footer = {

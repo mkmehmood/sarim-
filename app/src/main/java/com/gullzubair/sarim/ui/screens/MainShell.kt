@@ -534,7 +534,7 @@ private fun WorkspaceNavContainer(
                                 MainTab.SALES -> SalesScreen(snapshot, todayIso, vm, { cust -> navigateTo(AppRoute.CustomerDetail(cust)) }, { cust -> navigateTo(AppRoute.EditCustomer(cust)) })
                                 MainTab.CALCULATOR -> CalculatorScreen(snapshot, todayIso, vm)
                                 MainTab.FACTORY -> FactoryScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.RawMaterialPurchase) }, { navigateTo(AppRoute.FormulaStore) })
-                                MainTab.PAYMENTS -> PaymentsScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.AddEntity) }, { navigateTo(AppRoute.PaymentTransfer) }, { ent -> navigateTo(AppRoute.EntityDetail(ent)) })
+                                MainTab.PAYMENTS -> PaymentsScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.AddEntity) }, { navigateTo(AppRoute.PaymentTransfer) }, { ent -> navigateTo(AppRoute.EntityDetail(ent)) }, { name -> navigateTo(AppRoute.ExpenseDetail(name)) })
                                 MainTab.REP_SALES -> RepSalesScreen(snapshot, todayIso, vm)
                             }
                         }
@@ -623,6 +623,10 @@ private fun WorkspaceNavContainer(
                         composable<AppRoute.EntityDetail> { entry ->
                             val arg = entry.toRoute<AppRoute.EntityDetail>()
                             EntityDetailScreen(snapshot, arg.entityName) { navController.popBackStack() }
+                        }
+                        composable<AppRoute.ExpenseDetail> { entry ->
+                            val arg = entry.toRoute<AppRoute.ExpenseDetail>()
+                            ExpenseDetailsScreen(snapshot, arg.expenseName, todayIso, vm) { navController.popBackStack() }
                         }
                     }
                 }
