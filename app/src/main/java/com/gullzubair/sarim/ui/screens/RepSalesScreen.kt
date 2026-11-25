@@ -64,7 +64,7 @@ import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.LocationHelper
 
 @Composable
-fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewModel) {
+fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewModel, onOpenCustomer: (String) -> Unit = {}) {
     val context = LocalContext.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
@@ -240,7 +240,7 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                         item { EmptyStateCard("No customers yet", "Customers are added automatically when you log sales.") }
                     } else {
                         items(activeCustomers, key = { it.id }) { cust ->
-                            SarimCard {
+                            SarimCard(modifier = Modifier.clickable { onOpenCustomer(cust.name) }.testTag("rep_customer_card_${cust.id}")) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(cust.name, style = MaterialTheme.typography.titleMedium)

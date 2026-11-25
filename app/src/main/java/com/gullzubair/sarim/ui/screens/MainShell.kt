@@ -535,7 +535,7 @@ private fun WorkspaceNavContainer(
                                 MainTab.CALCULATOR -> CalculatorScreen(snapshot, todayIso, vm)
                                 MainTab.FACTORY -> FactoryScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.RawMaterialPurchase) }, { navigateTo(AppRoute.FormulaStore) })
                                 MainTab.PAYMENTS -> PaymentsScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.AddEntity) }, { navigateTo(AppRoute.PaymentTransfer) }, { ent -> navigateTo(AppRoute.EntityDetail(ent)) }, { name -> navigateTo(AppRoute.ExpenseDetail(name)) })
-                                MainTab.REP_SALES -> RepSalesScreen(snapshot, todayIso, vm)
+                                MainTab.REP_SALES -> RepSalesScreen(snapshot, todayIso, vm) { cust -> navigateTo(AppRoute.RepCustomerManagement(cust)) }
                             }
                         }
                         composable<AppRoute.DailyLedger> {
@@ -623,6 +623,16 @@ private fun WorkspaceNavContainer(
                         composable<AppRoute.EntityDetail> { entry ->
                             val arg = entry.toRoute<AppRoute.EntityDetail>()
                             EntityDetailScreen(snapshot, arg.entityName) { navController.popBackStack() }
+                        }
+                        composable<AppRoute.RepCustomerManagement> { entry ->
+                            val arg = entry.toRoute<AppRoute.RepCustomerManagement>()
+                            RepCustomerManagementScreen(
+                                snapshot = snapshot,
+                                customerName = arg.customerName,
+                                vm = vm,
+                                onEdit = { navigateTo(AppRoute.EditCustomer(arg.customerName)) },
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                         composable<AppRoute.ExpenseDetail> { entry ->
                             val arg = entry.toRoute<AppRoute.ExpenseDetail>()

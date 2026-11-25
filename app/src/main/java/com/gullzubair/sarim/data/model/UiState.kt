@@ -46,6 +46,7 @@ sealed interface AppRoute {
     @Serializable data class CustomerDetail(val customerName: String) : AppRoute
     @Serializable data class EntityDetail(val entityName: String) : AppRoute
     @Serializable data class ExpenseDetail(val expenseName: String) : AppRoute
+    @Serializable data class RepCustomerManagement(val customerName: String) : AppRoute
 }
 
 data class WorkspaceSnapshot(
