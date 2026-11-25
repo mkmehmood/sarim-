@@ -40,15 +40,25 @@ jobs:
           if [ -f app/google-services.json ]; then
             echo "Using checked-in app/google-services.json"
           elif [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            echo "Restoring app/google-services.json from GOOGLE_SERVICES_JSON secret"
-            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            TRIMMED="$(printf '%s' "$GOOGLE_SERVICES_JSON" | sed 's/^[[:space:]]*//')"
+            if printf '%s' "$TRIMMED" | grep -q '^{'; then
+              echo "Restoring app/google-services.json from raw GOOGLE_SERVICES_JSON secret"
+              printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            else
+              echo "Decoding base64 GOOGLE_SERVICES_JSON secret into app/google-services.json"
+              printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r\n ' | base64 -d > app/google-services.json
+            fi
           elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "Restoring app/google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret"
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
+            echo "Decoding GOOGLE_SERVICES_JSON_BASE64 secret into app/google-services.json"
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '\r\n ' | base64 -d > app/google-services.json
           else
-            echo "::error::app/google-services.json is missing. Add the GOOGLE_SERVICES_JSON (or GOOGLE_SERVICES_JSON_BASE64) repository secret in GitHub Settings -> Secrets and variables -> Actions using your app/google-services.json file."
+            echo "::error::app/google-services.json is missing (AI Studio omits google-services.json when pushing to GitHub). Add repository secret GOOGLE_SERVICES_JSON in GitHub -> Settings -> Secrets and variables -> Actions."
             exit 1
           fi
+          python3 -m json.tool app/google-services.json >/dev/null || {
+            echo "::error::app/google-services.json is not valid JSON. Check your GOOGLE_SERVICES_JSON secret."
+            exit 1
+          }
 
       - name: Compile Kotlin, Build Debug APK & Run Tests
         run: gradle :app:compileDebugKotlin assembleDebug :app:testDebugUnitTest --no-daemon
