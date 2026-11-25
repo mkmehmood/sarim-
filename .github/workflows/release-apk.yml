@@ -42,6 +42,24 @@ jobs:
             base64 -d debug.keystore.base64 > debug.keystore
           fi
 
+      - name: Restore Firebase google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -f app/google-services.json ]; then
+            echo "Using checked-in app/google-services.json"
+          elif [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "Restoring app/google-services.json from GOOGLE_SERVICES_JSON secret"
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "Restoring app/google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret"
+            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
+          else
+            echo "::error::app/google-services.json is missing. Add the GOOGLE_SERVICES_JSON (or GOOGLE_SERVICES_JSON_BASE64) repository secret in GitHub Settings -> Secrets and variables -> Actions using your app/google-services.json file."
+            exit 1
+          fi
+
       - name: Build & Verify Release and Debug APKs
         run: gradle :app:testDebugUnitTest assembleRelease assembleDebug --no-daemon
 
