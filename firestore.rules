@@ -709,5 +709,44 @@ service cloud.firestore {
         incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'currencySymbol', 'financialYearStartMonth', 'hideSensitiveMoney', 'biometricLockEnabled', 'themeMode', 'paymentChannels', 'expenseCategories', 'updatedAt']);
       allow delete: if isValidId(settingId) && isWorkspaceAdmin(ownerId);
     }
+
+    // 5. Web-app parity: rules that previously existed only for the web app.
+
+    // Photos attach to records (expenses, customers, production...). Any approved
+    // workspace member may add one, as in the web app. Documents are keyed by
+    // base64url(photoKey) and are either a photo or a deletion tombstone.
+    function isValidPhotoId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 400 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPhotoDoc(data) {
+      return data.keys().hasAll(['key', 'data', 'updatedAt']) &&
+             data.keys().hasOnly(['key', 'data', 'deleted', 'updatedAt']) &&
+             isBoundedStr(data.key, 1, 300) &&
+             isValidTs(data.updatedAt) &&
+             (
+               (data.data is string && data.data.size() <= 900000 && !('deleted' in data)) ||
+               (data.data == null && data.deleted == true)
+             );
+    }
+
+    match /users/{ownerId}/photos/{photoId} {
+      allow get, list: if isSignedIn() && isActiveWorkspaceMember(ownerId);
+      allow create, update: if isValidPhotoId(photoId) && isActiveWorkspaceMember(ownerId) && isValidPhotoDoc(incoming());
+      allow delete: if isValidPhotoId(photoId) && isWorkspaceAdmin(ownerId);
+    }
+
+    // Push device tokens: an admin registers and removes only their own devices.
+    // Nobody else can read them; the push Worker uses its own service account.
+    match /users/{ownerId}/fcm_tokens/{tokenId} {
+      allow read, delete: if isSignedIn() && isWorkspaceAdmin(ownerId) &&
+        resource.data.uid == request.auth.uid;
+      allow create, update: if isSignedIn() && isWorkspaceAdmin(ownerId) &&
+        incoming().uid == request.auth.uid &&
+        tokenId.matches(request.auth.uid + '_.*') &&
+        incoming().keys().hasOnly(['uid', 'token', 'platform', 'updatedAt']) &&
+        incoming().token is string &&
+        incoming().token.size() < 400;
+    }
   }
 }

@@ -445,3 +445,67 @@ test("Pending approvals workflow: member submits pending, cannot self-approve; a
     })
   );
 });
+
+test("Photos (web parity): members read/write photo docs, outsiders and bad shapes rejected", async () => {
+  const now = pastDate();
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice", workspaceOwnerUid: ALICE_UID,
+      role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
+    });
+    await db.collection("users").doc(BOB_UID).set({
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob", workspaceOwnerUid: ALICE_UID,
+      role: "member", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
+    });
+  });
+  const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
+  const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
+  const charlie = testEnv.authenticatedContext(CHARLIE_UID, { email: CHARLIE_EMAIL, email_verified: true }).firestore();
+  const photos = (db) => db.collection("users").doc(ALICE_UID).collection("photos");
+
+  // A member can add a photo in the web app's document shape.
+  await assertSucceeds(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").set({ key: "expense:exp_1", data: "data:image/jpeg;base64,AAAA", updatedAt: pastDate(500) }));
+  // Owner and member can read it; an outsider cannot.
+  await assertSucceeds(photos(alice).doc("ZXhwZW5zZTpleHBfMQ").get());
+  await assertSucceeds(photos(bob).get());
+  await assertFails(photos(charlie).doc("ZXhwZW5zZTpleHBfMQ").get());
+  await assertFails(photos(charlie).doc("b3V0c2lkZXI").set({ key: "x", data: "y", updatedAt: pastDate(500) }));
+  // A deletion tombstone is allowed; a photo with a stray field or no key is not.
+  await assertSucceeds(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").set({ key: "expense:exp_1", data: null, deleted: true, updatedAt: pastDate(300) }));
+  await assertFails(photos(bob).doc("c3RyYXk").set({ key: "stray", data: "y", extra: 1, updatedAt: pastDate(500) }));
+  await assertFails(photos(bob).doc("bm9rZXk").set({ data: "y", updatedAt: pastDate(500) }));
+  // Only an admin may hard-delete.
+  await assertFails(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").delete());
+  await assertSucceeds(photos(alice).doc("ZXhwZW5zZTpleHBfMQ").delete());
+});
+
+test("FCM tokens (web parity): admin manages only their own, members and others denied", async () => {
+  const now = pastDate();
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice", workspaceOwnerUid: ALICE_UID,
+      role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
+    });
+    await db.collection("users").doc(BOB_UID).set({
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob", workspaceOwnerUid: ALICE_UID,
+      role: "member", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
+    });
+  });
+  const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
+  const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
+  const tokens = (db) => db.collection("users").doc(ALICE_UID).collection("fcm_tokens");
+  const mine = { uid: ALICE_UID, token: "tok_abc", platform: "android", updatedAt: pastDate(500) };
+
+  await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").set(mine));
+  await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").get());
+  // Wrong id prefix, someone else's uid, or extra fields are rejected.
+  await assertFails(tokens(alice).doc("other_device1").set(mine));
+  await assertFails(tokens(alice).doc(ALICE_UID + "_device2").set({ ...mine, uid: BOB_UID }));
+  await assertFails(tokens(alice).doc(ALICE_UID + "_device3").set({ ...mine, extra: true }));
+  // Members cannot read or write tokens.
+  await assertFails(tokens(bob).doc(ALICE_UID + "_device1").get());
+  await assertFails(tokens(bob).doc(BOB_UID + "_device1").set({ ...mine, uid: BOB_UID }));
+  await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").delete());
+});
