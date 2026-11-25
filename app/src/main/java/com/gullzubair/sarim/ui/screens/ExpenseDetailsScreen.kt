@@ -29,7 +29,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.gullzubair.sarim.data.model.PaymentTransaction
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.ExpenseRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
@@ -44,11 +45,6 @@ import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 
-/**
- * Port of the web app's `expense-details-screen`: every record under one operating
- * expense name, with a range filter, search, quick add, per-record delete and delete-all.
- * In this app an operating expense is a PaymentTransaction with txType == "expense".
- */
 private val EXPENSE_RANGES = listOf(
     "today" to "Today",
     "week" to "This Week",
@@ -57,7 +53,6 @@ private val EXPENSE_RANGES = listOf(
     "all" to "All Time"
 )
 
-/** Same cutoffs as the web `rangeCutoffDate`: today, 7 days, 1 month, 1 year back. */
 private fun expenseRangeCutoffIso(range: String, todayIso: String): String? {
     val today = DateUtils.parseLocalDate(todayIso) ?: return null
     return when (range) {
@@ -79,20 +74,23 @@ fun ExpenseDetailsScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
 
     var range by remember { mutableStateOf("all") }
     var query by remember { mutableStateOf("") }
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var formError by remember { mutableStateOf<String?>(null) }
-    var pendingDelete by remember { mutableStateOf<PaymentTransaction?>(null) }
+    var pendingDelete by remember { mutableStateOf<ExpenseRecord?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
 
-    val allRecords = remember(snapshot.transactions, expenseName) {
-        snapshot.transactions
-            .filter { !it.recycled && it.txType == "expense" && it.entityName.equals(expenseName, true) }
-            .sortedByDescending { it.date }
+    val allRecords = remember(snapshot.expenses, expenseName) {
+        snapshot.expenses
+            .filter {
+                it.deletedAt == null &&
+                    (it.name.equals(expenseName, true) || it.category.equals(expenseName, true))
+            }
+            .sortedWith(compareByDescending<ExpenseRecord> { it.date }.thenByDescending { it.timestamp })
     }
     val allTimeTotal = remember(allRecords) { InputGuards.round2(allRecords.sumOf { it.amount }) }
 
@@ -103,14 +101,20 @@ fun ExpenseDetailsScreen(
     val visible = remember(ranged, query) {
         val q = query.trim().lowercase()
         if (q.isEmpty()) ranged else ranged.filter {
-            (it.notes ?: "").lowercase().contains(q) ||
+            it.notes.lowercase().contains(q) ||
+                it.description.lowercase().contains(q) ||
                 it.date.contains(q) ||
                 it.amount.toString().contains(q) ||
-                it.paymentChannel.lowercase().contains(q)
+                it.paymentMethod.lowercase().contains(q)
         }
     }
     val filteredTotal = remember(ranged) { InputGuards.round2(ranged.sumOf { it.amount }) }
     val availCash = remember(snapshot) { FinanceEngine.computeAvailableCashInHand(snapshot) }
+    val defaultCategory = remember(allRecords, snapshot.settings.expenseCategories) {
+        allRecords.firstOrNull()?.category?.ifBlank { null }
+            ?: snapshot.settings.expenseCategories.firstOrNull { it.equals(expenseName, true) }
+            ?: "Other"
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
@@ -207,14 +211,14 @@ fun ExpenseDetailsScreen(
                             when {
                                 amount == null || amount <= 0.0 -> formError = "Please enter a valid amount"
                                 amount > availCash + 0.01 ->
-                                    formError = "Insufficient cash in hand. Available: ${InputGuards.formatNum(maxOf(0.0, availCash))} — Required: ${InputGuards.formatNum(amount)}"
+                                    formError = "Insufficient cash in hand. Available: ${InputGuards.formatMoney(maxOf(0.0, availCash), currency, masked)}"
                                 else -> {
-                                    vm.submitPayment(
+                                    vm.submitPaymentOrExpense(
                                         date = todayIso,
-                                        txType = "expense",
+                                        kind = "EXPENSE",
                                         entity = null,
                                         name = expenseName,
-                                        category = "expense",
+                                        category = defaultCategory,
                                         channel = "Cash",
                                         amount = amount,
                                         addToLedger = true,
@@ -235,8 +239,8 @@ fun ExpenseDetailsScreen(
             if (visible.isEmpty()) {
                 item { EmptyStateCard("No expense records", "No expense records found for the selected period.") }
             } else {
-                items(visible, key = { it.id }) { tx ->
-                    SarimCard(modifier = Modifier.testTag("expense_row_${tx.id}")) {
+                items(visible, key = { it.id }) { exp ->
+                    SarimCard(modifier = Modifier.testTag("expense_row_${exp.id}")) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -244,18 +248,18 @@ fun ExpenseDetailsScreen(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    tx.notes?.takeIf { it.isNotBlank() } ?: "No description",
+                                    exp.notes.ifBlank { exp.description }.ifBlank { "No description" },
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
-                                    "${DateUtils.formatPretty(tx.date)} • ${tx.paymentChannel}",
+                                    "${DateUtils.formatPretty(exp.date)} • ${exp.category} • ${exp.paymentMethod}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = accents.textMuted
                                 )
                             }
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                InputGuards.formatMoney(tx.amount, currency, masked),
+                                InputGuards.formatMoney(exp.amount, currency, masked),
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 color = accents.gold
                             )
@@ -263,9 +267,9 @@ fun ExpenseDetailsScreen(
                         Spacer(Modifier.height(8.dp))
                         SarimDangerButton(
                             text = "Delete",
-                            onClick = { pendingDelete = tx },
+                            onClick = { pendingDelete = exp },
                             modifier = Modifier.fillMaxWidth(),
-                            testTag = "expense_delete_${tx.id}"
+                            testTag = "expense_delete_${exp.id}"
                         )
                     }
                 }
@@ -285,16 +289,23 @@ fun ExpenseDetailsScreen(
         }
     }
 
-    pendingDelete?.let { tx ->
+    pendingDelete?.let { exp ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Delete expense?") },
             text = {
-                Text("${InputGuards.formatNum(tx.amount)} on ${tx.date} will move to the Recycle Bin.")
+                Text("${InputGuards.formatMoney(exp.amount, currency, masked)} on ${exp.date} will move to the Recycle Bin.")
             },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.recycleRecord("transactions", tx.id, "${tx.entityName} (${tx.date})")
+                    vm.softDeleteRecord(
+                        collection = "expenses",
+                        docId = exp.id,
+                        displayName = exp.name,
+                        displayDetail = "${exp.date} • ${exp.category}",
+                        displayAmount = InputGuards.formatMoney(exp.amount, currency, masked),
+                        snapshotMap = WorkspaceJsonCodec.expenseToMap(exp)
+                    )
                     pendingDelete = null
                 }) { Text("Delete") }
             },
@@ -309,12 +320,21 @@ fun ExpenseDetailsScreen(
             text = {
                 Text(
                     "Move ALL ${allRecords.size} expense record${if (allRecords.size != 1) "s" else ""} for \"$expenseName\" " +
-                        "to the Recycle Bin?\nTotal Amount: ${InputGuards.formatNum(allTimeTotal)}"
+                        "to the Recycle Bin?\nTotal Amount: ${InputGuards.formatMoney(allTimeTotal, currency, masked)}"
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    allRecords.forEach { vm.recycleRecord("transactions", it.id, "${it.entityName} (${it.date})") }
+                    allRecords.forEach { exp ->
+                        vm.softDeleteRecord(
+                            collection = "expenses",
+                            docId = exp.id,
+                            displayName = exp.name,
+                            displayDetail = "${exp.date} • ${exp.category}",
+                            displayAmount = InputGuards.formatMoney(exp.amount, currency, masked),
+                            snapshotMap = WorkspaceJsonCodec.expenseToMap(exp)
+                        )
+                    }
                     confirmDeleteAll = false
                     onBack()
                 }) { Text("Delete All") }

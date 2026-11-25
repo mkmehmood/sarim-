@@ -41,10 +41,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
+import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
@@ -70,36 +72,44 @@ fun SalesScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
-    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.active } }
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
     val stockSnapshots = remember(snapshot) { FinanceEngine.computeStoreStockSnapshots(snapshot) }
 
     val repNames = remember(snapshot) {
-        (listOf("NONE") + snapshot.teamMembers.map { it.displayName } +
-            snapshot.repRecords.filter { !it.recycled }.map { it.repName } +
-            snapshot.entities.filter { !it.recycled && it.entityType == "staff" }.map { it.name })
-            .map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        (listOf("NONE") +
+            snapshot.settings.reps +
+            snapshot.teamMembers.map { it.displayName } +
+            snapshot.repRecords.filter { it.deletedAt == null }.map { it.salesRep } +
+            snapshot.entities.filter { it.deletedAt == null && (it.type == "staff" || it.type == "employee") }.map { it.name })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
     }
 
     var subTab by remember { mutableIntStateOf(0) }
-    var mode by remember { mutableStateOf("sale") }
+    var paymentType by remember { mutableStateOf("CASH") } // CASH | CREDIT | COLLECTION | MONEY_OUT
     var date by remember(todayIso) { mutableStateOf(todayIso) }
+    var supplyDate by remember(todayIso) { mutableStateOf(todayIso) }
     var customerName by remember { mutableStateOf("") }
     var selectedRep by remember { mutableStateOf("NONE") }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
     var qtyStr by remember { mutableStateOf("") }
-    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.toString() ?: "") }
-    var cashStr by remember { mutableStateOf("") }
+    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.takeIf { it > 0 }?.toString() ?: "") }
+    var collectedStr by remember { mutableStateOf("") }
     var expiredStr by remember { mutableStateOf("0") }
+    var choraRateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.takeIf { it > 0 }?.toString() ?: "") }
     var addToLedger by remember { mutableStateOf(true) }
     var notes by remember { mutableStateOf("") }
     var selectedSale by remember { mutableStateOf<SalesRecord?>(null) }
 
-    val customerDirectory = remember(snapshot) {
-        (snapshot.customers.filter { !it.recycled }.map { it.name } +
-            snapshot.sales.filter { !it.recycled }.map { it.customerName } +
-            snapshot.repRecords.filter { !it.recycled }.map { it.customerName })
-            .map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.sorted()
+    val customerDirectory = remember(snapshot.customers, snapshot.sales) {
+        (snapshot.customers.filter { it.deletedAt == null }.map { it.name } +
+            snapshot.sales.filter { it.deletedAt == null }.map { it.customerName })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sorted()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -129,15 +139,31 @@ fun SalesScreen(
             0 -> {
                 val qty = qtyStr.toDoubleOrNull() ?: 0.0
                 val rate = rateStr.toDoubleOrNull() ?: (selectedStore?.salePrice ?: 0.0)
-                val cash = cashStr.toDoubleOrNull() ?: 0.0
+                val collected = collectedStr.toDoubleOrNull() ?: 0.0
                 val expired = expiredStr.toDoubleOrNull() ?: 0.0
-                val totalAmt = if (mode == "sale") InputGuards.round2(qty * rate) else 0.0
-                val creditAmt = if (mode == "sale") InputGuards.round2((totalAmt - cash).coerceAtLeast(0.0)) else 0.0
-                val choraValue = InputGuards.round2(expired * rate)
-                val availKg = stockSnapshots.firstOrNull { it.storeKey == selectedStore?.storeKey }?.availableKg ?: 0.0
+                val choraRate = choraRateStr.toDoubleOrNull() ?: rate
+                val isSaleMode = paymentType == "CASH" || paymentType == "CREDIT"
+                val totalAmt = if (isSaleMode) InputGuards.round2(qty * rate) else 0.0
+                val choraValue = if (paymentType == "COLLECTION") InputGuards.round2(expired * choraRate) else 0.0
+                val availKg = stockSnapshots.firstOrNull { it.storeKey.equals(selectedStore?.key ?: "", ignoreCase = true) }?.availableKg ?: 0.0
                 val existingBal = remember(customerName, snapshot) {
                     if (customerName.isBlank()) 0.0
-                    else FinanceEngine.computeCustomerBalance(customerName, snapshot.customers, snapshot.sales, snapshot.repRecords)
+                    else FinanceEngine.computeCustomerBalance(
+                        customerName = customerName,
+                        customers = snapshot.customers,
+                        sales = snapshot.sales,
+                        repRecords = snapshot.repRecords,
+                        calculator = snapshot.calculator,
+                        stores = snapshot.stores,
+                        clients = snapshot.clients,
+                        includeClients = true
+                    )
+                }
+                val projectedBal = when (paymentType) {
+                    "CREDIT" -> InputGuards.round2(existingBal + totalAmt)
+                    "COLLECTION" -> InputGuards.round2(existingBal - collected - choraValue)
+                    "MONEY_OUT" -> InputGuards.round2(existingBal + collected)
+                    else -> existingBal
                 }
 
                 LazyColumn(
@@ -146,24 +172,36 @@ fun SalesScreen(
                 ) {
                     item {
                         SarimCard {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("sale" to "New Sale", "collection" to "Collection / Return").forEach { (key, title) ->
-                                    val selected = mode == key
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    "CASH" to "Cash",
+                                    "CREDIT" to "Credit",
+                                    "COLLECTION" to "Collect",
+                                    "MONEY_OUT" to "Payout"
+                                ).forEach { (key, title) ->
+                                    val selected = paymentType == key
                                     Surface(
-                                        onClick = { mode = key },
-                                        shape = RoundedCornerShape(16.dp),
+                                        onClick = { paymentType = key },
+                                        shape = RoundedCornerShape(14.dp),
                                         color = if (selected) accents.softPillFill else accents.inputFill,
                                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                                         modifier = Modifier.weight(1f).testTag("sales_mode_$key")
                                     ) {
                                         Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                                            Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted)
+                                            Text(title, style = MaterialTheme.typography.labelMedium, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
                                         }
                                     }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
-                            DatePickerField("Date", date, { date = it }, "sales_date")
+                            if (isSaleMode) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    DatePickerField("Sale Date", date, { date = it }, "sales_date", Modifier.weight(1f))
+                                    DatePickerField("Supply Date", supplyDate, { supplyDate = it }, "sales_supply_date", Modifier.weight(1f))
+                                }
+                            } else {
+                                DatePickerField("Date", date, { date = it }, "sales_date")
+                            }
                             Spacer(Modifier.height(10.dp))
                             SarimPillInput(
                                 value = customerName,
@@ -177,7 +215,7 @@ fun SalesScreen(
                                 Text(
                                     "Current Balance: ${InputGuards.formatMoney(existingBal, currency, masked)}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = accents.emerald
+                                    color = if (existingBal > 0.01) accents.gold else accents.emerald
                                 )
                             }
                             if (customerDirectory.isNotEmpty()) {
@@ -187,7 +225,13 @@ fun SalesScreen(
                                     selectedLabel = customerName.ifBlank { "Browse directory (${customerDirectory.size})" },
                                     items = customerDirectory,
                                     itemLabel = { it },
-                                    onSelect = { customerName = it },
+                                    onSelect = { picked ->
+                                        customerName = picked
+                                        val custRate = snapshot.customers.firstOrNull {
+                                            it.deletedAt == null && it.name.equals(picked, ignoreCase = true)
+                                        }?.customSalePrice ?: 0.0
+                                        if (custRate > 0.0) rateStr = custRate.toString()
+                                    },
                                     testTag = "sales_customer_picker"
                                 )
                             }
@@ -200,19 +244,20 @@ fun SalesScreen(
                                 onSelect = { selectedRep = it },
                                 testTag = "sales_rep_picker"
                             )
-                            if (mode == "sale") {
+                            if (isSaleMode) {
                                 Spacer(Modifier.height(10.dp))
                                 PickerField(
                                     label = "Store (Avail: ${InputGuards.formatKg(availKg)})",
                                     selectedLabel = selectedStore?.name ?: "Select Store",
                                     items = activeStores,
                                     itemLabel = { s ->
-                                        val av = stockSnapshots.firstOrNull { it.storeKey == s.storeKey }?.availableKg ?: 0.0
+                                        val av = stockSnapshots.firstOrNull { it.storeKey.equals(s.key, true) }?.availableKg ?: 0.0
                                         "${s.name} • Avail ${InputGuards.formatKg(av)}"
                                     },
                                     onSelect = {
                                         selectedStore = it
                                         rateStr = it.salePrice.toString()
+                                        choraRateStr = it.salePrice.toString()
                                     },
                                     testTag = "sales_store_picker"
                                 )
@@ -221,17 +266,28 @@ fun SalesScreen(
                                     DecimalField("Qty Sold", qtyStr, { qtyStr = it }, "sales_qty_input", Modifier.weight(1f), "kg")
                                     DecimalField("Rate / kg", rateStr, { rateStr = it }, "sales_rate_input", Modifier.weight(1f))
                                 }
+                            } else if (paymentType == "COLLECTION") {
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    DecimalField("Cash Collected", collectedStr, { collectedStr = it }, "sales_cash_input", Modifier.weight(1f))
+                                    DecimalField("Expired -> CHORA", expiredStr, { expiredStr = it }, "sales_expired_input", Modifier.weight(1f), "kg")
+                                }
+                                if (expired > 0.0) {
+                                    Spacer(Modifier.height(10.dp))
+                                    DecimalField("CHORA Credit Rate / kg", choraRateStr, { choraRateStr = it }, "sales_chora_rate_input")
+                                }
+                            } else {
+                                Spacer(Modifier.height(10.dp))
+                                DecimalField("Payout / Refund Amount", collectedStr, { collectedStr = it }, "sales_cash_input")
                             }
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                DecimalField("Cash Received", cashStr, { cashStr = it }, "sales_cash_input", Modifier.weight(1f))
-                                DecimalField("Expired -> CHORA", expiredStr, { expiredStr = it }, "sales_expired_input", Modifier.weight(1f), "kg")
+                            if (paymentType != "CREDIT") {
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Mirror in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
+                                    Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("sales_ledger_switch"))
+                                }
                             }
-                            Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Mirror cash in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
-                                Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("sales_ledger_switch"))
-                            }
+                            Spacer(Modifier.height(6.dp))
                             SarimPillInput(
                                 value = notes,
                                 onValueChange = { notes = it.take(500) },
@@ -241,20 +297,66 @@ fun SalesScreen(
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Bill / Chora", InputGuards.formatMoney(if (mode == "sale") totalAmt else choraValue, currency, masked), accents.cyan, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("New Balance", InputGuards.formatMoney(existingBal + creditAmt - (if (mode == "collection") cash + choraValue else choraValue), currency, masked), accents.gold, Modifier.weight(1f))
+                                SarimHalfRingKpiBox(
+                                    label = when (paymentType) {
+                                        "COLLECTION" -> "Total Settled"
+                                        "MONEY_OUT" -> "Payout Out"
+                                        else -> "Bill Total"
+                                    },
+                                    value = InputGuards.formatMoney(
+                                        when (paymentType) {
+                                            "COLLECTION" -> InputGuards.round2(collected + choraValue)
+                                            "MONEY_OUT" -> collected
+                                            else -> totalAmt
+                                        },
+                                        currency,
+                                        masked
+                                    ),
+                                    ringColor = accents.cyan,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                SarimHalfRingKpiBox(
+                                    label = "New Balance",
+                                    value = InputGuards.formatMoney(projectedBal, currency, masked),
+                                    ringColor = if (projectedBal > 0.01) accents.gold else accents.emerald,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                             Spacer(Modifier.height(14.dp))
+                            val canSave = customerName.isNotBlank() && when (paymentType) {
+                                "CASH", "CREDIT" -> selectedStore != null && qty > 0.0 && rate > 0.0
+                                "COLLECTION" -> collected > 0.0 || expired > 0.0
+                                else -> collected > 0.0
+                            }
                             SarimGradientButton(
-                                text = if (mode == "sale") "Save Sale" else "Save Collection",
+                                text = when (paymentType) {
+                                    "CASH" -> "Save Cash Sale"
+                                    "CREDIT" -> "Save Credit Sale"
+                                    "COLLECTION" -> "Save Collection"
+                                    else -> "Save Payout"
+                                },
                                 onClick = {
-                                    vm.submitSale(date, mode, customerName, selectedStore, selectedRep, qty, rate, cash, expired, rate, addToLedger, notes)
+                                    vm.submitSale(
+                                        date = date,
+                                        supplyDate = if (isSaleMode) supplyDate else date,
+                                        paymentType = paymentType,
+                                        customer = customerName,
+                                        store = selectedStore,
+                                        rep = selectedRep,
+                                        qty = qty,
+                                        rate = rate,
+                                        collectedAmount = if (paymentType == "CASH") totalAmt else collected,
+                                        expiredKg = if (paymentType == "COLLECTION") expired else 0.0,
+                                        choraRate = choraRate,
+                                        addToLedger = addToLedger && paymentType != "CREDIT",
+                                        notes = notes
+                                    )
                                     qtyStr = ""
-                                    cashStr = ""
+                                    collectedStr = ""
                                     expiredStr = "0"
                                     notes = ""
                                 },
-                                enabled = customerName.isNotBlank() && ((mode == "sale" && qty > 0) || (mode == "collection" && (cash > 0 || expired > 0))),
+                                enabled = canSave,
                                 testTag = "sales_save_btn"
                             )
                         }
@@ -282,9 +384,19 @@ fun SalesScreen(
                         )
                     }
                     items(filtered, key = { it }) { name ->
-                        val bal = FinanceEngine.computeCustomerBalance(name, snapshot.customers, snapshot.sales, snapshot.repRecords)
-                        val rec = snapshot.customers.firstOrNull { !it.recycled && it.name.equals(name, true) }
-                        val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "C" }
+                        val bal = FinanceEngine.computeCustomerBalance(
+                            customerName = name,
+                            customers = snapshot.customers,
+                            sales = snapshot.sales,
+                            repRecords = snapshot.repRecords,
+                            calculator = snapshot.calculator,
+                            stores = snapshot.stores,
+                            clients = snapshot.clients,
+                            includeClients = true
+                        )
+                        val rec = snapshot.customers.firstOrNull { it.deletedAt == null && it.name.equals(name, true) }
+                        val initials = name.split(" ").filter { it.isNotBlank() }.take(2)
+                            .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "C" }
                         SarimCard(
                             modifier = Modifier.clickable { onOpenCustomerDetail(name) }.testTag("customer_card_$name"),
                             contentPadding = PaddingValues(14.dp)
@@ -324,7 +436,10 @@ fun SalesScreen(
             }
 
             else -> {
-                val activeSales = remember(snapshot.sales) { snapshot.sales.filter { !it.recycled }.sortedByDescending { it.date } }
+                val activeSales = remember(snapshot.sales) {
+                    snapshot.sales.filter { it.deletedAt == null }
+                        .sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -337,9 +452,13 @@ fun SalesScreen(
                                 items = activeSales,
                                 dateOf = { it.date },
                                 summaryLabel = { list ->
-                                    "${InputGuards.formatKg(list.sumOf { it.qtyKg })} • ${InputGuards.formatMoney(list.sumOf { it.cashReceived }, currency, masked)}"
+                                    val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
+                                    val valSum = list.sumOf { if (FinanceEngine.isCollectionRow(it)) it.collectedAmount else it.totalValue }
+                                    "${InputGuards.formatKg(kg)} • ${InputGuards.formatMoney(valSum, currency, masked)}"
                                 },
                                 itemRow = { s ->
+                                    val storeLabel = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores)
+                                    val displayVal = if (FinanceEngine.isCollectionRow(s)) s.collectedAmount else s.totalValue
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -351,12 +470,21 @@ fun SalesScreen(
                                     ) {
                                         Column(Modifier.weight(1f)) {
                                             Text(s.customerName.uppercase(), style = MaterialTheme.typography.titleSmall)
-                                            Text("${s.mode.uppercase()} • ${s.storeName ?: s.storeKey} • ${InputGuards.formatKg(s.qtyKg)}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                            Text(
+                                                listOfNotNull(
+                                                    s.paymentType,
+                                                    storeLabel.takeIf { it.isNotBlank() },
+                                                    if (s.quantity > 0) InputGuards.formatKg(s.quantity) else null,
+                                                    if (s.expiredQty > 0) "Exp ${InputGuards.formatKg(s.expiredQty)}" else null
+                                                ).joinToString(" • "),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                         }
                                         Text(
-                                            InputGuards.formatMoney(s.cashReceived, currency, masked),
+                                            InputGuards.formatMoney(displayVal, currency, masked),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.emerald
+                                            color = if (s.paymentType == "CREDIT" && !s.creditReceived) accents.gold else accents.emerald
                                         )
                                     }
                                 }
@@ -370,27 +498,59 @@ fun SalesScreen(
     }
 
     selectedSale?.let { s ->
+        val storeLabel = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores)
+        val displayVal = if (FinanceEngine.isCollectionRow(s)) s.collectedAmount else s.totalValue
         SarimDetailBottomSheet(
             title = s.customerName.uppercase(),
-            rightTitle = InputGuards.formatMoney(s.totalAmount.takeIf { it > 0 } ?: s.cashReceived, currency, masked),
-            subtitle = "${DateUtils.formatPretty(s.date).uppercase()} • ${s.mode.uppercase()}",
+            rightTitle = InputGuards.formatMoney(displayVal, currency, masked),
+            subtitle = "${DateUtils.formatPretty(s.date).uppercase()} • ${s.paymentType}",
             onDismiss = { selectedSale = null },
             content = {
                 HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                 Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatKg(s.qtyKg), style = MaterialTheme.typography.titleSmall)
+                if (storeLabel.isNotBlank()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Store", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(storeLabel, style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cash received", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(s.cashReceived, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                if (s.supplyDate.isNotBlank() && s.supplyDate != s.date) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Supply date", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(DateUtils.formatPretty(s.supplyDate), style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
-                Spacer(Modifier.height(6.dp))
+                if (s.quantity > 0.0) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text("${InputGuards.formatKg(s.quantity)} @ ${InputGuards.formatMoney(s.unitPrice, currency, masked)}", style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Credit", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(s.creditAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.gold)
+                    Text("Collected", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text(InputGuards.formatMoney(s.collectedAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                }
+                val dueLeft = (s.totalValue - s.partialPaymentReceived).coerceAtLeast(0.0)
+                if (s.paymentType == "CREDIT" && !s.creditReceived) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Credit due", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(dueLeft, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.gold)
+                    }
+                }
+                if (s.expiredQty > 0.0) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Expired -> CHORA", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text("${InputGuards.formatKg(s.expiredQty)} (${InputGuards.formatMoney(s.expiredValue, currency, masked)})", style = MaterialTheme.typography.titleSmall, color = accents.cyan)
+                    }
+                }
+                if (s.notes.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(s.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             },
             footer = {
@@ -398,7 +558,14 @@ fun SalesScreen(
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.recycleRecord("sales", s.id, "${s.customerName} (${s.date})")
+                            vm.softDeleteRecord(
+                                collection = "sales",
+                                docId = s.id,
+                                displayName = s.customerName,
+                                displayDetail = "${s.date} • ${s.paymentType}",
+                                displayAmount = InputGuards.formatMoney(displayVal, currency, masked),
+                                snapshotMap = WorkspaceJsonCodec.saleToMap(s)
+                            )
                             selectedSale = null
                         },
                         modifier = Modifier.weight(0.45f),

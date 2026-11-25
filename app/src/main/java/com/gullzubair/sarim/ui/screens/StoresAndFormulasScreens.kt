@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
@@ -42,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -52,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.FormulaConfig
+import com.gullzubair.sarim.data.model.FormulaIngredient
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
@@ -74,6 +78,7 @@ import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import java.util.Locale
 
 @Composable
 fun StoreManagerScreen(
@@ -83,13 +88,19 @@ fun StoreManagerScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
 
-    var editId by remember { mutableStateOf<String?>(null) }
+    var editKey by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var selectedFormulaId by remember { mutableStateOf("") }
     var rateStr by remember { mutableStateOf("") }
     var active by remember { mutableStateOf(true) }
+    var confirmDeleteKey by remember { mutableStateOf<String?>(null) }
+
+    val activeStores = remember(snapshot.stores) {
+        snapshot.stores.filter { it.deletedAt == null }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "STORE MANAGER", onBack = onBack)
@@ -102,8 +113,12 @@ fun StoreManagerScreen(
             item {
                 SarimCard {
                     Text(
-                        text = if (editId == null) "NEW STORE" else "EDIT STORE",
-                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                        text = if (editKey == null) "NEW STORE" else "EDIT STORE",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(12.dp))
@@ -132,7 +147,7 @@ fun StoreManagerScreen(
                         testTag = "sm_rate_input",
                         suffix = "$currency /kg"
                     )
-                    if (editId != null) {
+                    if (editKey != null) {
                         Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -145,15 +160,17 @@ fun StoreManagerScreen(
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (editId != null) {
+                        if (editKey != null) {
                             Surface(
                                 onClick = {
-                                    editId = null; name = ""; selectedFormulaId = ""; rateStr = ""; active = true
+                                    editKey = null; name = ""; selectedFormulaId = ""; rateStr = ""; active = true
                                 },
                                 shape = RoundedCornerShape(24.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
-                                modifier = Modifier.weight(0.55f).height(50.dp)
+                                modifier = Modifier
+                                    .weight(0.55f)
+                                    .height(50.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text("Cancel", style = MaterialTheme.typography.labelLarge)
@@ -161,14 +178,28 @@ fun StoreManagerScreen(
                             }
                         }
                         SarimGradientButton(
-                            text = if (editId == null) "Add Store" else "Update Store",
+                            text = if (editKey == null) "Add Store" else "Update Store",
                             onClick = {
-                                vm.saveStore(editId, name, selectedFormulaId, rateStr.toDoubleOrNull() ?: 0.0, active)
-                                editId = null; name = ""; rateStr = ""; selectedFormulaId = ""; active = true
+                                vm.saveStore(
+                                    existingKey = editKey,
+                                    name = name,
+                                    formulaId = selectedFormulaId.ifBlank { null },
+                                    rate = rateStr.toDoubleOrNull() ?: 0.0,
+                                    active = active
+                                )
+                                editKey = null; name = ""; rateStr = ""; selectedFormulaId = ""; active = true
                             },
                             enabled = name.isNotBlank(),
                             testTag = "sm_save_btn",
                             modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (editKey != null && snapshot.profile.isAdmin) {
+                        Spacer(Modifier.height(10.dp))
+                        SarimDangerButton(
+                            text = "Remove Store",
+                            onClick = { confirmDeleteKey = editKey },
+                            testTag = "sm_delete_btn"
                         )
                     }
                 }
@@ -177,22 +208,29 @@ fun StoreManagerScreen(
             item {
                 Text(
                     text = "EXISTING STORES",
-                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = JakartaFont,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    ),
                     color = accents.textMuted,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
 
-            if (snapshot.stores.isEmpty()) {
+            if (activeStores.isEmpty()) {
                 item { EmptyStateCard("No stores configured", "Add your first store above to start tracking production and sales.") }
             } else {
-                items(snapshot.stores, key = { it.id }) { s ->
+                items(activeStores, key = { it.key }) { s ->
                     val linkedFormulaName = snapshot.formulas.firstOrNull { it.id == s.formulaId }?.name ?: "DIRECT"
-                    val hasRecords = remember(snapshot, s.storeKey) {
-                        snapshot.production.any { !it.recycled && it.storeKey.equals(s.storeKey, true) } ||
-                            snapshot.sales.any { !it.recycled && it.storeKey.equals(s.storeKey, true) }
+                    val hasRecords = remember(snapshot.production, snapshot.sales, s.key, s.name) {
+                        snapshot.production.any {
+                            it.deletedAt == null && (it.store.equals(s.key, true) || it.store.equals(s.name, true))
+                        } || snapshot.sales.any {
+                            it.deletedAt == null && (it.supplyStore.equals(s.key, true) || it.supplyStore.equals(s.name, true))
+                        }
                     }
-                    val badge = s.name.trim().take(2).uppercase().ifBlank { "ST" }
+                    val badge = s.name.trim().take(2).uppercase(Locale.ROOT).ifBlank { "ST" }
                     SarimCard(contentPadding = PaddingValues(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -211,14 +249,14 @@ fun StoreManagerScreen(
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = s.name.uppercase(),
+                                    text = s.name.uppercase(Locale.ROOT),
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 val recordStatus = if (hasRecords) "Has records" else if (s.active) "Active" else "Inactive"
                                 Text(
-                                    text = "Key: ${s.storeKey.lowercase()} • ${linkedFormulaName.uppercase()} • $recordStatus",
+                                    text = "Key: ${s.key.lowercase(Locale.ROOT)} • ${linkedFormulaName.uppercase(Locale.ROOT)} • $recordStatus",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = accents.textMuted,
                                     maxLines = 1,
@@ -233,16 +271,20 @@ fun StoreManagerScreen(
                             Spacer(Modifier.width(8.dp))
                             Surface(
                                 onClick = {
-                                    editId = s.id; name = s.name; selectedFormulaId = s.formulaId
-                                    rateStr = InputGuards.formatNum(s.salePrice).replace(",", "")
+                                    editKey = s.key
+                                    name = s.name
+                                    selectedFormulaId = s.formulaId ?: ""
+                                    rateStr = InputGuards.fmtNum(s.salePrice).replace(",", "")
                                     active = s.active
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 color = accents.softPillFill,
                                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
-                                modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("sm_edit_${s.id}")
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("sm_edit_${s.key}")
                             ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                     Text("Edit", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = accents.emerald)
                                 }
                             }
@@ -256,6 +298,23 @@ fun StoreManagerScreen(
             }
         }
     }
+
+    confirmDeleteKey?.let { keyToDel ->
+        val storeLabel = activeStores.firstOrNull { it.key == keyToDel }?.name ?: keyToDel
+        AlertDialog(
+            onDismissRequest = { confirmDeleteKey = null },
+            title = { Text("Remove Store") },
+            text = { Text("Remove \"$storeLabel\" from active stores? Existing historical records keep their store reference.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteStore(keyToDel)
+                    confirmDeleteKey = null
+                    editKey = null; name = ""; selectedFormulaId = ""; rateStr = ""; active = true
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteKey = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
@@ -267,10 +326,12 @@ fun FormulaStoreScreen(
     onOpenFix: (String) -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    val currency = snapshot.settings.currencySymbol
     val masked = snapshot.settings.hideSensitiveMoney
     var speedDialExpanded by remember { mutableStateOf(false) }
-    val invByName = remember(snapshot.inventory) {
-        snapshot.inventory.filter { !it.recycled }.associateBy { it.name.trim().lowercase() }
+
+    val activeMaterials = remember(snapshot.inventory) {
+        snapshot.inventory.filter { it.deletedAt == null && !it.isPurchaseLot }
     }
     val formulaById = remember(snapshot.formulas) { snapshot.formulas.associateBy { it.id } }
     val firstFormulaId = snapshot.formulas.firstOrNull()?.id ?: ""
@@ -295,19 +356,15 @@ fun FormulaStoreScreen(
                     }
                 } else {
                     items(snapshot.formulas, key = { it.id }) { f ->
-                        val baseWeightKg = f.ingredients.sumOf { (it["qtyKg"] as? Number)?.toDouble() ?: 0.0 }
-                        val flat = remember(f, snapshot.formulas, snapshot.inventory) {
-                            FormulaEngine.flattenFormula(f, snapshot.formulas, snapshot.inventory, 1.0)
+                        val breakdown = remember(f, snapshot.formulas, snapshot.inventory) {
+                            FormulaEngine.describeFormula(f, snapshot.formulas, snapshot.inventory)
                         }
-                        val rawMatCostPerUnit = remember(flat) { flat.sumOf { it.qtyKg * it.unitCostPerKg } }
-                        val totalCostPerUnit = (rawMatCostPerUnit + f.additionalCost).coerceAtLeast(0.0)
-                        val adjWeight = (baseWeightKg + f.costAdjustment).coerceAtLeast(0.01)
-                        val costPerKg = if (baseWeightKg > 0.0) totalCostPerUnit / adjWeight else 0.0
-
-                        val linkedIn = snapshot.formulas.filter { other ->
-                            other.id != f.id && other.ingredients.any { (it["linkFormulaId"] as? String) == f.id }
-                        }.map { it.name.uppercase() }
-                        val usedByStores = snapshot.stores.filter { it.formulaId == f.id }.map { it.name.uppercase() }
+                        val linkedIn = remember(snapshot.formulas, f.id) {
+                            FormulaEngine.formulaUsers(snapshot.formulas, f.id).map { it.name.uppercase(Locale.ROOT) }
+                        }
+                        val usedByStores = remember(snapshot.stores, f.id) {
+                            snapshot.stores.filter { it.deletedAt == null && it.formulaId == f.id }.map { it.name.uppercase(Locale.ROOT) }
+                        }
                         val footerPrefix = buildList {
                             if (linkedIn.isNotEmpty()) add("Linked in ${linkedIn.joinToString(", ")}")
                             if (usedByStores.isNotEmpty()) add("Used by ${usedByStores.joinToString(", ")}")
@@ -318,91 +375,134 @@ fun FormulaStoreScreen(
                                 .clickable { onEditFormula(f.id) }
                                 .testTag("formula_card_${f.id}")
                         ) {
-                            Text(
-                                text = "${f.name.uppercase()} (${InputGuards.formatNum(f.unitsPerBatch)} UNIT)",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = f.name.uppercase(Locale.ROOT),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Surface(color = accents.softPillFill, shape = RoundedCornerShape(10.dp)) {
+                                    Text(
+                                        text = "${InputGuards.fmtNum(f.costAdjustmentFactor)} UNIT",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accents.emerald,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(8.dp))
 
                             f.ingredients.forEach { ing ->
-                                val ingName = (ing["name"] as? String ?: "").trim()
-                                val ingQty = (ing["qtyKg"] as? Number)?.toDouble() ?: 0.0
-                                val linkId = (ing["linkFormulaId"] as? String ?: "").trim()
-                                val child = formulaById[linkId]
-                                if (child != null) {
-                                    val childFlat = FormulaEngine.flattenFormula(child, snapshot.formulas, snapshot.inventory, 1.0)
-                                    val childBase = child.ingredients.sumOf { (it["qtyKg"] as? Number)?.toDouble() ?: 0.0 }.coerceAtLeast(1.0)
-                                    val mult = ingQty / childBase
-                                    val childCost = childFlat.sumOf { it.qtyKg * it.unitCostPerKg } * mult
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(
-                                            text = "${ingName.uppercase()} • sub formula (${InputGuards.formatNum(ingQty)} kg)",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            text = if (masked) "•••" else InputGuards.formatNum(childCost),
-                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                                        )
-                                    }
-                                    childFlat.forEach { sub ->
-                                        val scaledQty = sub.qtyKg * mult
-                                        val subCost = scaledQty * sub.unitCostPerKg
-                                        Row(Modifier.fillMaxWidth().padding(start = 10.dp, top = 1.dp, bottom = 1.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                if (FormulaEngine.isLink(ing)) {
+                                    val child = formulaById[ing.formulaId]
+                                    if (child != null) {
+                                        val childDesc = FormulaEngine.describeFormula(child, snapshot.formulas, snapshot.inventory)
+                                        val mult = if (childDesc.weight > 0.0) ing.quantity / childDesc.weight else 0.0
+                                        val childCost = childDesc.raw * mult
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
                                             Text(
-                                                text = "↳ ${sub.name.uppercase()} (${InputGuards.formatNum(scaledQty)} kg)",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = accents.textMuted,
+                                                text = "${child.name.uppercase(Locale.ROOT)} • sub-formula (${InputGuards.fmtNum(ing.quantity)} kg)",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                                 modifier = Modifier.weight(1f)
                                             )
                                             Text(
-                                                text = if (masked) "•••" else InputGuards.formatNum(subCost),
+                                                text = InputGuards.formatMoney(childCost, currency, masked),
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        }
+                                        childDesc.items.forEach { sub ->
+                                            val scaledQty = sub.quantity * mult
+                                            val subCost = scaledQty * sub.cost
+                                            Row(
+                                                Modifier.fillMaxWidth().padding(start = 10.dp, top = 1.dp, bottom = 1.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "↳ ${sub.name.uppercase(Locale.ROOT)} (${InputGuards.fmtNum(scaledQty)} kg)",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = accents.textMuted,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    text = InputGuards.formatMoney(subCost, currency, masked),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = accents.textMuted
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                            Text(
+                                                text = "${ing.name.uppercase(Locale.ROOT)} (Missing sub-formula)",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = accents.textMuted
+                                                color = accents.danger
                                             )
                                         }
                                     }
                                 } else {
-                                    val overrideCost = (ing["overrideUnitCost"] as? Number)?.toDouble()
-                                    val unitCost = overrideCost ?: invByName[ingName.lowercase()]?.avgCostPerKg ?: 0.0
-                                    val rowCost = ingQty * unitCost
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    val liveMat = activeMaterials.firstOrNull { it.id == ing.id }
+                                        ?: activeMaterials.firstOrNull { it.name.trim().equals(ing.name.trim(), ignoreCase = true) }
+                                    val unitCost = if ((liveMat?.cost ?: 0.0) > 0.0) liveMat!!.cost else ing.cost
+                                    val rowCost = ing.quantity * unitCost
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                         Text(
-                                            text = "${ingName.uppercase()} (${InputGuards.formatNum(ingQty)} kg)",
+                                            text = "${ing.name.uppercase(Locale.ROOT)} (${InputGuards.fmtNum(ing.quantity)} kg)",
                                             style = MaterialTheme.typography.bodySmall,
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
-                                            text = if (masked) "•••" else InputGuards.formatNum(rowCost),
+                                            text = InputGuards.formatMoney(rowCost, currency, masked),
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                     }
                                 }
                             }
 
-                            if (f.additionalCost > 0.0) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            if (breakdown.additionalCost > 0.0) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
-                                        text = "Additional Cost (${InputGuards.formatNum(f.additionalCost)} per unit)",
+                                        text = "Additional Cost" + if (breakdown.extraCost > 0.0) " (incl. sub-formula)" else "",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = accents.danger
                                     )
                                     Text(
-                                        text = if (masked) "•••" else InputGuards.formatNum(f.additionalCost),
+                                        text = InputGuards.formatMoney(breakdown.additionalCost, currency, masked),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = accents.danger
                                     )
                                 }
                             }
 
+                            if (breakdown.problems.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = breakdown.problems.joinToString(", ") { "${it.type}: ${it.name}" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = accents.danger
+                                )
+                            }
+
                             Spacer(Modifier.height(6.dp))
                             HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                             Spacer(Modifier.height(8.dp))
 
-                            FormulaMetricRow("Unit Weight", InputGuards.formatKg(baseWeightKg))
-                            FormulaMetricRow("Raw Material Cost per Unit", if (masked) "•••" else InputGuards.formatNum(rawMatCostPerUnit))
-                            FormulaMetricRow("Total Cost per Unit", if (masked) "•••" else InputGuards.formatNum(totalCostPerUnit), bold = true)
-                            FormulaMetricRow("Cost per kg (Sales/Calc)", if (masked) "•••" else InputGuards.formatNum(costPerKg))
+                            FormulaMetricRow("Unit Weight", InputGuards.formatKg(breakdown.weight))
+                            FormulaMetricRow("Raw Material Cost per Unit", InputGuards.formatMoney(breakdown.raw, currency, masked))
+                            FormulaMetricRow("Total Cost per Unit", InputGuards.formatMoney(breakdown.perUnit, currency, masked), bold = true)
+                            FormulaMetricRow("Cost per kg (Adjusted)", InputGuards.formatMoney(breakdown.perKg, currency, masked))
 
                             Spacer(Modifier.height(6.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -448,7 +548,9 @@ fun FormulaStoreScreen(
                 shape = CircleShape,
                 containerColor = accents.emerald,
                 contentColor = Color.White,
-                modifier = Modifier.size(58.dp).testTag("formula_speed_dial_fab")
+                modifier = Modifier
+                    .size(58.dp)
+                    .testTag("formula_speed_dial_fab")
             ) {
                 Icon(
                     imageVector = if (speedDialExpanded) Icons.Default.Close else Icons.Default.Add,
@@ -462,7 +564,9 @@ fun FormulaStoreScreen(
 @Composable
 private fun FormulaMetricRow(label: String, value: String, bold: Boolean = false) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
@@ -480,7 +584,7 @@ private fun FormulaMetricRow(label: String, value: String, bold: Boolean = false
 @Composable
 private fun SpeedDialRow(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     testTag: String,
     onClick: () -> Unit
 ) {
@@ -488,7 +592,9 @@ private fun SpeedDialRow(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.clickable(onClick = onClick).testTag(testTag)
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .testTag(testTag)
     ) {
         Surface(
             shape = RoundedCornerShape(14.dp),
@@ -517,10 +623,13 @@ private fun SpeedDialRow(
 }
 
 private data class FormulaIngRowState(
+    val id: String,
     val name: String,
     val qtyStr: String,
-    val linkFormulaId: String,
-    val overrideCostStr: String
+    val kind: String?,
+    val linkFormulaId: String?,
+    val costStr: String,
+    val custom: Boolean
 )
 
 @Composable
@@ -532,25 +641,38 @@ fun FormulaEditScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val existing = remember(snapshot.formulas, formulaId) { snapshot.formulas.firstOrNull { it.id == formulaId } }
-    val invByName = remember(snapshot.inventory) { snapshot.inventory.filter { !it.recycled }.associateBy { it.name.trim().lowercase() } }
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+
+    val existing = remember(snapshot.formulas, formulaId) {
+        snapshot.formulas.firstOrNull { it.id == formulaId }
+    }
+    val activeMaterials = remember(snapshot.inventory) {
+        snapshot.inventory.filter { it.deletedAt == null && !it.isPurchaseLot }.sortedBy { it.name.lowercase(Locale.ROOT) }
+    }
     val formulaById = remember(snapshot.formulas) { snapshot.formulas.associateBy { it.id } }
 
     var name by remember(existing) { mutableStateOf(existing?.name ?: "") }
-    var unitsStr by remember(existing) { mutableStateOf((existing?.unitsPerBatch ?: 1.0).toString()) }
     var addCostStr by remember(existing) { mutableStateOf((existing?.additionalCost ?: 0.0).toString()) }
-    var adjStr by remember(existing) { mutableStateOf((existing?.costAdjustment ?: 0.0).toString()) }
+    var adjFactorStr by remember(existing) { mutableStateOf((existing?.costAdjustmentFactor ?: 1.0).toString()) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     val ingredients = remember(existing) {
         mutableStateListOf<FormulaIngRowState>().apply {
-            existing?.ingredients?.forEach { m ->
-                val n = m["name"] as? String ?: ""
-                val q = ((m["qtyKg"] as? Number)?.toDouble() ?: 0.0).toString()
-                val l = m["linkFormulaId"] as? String ?: ""
-                val ov = (m["overrideUnitCost"] as? Number)?.toDouble()?.toString() ?: ""
-                add(FormulaIngRowState(n, q, l, ov))
+            existing?.ingredients?.forEach { ing ->
+                add(
+                    FormulaIngRowState(
+                        id = ing.id,
+                        name = ing.name,
+                        qtyStr = if (ing.quantity > 0.0) InputGuards.fmtNum(ing.quantity).replace(",", "") else "",
+                        kind = ing.kind,
+                        linkFormulaId = ing.formulaId,
+                        costStr = if (ing.cost > 0.0) InputGuards.fmtNum(ing.cost).replace(",", "") else "",
+                        custom = ing.custom
+                    )
+                )
             }
-            if (isEmpty()) add(FormulaIngRowState("", "", "", ""))
+            if (isEmpty()) add(FormulaIngRowState("", "", "", null, null, "", false))
         }
     }
 
@@ -559,26 +681,28 @@ fun FormulaEditScreen(
             existing == null || FormulaEngine.canLink(snapshot.formulas, existing.id, cand.id)
         }
     }
-    val materialChoices = remember(snapshot.inventory) {
-        snapshot.inventory.filter { !it.recycled }.map { it.name }.distinct().sorted()
-    }
 
-    val unitWeight = ingredients.sumOf { it.qtyStr.toDoubleOrNull() ?: 0.0 }
-    val rawCostPerUnit = ingredients.sumOf { row ->
+    val draftIngredients = ingredients.mapNotNull { row ->
         val qty = row.qtyStr.toDoubleOrNull() ?: 0.0
-        val unitPrice = row.overrideCostStr.toDoubleOrNull()
-            ?: formulaById[row.linkFormulaId]?.let { child ->
-                val baseW = child.ingredients.sumOf { (it["qtyKg"] as? Number)?.toDouble() ?: 0.0 }.coerceAtLeast(1.0)
-                FormulaEngine.calculateBatchCost(child, snapshot.formulas, snapshot.inventory, 1.0) / baseW
-            }
-            ?: invByName[row.name.trim().lowercase()]?.avgCostPerKg
-            ?: 0.0
-        qty * unitPrice
+        if (row.name.isBlank() || qty <= 0.0) return@mapNotNull null
+        FormulaIngredient(
+            id = row.id.ifBlank { row.linkFormulaId ?: row.name.trim().lowercase(Locale.ROOT) },
+            kind = row.kind,
+            formulaId = row.linkFormulaId,
+            name = row.name.trim(),
+            cost = row.costStr.toDoubleOrNull() ?: 0.0,
+            quantity = qty,
+            custom = row.custom
+        )
     }
-    val addCost = addCostStr.toDoubleOrNull() ?: 0.0
-    val adjVal = adjStr.toDoubleOrNull() ?: 0.0
-    val totalCostPerUnit = (rawCostPerUnit + addCost).coerceAtLeast(0.0)
-    val costPerKgCalc = if (unitWeight > 0.0) totalCostPerUnit / (unitWeight + adjVal).coerceAtLeast(0.01) else 0.0
+    val previewFormula = FormulaConfig(
+        id = existing?.id ?: "__draft__",
+        name = name.ifBlank { "Draft" },
+        ingredients = draftIngredients,
+        additionalCost = addCostStr.toDoubleOrNull() ?: 0.0,
+        costAdjustmentFactor = (adjFactorStr.toDoubleOrNull() ?: 1.0).coerceAtLeast(0.01)
+    )
+    val previewBreakdown = FormulaEngine.describeFormula(previewFormula, snapshot.formulas, snapshot.inventory)
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = if (existing == null) "NEW FORMULA" else "EDIT FORMULA", onBack = onBack)
@@ -599,11 +723,9 @@ fun FormulaEditScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DecimalField("ADDITIONAL COST (PER UNIT)", addCostStr, { addCostStr = it }, "fe_addcost_input", Modifier.weight(1f))
-                        DecimalField("COST ADJUSTMENT (X)", adjStr, { adjStr = it }, "fe_adj_input", Modifier.weight(1f))
+                        DecimalField("ADDITIONAL COST", addCostStr, { addCostStr = it }, "fe_addcost_input", Modifier.weight(1f))
+                        DecimalField("COST ADJUST FACTOR", adjFactorStr, { adjFactorStr = it }, "fe_adj_input", Modifier.weight(1f))
                     }
-                    Spacer(Modifier.height(10.dp))
-                    DecimalField("UNITS PER BATCH", unitsStr, { unitsStr = it }, "fe_units_input")
                 }
             }
 
@@ -619,40 +741,69 @@ fun FormulaEditScreen(
             items(ingredients.size) { idx ->
                 val row = ingredients[idx]
                 var matMenuOpen by remember { mutableStateOf(false) }
-                val autoUnitCost = formulaById[row.linkFormulaId]?.let { child ->
-                    val baseW = child.ingredients.sumOf { (it["qtyKg"] as? Number)?.toDouble() ?: 0.0 }.coerceAtLeast(1.0)
-                    InputGuards.round2(FormulaEngine.calculateBatchCost(child, snapshot.formulas, snapshot.inventory, 1.0) / baseW)
-                } ?: invByName[row.name.trim().lowercase()]?.avgCostPerKg ?: 0.0
+                val autoUnitCost = if (row.kind == FormulaEngine.LINK_KIND && !row.linkFormulaId.isNullOrBlank()) {
+                    val child = formulaById[row.linkFormulaId]
+                    if (child != null) {
+                        val cd = FormulaEngine.describeFormula(child, snapshot.formulas, snapshot.inventory)
+                        if (cd.weight > 0.0) InputGuards.round2(cd.raw / cd.weight) else 0.0
+                    } else 0.0
+                } else {
+                    activeMaterials.firstOrNull {
+                        it.id == row.id || it.name.trim().equals(row.name.trim(), ignoreCase = true)
+                    }?.cost ?: 0.0
+                }
 
                 SarimCard(contentPadding = PaddingValues(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(modifier = Modifier.weight(1.3f)) {
+                        Box(modifier = Modifier.weight(1.35f)) {
                             SarimPillInput(
                                 value = row.name,
-                                onValueChange = { ingredients[idx] = row.copy(name = it, linkFormulaId = "") },
-                                label = "MATERIAL",
+                                onValueChange = {
+                                    ingredients[idx] = row.copy(
+                                        id = "",
+                                        name = it,
+                                        kind = null,
+                                        linkFormulaId = null,
+                                        custom = true
+                                    )
+                                },
+                                label = if (row.kind == FormulaEngine.LINK_KIND) "SUB-FORMULA" else "MATERIAL",
                                 placeholder = "Tap or type",
                                 trailingIcon = {
-                                    IconButton(onClick = { matMenuOpen = true }, modifier = Modifier.size(32.dp)) {
+                                    IconButton(onClick = { matMenuOpen = true }, modifier = Modifier.size(40.dp)) {
                                         Text("▾", style = MaterialTheme.typography.titleMedium, color = accents.emerald)
                                     }
                                 }
                             )
                             DropdownMenu(expanded = matMenuOpen, onDismissRequest = { matMenuOpen = false }) {
-                                materialChoices.forEach { m ->
+                                activeMaterials.forEach { m ->
                                     DropdownMenuItem(
-                                        text = { Text(m.uppercase()) },
+                                        text = { Text("${m.name.uppercase(Locale.ROOT)} (${InputGuards.fmtNum(m.cost)}/kg)") },
                                         onClick = {
-                                            ingredients[idx] = row.copy(name = m, linkFormulaId = "")
+                                            ingredients[idx] = row.copy(
+                                                id = m.id,
+                                                name = m.name,
+                                                kind = null,
+                                                linkFormulaId = null,
+                                                costStr = "",
+                                                custom = false
+                                            )
                                             matMenuOpen = false
                                         }
                                     )
                                 }
                                 linkCandidates.forEach { sub ->
                                     DropdownMenuItem(
-                                        text = { Text("${sub.name.uppercase()} (Sub-Formula)", color = accents.emerald) },
+                                        text = { Text("${sub.name.uppercase(Locale.ROOT)} (Sub-Formula)", color = accents.emerald) },
                                         onClick = {
-                                            ingredients[idx] = row.copy(name = sub.name, linkFormulaId = sub.id)
+                                            ingredients[idx] = row.copy(
+                                                id = sub.id,
+                                                name = sub.name,
+                                                kind = FormulaEngine.LINK_KIND,
+                                                linkFormulaId = sub.id,
+                                                costStr = "",
+                                                custom = false
+                                            )
                                             matMenuOpen = false
                                         }
                                     )
@@ -662,19 +813,19 @@ fun FormulaEditScreen(
 
                         Column(modifier = Modifier.weight(0.85f)) {
                             Text(
-                                text = "COST / UNIT",
+                                text = "COST / KG",
                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
                                 color = accents.textMuted,
                                 modifier = Modifier.padding(bottom = 5.dp)
                             )
                             SarimPillInput(
-                                value = row.overrideCostStr,
+                                value = row.costStr,
                                 onValueChange = { raw ->
                                     if (raw.isEmpty() || raw.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-                                        ingredients[idx] = row.copy(overrideCostStr = raw)
+                                        ingredients[idx] = row.copy(costStr = raw)
                                     }
                                 },
-                                placeholder = InputGuards.formatNum(autoUnitCost),
+                                placeholder = InputGuards.fmtNum(autoUnitCost),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                             )
                         }
@@ -691,7 +842,9 @@ fun FormulaEditScreen(
                             onClick = { if (ingredients.size > 1) ingredients.removeAt(idx) },
                             shape = CircleShape,
                             color = accents.danger.copy(alpha = 0.14f),
-                            modifier = Modifier.padding(top = 18.dp).size(36.dp)
+                            modifier = Modifier
+                                .padding(top = 18.dp)
+                                .size(48.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text("×", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
@@ -703,11 +856,14 @@ fun FormulaEditScreen(
 
             item {
                 Surface(
-                    onClick = { ingredients.add(FormulaIngRowState("", "", "", "")) },
+                    onClick = { ingredients.add(FormulaIngRowState("", "", "", null, null, "", false)) },
                     shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("fe_add_ing_btn")
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("fe_add_ing_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("+ Add Ingredient Row", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
@@ -715,7 +871,7 @@ fun FormulaEditScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Tip: Leave Cost / Unit blank to use live weighted raw material or sub-formula cost automatically.",
+                    text = "Leave Cost / kg blank to auto-price from live inventory or linked sub-formula cost.",
                     style = MaterialTheme.typography.bodySmall,
                     color = accents.textMuted
                 )
@@ -729,10 +885,10 @@ fun FormulaEditScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FormulaMetricRow("Unit Weight", InputGuards.formatKg(unitWeight))
-                        FormulaMetricRow("Raw Material Cost per Unit", "$currency ${InputGuards.formatNum(rawCostPerUnit)}")
-                        FormulaMetricRow("Total Cost per Unit", "$currency ${InputGuards.formatNum(totalCostPerUnit)}", bold = true)
-                        FormulaMetricRow("Cost per kg (Sales/Calc)", "$currency ${InputGuards.formatNum(costPerKgCalc)}")
+                        FormulaMetricRow("Unit Weight", InputGuards.formatKg(previewBreakdown.weight))
+                        FormulaMetricRow("Raw Material Cost per Unit", InputGuards.formatMoney(previewBreakdown.raw, currency, masked))
+                        FormulaMetricRow("Total Cost per Unit", InputGuards.formatMoney(previewBreakdown.perUnit, currency, masked), bold = true)
+                        FormulaMetricRow("Cost per kg (Adjusted)", InputGuards.formatMoney(previewBreakdown.perKg, currency, masked))
                     }
                 }
             }
@@ -752,7 +908,7 @@ fun FormulaEditScreen(
                 if (existing != null) {
                     SarimDangerButton(
                         text = "Delete Formula",
-                        onClick = { vm.deleteFormula(existing.id, onDeleted = onBack) },
+                        onClick = { confirmDelete = true },
                         modifier = Modifier.weight(0.85f),
                         testTag = "fe_delete_btn"
                     )
@@ -760,32 +916,35 @@ fun FormulaEditScreen(
                 SarimGradientButton(
                     text = "Save Formula",
                     onClick = {
-                        val list = ingredients.mapNotNull { row ->
-                            val qty = row.qtyStr.toDoubleOrNull() ?: 0.0
-                            if (row.name.isNotBlank() && qty > 0.0) {
-                                buildMap<String, Any> {
-                                    put("name", row.name.trim())
-                                    put("qtyKg", qty)
-                                    put("linkFormulaId", row.linkFormulaId)
-                                    row.overrideCostStr.toDoubleOrNull()?.let { put("overrideUnitCost", it) }
-                                }
-                            } else null
-                        }
                         vm.saveFormula(
                             existing = existing,
                             name = name,
-                            unitsPerBatch = unitsStr.toDoubleOrNull() ?: 1.0,
                             additionalCost = addCostStr.toDoubleOrNull() ?: 0.0,
-                            adjustment = adjStr.toDoubleOrNull() ?: 0.0,
-                            ingredients = list
+                            adjustment = adjFactorStr.toDoubleOrNull() ?: 1.0,
+                            ingredients = draftIngredients
                         )
                         onBack()
                     },
-                    enabled = name.isNotBlank(),
+                    enabled = name.isNotBlank() && draftIngredients.isNotEmpty(),
                     testTag = "fe_save_btn",
                     modifier = Modifier.weight(1f)
                 )
             }
         }
+    }
+
+    if (confirmDelete && existing != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete Formula") },
+            text = { Text("Delete formula \"${existing.name}\"? Formulas linked to stores or used inside other formulas cannot be deleted until unlinked.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    vm.deleteFormula(existing.id, onDeleted = onBack)
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+        )
     }
 }

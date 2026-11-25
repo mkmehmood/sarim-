@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -295,7 +296,8 @@ fun SarimPillInput(
     suffix: @Composable (() -> Unit)? = null,
     readOnly: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
     val accents = LocalSarimAccents.current
     Column(modifier = modifier) {
@@ -319,6 +321,7 @@ fun SarimPillInput(
             prefix = prefix,
             suffix = suffix,
             keyboardOptions = keyboardOptions,
+            visualTransformation = visualTransformation,
             singleLine = singleLine,
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(

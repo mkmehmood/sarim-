@@ -1,70 +1,100 @@
 package com.gullzubair.sarim.domain
 
 import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.round
+import kotlin.math.pow
+import kotlin.math.roundToLong
 
 object InputGuards {
-    const val MIN_QTY = 0.001
-    const val MAX_QTY = 1_000_000.0
-    const val MIN_COST = 0.01
-    const val MAX_COST = 100_000_000.0
-    const val MIN_CONVERSION = 0.001
-    const val MAX_CONVERSION = 100_000.0
-    const val MAX_NAME_LEN = 80
+    const val MAX_QUANTITY = 1_000_000.0
+    const val MAX_AMOUNT = 1_000_000_000.0
+    const val MAX_NAME_LEN = 120
     const val MAX_NOTES_LEN = 500
+    const val MAX_PHONE_LEN = 32
 
-    private val moneyFmt = DecimalFormat("#,##0.##")
-    private val kgFmt = DecimalFormat("#,##0.###")
+    fun sanitizeName(raw: String, maxLen: Int = MAX_NAME_LEN): String =
+        raw.trim().replace(Regex("\\s+"), " ").take(maxLen)
 
-    fun round2(value: Double): Double {
-        if (!value.isFinite()) return 0.0
-        return round(value * 100.0) / 100.0
+    fun sanitizeNotes(raw: String, maxLen: Int = MAX_NOTES_LEN): String =
+        raw.trim().take(maxLen)
+
+    fun sanitizePhone(raw: String): String =
+        raw.trim().filter { it.isDigit() || it in setOf('+', '-', ' ') }.take(MAX_PHONE_LEN)
+
+    fun parsePositiveDouble(raw: String, max: Double = MAX_AMOUNT): Double? {
+        val cleaned = raw.trim().replace(",", "")
+        val parsed = cleaned.toDoubleOrNull() ?: return null
+        if (!parsed.isFinite() || parsed <= 0.0 || parsed > max) return null
+        return parsed
     }
 
-    fun round3(value: Double): Double {
-        if (!value.isFinite()) return 0.0
-        return round(value * 1000.0) / 1000.0
+    fun parseNonNegativeDouble(raw: String, max: Double = MAX_AMOUNT): Double? {
+        if (raw.isBlank()) return 0.0
+        val cleaned = raw.trim().replace(",", "")
+        val parsed = cleaned.toDoubleOrNull() ?: return null
+        if (!parsed.isFinite() || parsed < 0.0 || parsed > max) return null
+        return parsed
     }
 
-    fun parsePositiveDouble(raw: String): Double? {
-        val v = raw.trim().replace(",", "").toDoubleOrNull() ?: return null
-        return if (v.isFinite() && v > 0.0) v else null
+    fun parseSignedDouble(raw: String, min: Double = -MAX_AMOUNT, max: Double = MAX_AMOUNT): Double? {
+        if (raw.isBlank()) return 0.0
+        val cleaned = raw.trim().replace(",", "")
+        val parsed = cleaned.toDoubleOrNull() ?: return null
+        if (!parsed.isFinite() || parsed < min || parsed > max) return null
+        return parsed
     }
 
-    fun parseNonNegativeDouble(raw: String): Double? {
-        val v = raw.trim().replace(",", "").toDoubleOrNull() ?: return null
-        return if (v.isFinite() && v >= 0.0) v else null
+    fun round2(value: Double): Double =
+        if (!value.isFinite()) 0.0 else (value * 100.0).roundToLong() / 100.0
+
+    fun round3(value: Double): Double =
+        if (!value.isFinite()) 0.0 else (value * 1000.0).roundToLong() / 1000.0
+
+    fun round4(value: Double): Double =
+        if (!value.isFinite()) 0.0 else (value * 10000.0).roundToLong() / 10000.0
+
+    fun round6(value: Double): Double =
+        if (!value.isFinite()) 0.0 else (value * 1_000_000.0).roundToLong() / 1_000_000.0
+
+    /**
+     * Exact 1:1 port of web `finance.js` `fmtNum(n, maxDecimals)`:
+     * South Asian 3,2,2 comma grouping (`12,34,567.5`) with trailing decimal zeros trimmed.
+     */
+    fun fmtNum(value: Double, maxDecimals: Int = 2): String {
+        if (!value.isFinite()) return "0"
+        val dec = maxDecimals.coerceIn(0, 6)
+        val factor = 10.0.pow(dec)
+        val rounded = (value * factor).roundToLong() / factor
+        val neg = rounded < 0.0
+        val absVal = abs(rounded)
+        val pattern = if (dec == 0) "0" else "0." + "0".repeat(dec)
+        val df = DecimalFormat(pattern, DecimalFormatSymbols(Locale.US))
+        val formatted = df.format(absVal)
+        val parts = formatted.split(".")
+        val intPart = parts[0]
+        val decPart = parts.getOrNull(1)?.trimEnd('0').orEmpty()
+
+        val groupedInt = if (intPart.length <= 3) {
+            intPart
+        } else {
+            val lastThree = intPart.takeLast(3)
+            val rest = intPart.dropLast(3)
+            val restGrouped = rest.reversed().chunked(2).joinToString(",").reversed()
+            "$restGrouped,$lastThree"
+        }
+        val sign = if (neg && absVal > 0.0) "-" else ""
+        return if (decPart.isEmpty()) "$sign$groupedInt" else "$sign$groupedInt.$decPart"
     }
 
-    fun clampQty(v: Double): Double = if (!v.isFinite()) 0.0 else v.coerceIn(0.0, MAX_QTY)
-    fun clampMoney(v: Double): Double = if (!v.isFinite()) 0.0 else v.coerceIn(-MAX_COST, MAX_COST)
-
-    fun sanitizeName(raw: String): String = raw.trim().replace(Regex("\\s+"), " ").take(MAX_NAME_LEN)
-    fun sanitizeNotes(raw: String): String = raw.trim().take(MAX_NOTES_LEN)
-
-    fun canonicalKey(name: String): String = name.trim().lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_")
-
-    fun sanitizeDocId(raw: String): String {
-        val cleaned = raw.trim().replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
-        return cleaned.ifBlank { "doc_${System.currentTimeMillis()}" }.take(120)
+    fun formatCurrency(value: Double, symbol: String = "Rs", masked: Boolean = false): String {
+        if (masked) return "$symbol ••••"
+        return "$symbol ${fmtNum(value, 2)}"
     }
 
-    fun formatMoney(amount: Double, currency: String = "Rs", masked: Boolean = false): String {
-        if (masked) return "$currency •••••"
-        val clean = if (!amount.isFinite()) 0.0 else amount
-        val sign = if (clean < -0.005) "-" else ""
-        return "$sign$currency ${moneyFmt.format(abs(round2(clean)))}"
-    }
+    fun formatMoney(value: Double, symbol: String = "Rs", masked: Boolean = false): String =
+        formatCurrency(value, symbol, masked)
 
-    fun formatKg(qty: Double): String {
-        val clean = if (!qty.isFinite()) 0.0 else qty
-        return "${kgFmt.format(round3(clean))} kg"
-    }
-
-    fun formatNum(value: Double): String {
-        val clean = if (!value.isFinite()) 0.0 else value
-        return moneyFmt.format(round2(clean))
-    }
+    fun formatKg(value: Double): String = "${fmtNum(value, 2)} kg"
 }

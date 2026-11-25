@@ -43,9 +43,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gullzubair.sarim.data.model.RepRecord
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
+import com.gullzubair.sarim.domain.FinanceEngine
+import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
@@ -64,26 +67,52 @@ import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.LocationHelper
 
 @Composable
-fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewModel, onOpenCustomer: (String) -> Unit = {}) {
+fun RepSalesScreen(
+    snapshot: WorkspaceSnapshot,
+    todayIso: String,
+    vm: SarimViewModel,
+    onOpenCustomer: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
-    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.active } }
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
+
+    val knownReps = remember(snapshot) {
+        (snapshot.settings.reps +
+            snapshot.teamMembers.map { it.displayName } +
+            snapshot.repRecords.filter { it.deletedAt == null }.map { it.salesRep } +
+            snapshot.profile.displayName)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+    }
+    val clientNames = remember(snapshot.clients, snapshot.repRecords) {
+        (snapshot.clients.filter { it.deletedAt == null }.map { it.name } +
+            snapshot.repRecords.filter { it.deletedAt == null }.map { it.customerName })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sorted()
+    }
 
     var subTab by remember { mutableIntStateOf(0) }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
-    var repName by remember(snapshot.profile) { mutableStateOf(snapshot.profile.displayName.ifBlank { "Rep" }) }
-    var mode by remember { mutableStateOf("sale") }
+    var repName by remember(snapshot.profile) {
+        mutableStateOf(snapshot.settings.repProfile.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } })
+    }
+    var mode by remember { mutableStateOf("CASH") } // CASH | CREDIT | COLLECTION | REP_RETURN | MONEY_OUT
     var customerName by remember { mutableStateOf("") }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
     var qtyStr by remember { mutableStateOf("") }
-    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.toString() ?: "") }
+    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.takeIf { it > 0 }?.toString() ?: "") }
     var cashStr by remember { mutableStateOf("") }
+    var expiredStr by remember { mutableStateOf("0") }
     var notes by remember { mutableStateOf("") }
     var capturedLatLng by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var gpsStatus by remember { mutableStateOf("GPS not captured") }
-    var selectedRepRec by remember { mutableStateOf<RepRecord?>(null) }
+    var selectedRepRec by remember { mutableStateOf<SalesRecord?>(null) }
 
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -98,10 +127,10 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
     val matchingVisitsWithin150m = remember(capturedLatLng, customerName, snapshot.repRecords) {
         val loc = capturedLatLng ?: return@remember 0
         snapshot.repRecords.count { rec ->
-            !rec.recycled &&
+            rec.deletedAt == null &&
                 rec.customerName.equals(customerName.trim(), true) &&
-                rec.routeLat != null && rec.routeLng != null &&
-                LocationHelper.distanceMeters(loc.first, loc.second, rec.routeLat, rec.routeLng) <= 150.0
+                rec.gpsLat != null && rec.gpsLng != null &&
+                LocationHelper.distanceMeters(loc.first, loc.second, rec.gpsLat, rec.gpsLng) <= 150.0
         }
     }
 
@@ -133,8 +162,13 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                 val qty = qtyStr.toDoubleOrNull() ?: 0.0
                 val rate = rateStr.toDoubleOrNull() ?: (selectedStore?.salePrice ?: 0.0)
                 val cash = cashStr.toDoubleOrNull() ?: 0.0
-                val total = if (mode != "collection") InputGuards.round2(qty * rate) else 0.0
-                val credit = if (mode == "sale") InputGuards.round2((total - cash).coerceAtLeast(0.0)) else 0.0
+                val expired = expiredStr.toDoubleOrNull() ?: 0.0
+                val isSaleOrReturn = mode in setOf("CASH", "CREDIT", "REP_RETURN")
+                val total = when (mode) {
+                    "COLLECTION", "MONEY_OUT" -> InputGuards.round2(cash)
+                    else -> InputGuards.round2(qty * rate)
+                }
+                val credit = if (mode == "CREDIT") total else 0.0
                 val confirmed = matchingVisitsWithin150m >= 2
 
                 LazyColumn(
@@ -143,18 +177,24 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                 ) {
                     item {
                         SarimCard {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("sale" to "Sale", "collection" to "Collect", "return" to "Return").forEach { (key, title) ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    "CASH" to "Cash",
+                                    "CREDIT" to "Credit",
+                                    "COLLECTION" to "Collect",
+                                    "REP_RETURN" to "Return",
+                                    "MONEY_OUT" to "Payout"
+                                ).forEach { (key, title) ->
                                     val selected = mode == key
                                     Surface(
                                         onClick = { mode = key },
-                                        shape = RoundedCornerShape(16.dp),
+                                        shape = RoundedCornerShape(14.dp),
                                         color = if (selected) accents.softPillFill else accents.inputFill,
                                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                                         modifier = Modifier.weight(1f).testTag("rep_mode_$key")
                                     ) {
                                         Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                                            Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted)
+                                            Text(title, style = MaterialTheme.typography.labelSmall, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
                                         }
                                     }
                                 }
@@ -163,22 +203,66 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                             DatePickerField("Date", date, { date = it }, "rep_date")
                             Spacer(Modifier.height(10.dp))
                             SarimPillInput(repName, { repName = it.take(80) }, label = "REP NAME", testTag = "rep_name_input")
+                            if (knownReps.isNotEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                PickerField("Or Pick Rep", repName, knownReps, { it }, { repName = it }, "rep_picker")
+                            }
                             Spacer(Modifier.height(10.dp))
                             SarimPillInput(customerName, { customerName = it.take(80) }, label = "CUSTOMER / SHOP", testTag = "rep_customer_input")
-                            if (mode != "collection") {
+                            if (clientNames.isNotEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                PickerField(
+                                    label = "Or Pick Client (${clientNames.size})",
+                                    selectedLabel = customerName.ifBlank { "Browse rep clients" },
+                                    items = clientNames,
+                                    itemLabel = { it },
+                                    onSelect = { picked ->
+                                        customerName = picked
+                                        val custRate = snapshot.clients.firstOrNull {
+                                            it.deletedAt == null && it.name.equals(picked, true)
+                                        }?.customSalePrice ?: 0.0
+                                        if (custRate > 0.0) rateStr = custRate.toString()
+                                    },
+                                    testTag = "rep_client_picker"
+                                )
+                            }
+                            if (isSaleOrReturn) {
                                 Spacer(Modifier.height(10.dp))
-                                PickerField("Store", selectedStore?.name ?: "Select Store", activeStores, { it.name }, { selectedStore = it; rateStr = it.salePrice.toString() }, "rep_store_picker")
+                                PickerField(
+                                    label = "Store",
+                                    selectedLabel = selectedStore?.name ?: "Select Store",
+                                    items = activeStores,
+                                    itemLabel = { it.name },
+                                    onSelect = { selectedStore = it; rateStr = it.salePrice.toString() },
+                                    testTag = "rep_store_picker"
+                                )
                                 Spacer(Modifier.height(10.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    DecimalField("Qty", qtyStr, { qtyStr = it }, "rep_qty_input", Modifier.weight(1f), "kg")
-                                    DecimalField("Rate", rateStr, { rateStr = it }, "rep_rate_input", Modifier.weight(1f))
+                                    DecimalField(
+                                        label = if (mode == "REP_RETURN") "Returned Qty" else "Qty",
+                                        value = qtyStr,
+                                        onValueChange = { qtyStr = it },
+                                        testTag = "rep_qty_input",
+                                        modifier = Modifier.weight(1f),
+                                        suffix = "kg"
+                                    )
+                                    DecimalField("Rate / kg", rateStr, { rateStr = it }, "rep_rate_input", Modifier.weight(1f))
                                 }
                             }
-                            Spacer(Modifier.height(10.dp))
-                            if (mode != "return") {
-                                DecimalField("Cash Collected", cashStr, { cashStr = it }, "rep_cash_input")
+                            if (mode == "COLLECTION" || mode == "MONEY_OUT") {
                                 Spacer(Modifier.height(10.dp))
+                                DecimalField(
+                                    label = if (mode == "MONEY_OUT") "Payout Amount" else "Cash Collected",
+                                    value = cashStr,
+                                    onValueChange = { cashStr = it },
+                                    testTag = "rep_cash_input"
+                                )
                             }
+                            if (mode == "COLLECTION" || mode == "REP_RETURN") {
+                                Spacer(Modifier.height(10.dp))
+                                DecimalField("Expired -> CHORA (optional)", expiredStr, { expiredStr = it }, "rep_expired_input", suffix = "kg")
+                            }
+                            Spacer(Modifier.height(10.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(gpsStatus, style = MaterialTheme.typography.bodySmall, color = accents.cyan)
@@ -206,22 +290,50 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                             SarimPillInput(notes, { notes = it.take(500) }, label = "VISIT NOTES", testTag = "rep_notes_input")
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Bill Total", InputGuards.formatMoney(total, currency, masked), accents.emerald, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Credit", InputGuards.formatMoney(credit, currency, masked), accents.gold, Modifier.weight(1f))
+                                SarimHalfRingKpiBox(
+                                    label = if (mode == "REP_RETURN") "Return Value" else "Bill / Total",
+                                    value = InputGuards.formatMoney(total, currency, masked),
+                                    ringColor = accents.emerald,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                SarimHalfRingKpiBox(
+                                    label = "Credit",
+                                    value = InputGuards.formatMoney(credit, currency, masked),
+                                    ringColor = accents.gold,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                             Spacer(Modifier.height(14.dp))
+                            val canSave = customerName.isNotBlank() && when (mode) {
+                                "COLLECTION", "MONEY_OUT" -> cash > 0.0 || expired > 0.0
+                                "REP_RETURN" -> qty > 0.0 || expired > 0.0
+                                else -> qty > 0.0 && rate > 0.0
+                            }
                             SarimGradientButton(
                                 text = "Save Field Entry",
                                 onClick = {
                                     vm.submitRepRecord(
-                                        date, repName, mode, customerName, selectedStore, qty, rate, cash,
-                                        capturedLatLng?.first, capturedLatLng?.second, confirmed, notes
+                                        date = date,
+                                        repName = repName,
+                                        paymentType = mode,
+                                        customer = customerName,
+                                        store = selectedStore,
+                                        qty = qty,
+                                        rate = rate,
+                                        collectedAmount = if (mode == "CASH") total else cash,
+                                        expiredKg = expired,
+                                        lat = capturedLatLng?.first,
+                                        lng = capturedLatLng?.second,
+                                        accuracy = null,
+                                        confirmed = confirmed,
+                                        notes = notes
                                     )
                                     qtyStr = ""
                                     cashStr = ""
+                                    expiredStr = "0"
                                     notes = ""
                                 },
-                                enabled = customerName.isNotBlank() && ((mode == "collection" && cash > 0) || (mode != "collection" && qty > 0)),
+                                enabled = canSave,
                                 testTag = "rep_save_btn"
                             )
                         }
@@ -231,21 +343,40 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
             }
 
             1 -> {
-                val activeCustomers = remember(snapshot.customers) { snapshot.customers.filter { !it.recycled } }
+                val activeClients = remember(snapshot.clients) { snapshot.clients.filter { it.deletedAt == null } }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (activeCustomers.isEmpty()) {
-                        item { EmptyStateCard("No customers yet", "Customers are added automatically when you log sales.") }
+                    if (activeClients.isEmpty()) {
+                        item { EmptyStateCard("No rep clients yet", "Rep customers are added automatically when you log field sales.") }
                     } else {
-                        items(activeCustomers, key = { it.id }) { cust ->
+                        items(activeClients, key = { it.id }) { cust ->
+                            val owed = FinanceEngine.computeCustomerBalance(
+                                customerName = cust.name,
+                                customers = emptyList(),
+                                sales = emptyList(),
+                                repRecords = snapshot.repRecords,
+                                calculator = snapshot.calculator,
+                                stores = snapshot.stores,
+                                clients = snapshot.clients,
+                                includeClients = true
+                            )
                             SarimCard(modifier = Modifier.clickable { onOpenCustomer(cust.name) }.testTag("rep_customer_card_${cust.id}")) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(cust.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("${cust.address.ifBlank { "No address" }} • ${cust.visitCount} visits", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                        Text(
+                                            "${cust.address.ifBlank { "No address" }} • ${cust.visitCount} visits",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = accents.textMuted
+                                        )
                                     }
+                                    Text(
+                                        InputGuards.formatMoney(owed, currency, masked),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (owed > 0.01) accents.gold else accents.emerald
+                                    )
                                     if (cust.phone.isNotBlank()) {
                                         IconButton(
                                             onClick = {
@@ -266,23 +397,45 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
             }
 
             2 -> {
-                val repTotals = remember(snapshot.repRecords) {
-                    snapshot.repRecords.filter { !it.recycled && it.mode == "sale" }
-                        .groupBy { it.repName }
-                        .mapValues { (_, list) -> InputGuards.round2(list.sumOf { it.totalAmount }) }
+                val activeRep = remember(snapshot.repRecords) { snapshot.repRecords.filter { it.deletedAt == null } }
+                val repTotals = remember(activeRep) {
+                    activeRep.filter { !FinanceEngine.isLedgerRow(it) }
+                        .groupBy { it.salesRep.ifBlank { "Rep" } }
+                        .mapValues { (_, list) -> InputGuards.round2(list.sumOf { it.totalValue }) }
                         .entries.sortedByDescending { it.value }.map { it.key to it.value }
+                }
+                val totalCollected = remember(activeRep) {
+                    activeRep.sumOf { it.collectedAmount }
+                }
+                val totalReturns = remember(activeRep) {
+                    activeRep.filter { it.isRepReturn || it.paymentType == "REP_RETURN" }.sumOf { it.returnValue }
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    item {
+                        SarimCard {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SarimHalfRingKpiBox("Field Sales", InputGuards.formatMoney(repTotals.sumOf { it.second }, currency, masked), accents.emerald, Modifier.weight(1f))
+                                SarimHalfRingKpiBox("Collected", InputGuards.formatMoney(totalCollected, currency, masked), accents.cyan, Modifier.weight(1f))
+                            }
+                            if (totalReturns > 0.0) {
+                                Spacer(Modifier.height(10.dp))
+                                SarimHalfRingKpiBox("Rep Returns", InputGuards.formatMoney(totalReturns, currency, masked), accents.gold, Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
                     item { SimpleBarChart("Field Sales by Rep", repTotals, accents.emerald, currency, masked) }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
 
             else -> {
-                val activeRep = remember(snapshot.repRecords) { snapshot.repRecords.filter { !it.recycled }.sortedByDescending { it.date } }
+                val activeRep = remember(snapshot.repRecords) {
+                    snapshot.repRecords.filter { it.deletedAt == null }
+                        .sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -294,8 +447,13 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                             SarimYearMonthDayTree(
                                 items = activeRep,
                                 dateOf = { it.date },
-                                summaryLabel = { list -> "${InputGuards.formatKg(list.sumOf { it.qtyKg })} • ${InputGuards.formatMoney(list.sumOf { it.cashReceived }, currency, masked)}" },
+                                summaryLabel = { list ->
+                                    val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
+                                    val cash = list.sumOf { it.collectedAmount }
+                                    "${InputGuards.formatKg(kg)} • ${InputGuards.formatMoney(cash, currency, masked)}"
+                                },
                                 itemRow = { r ->
+                                    val displayVal = if (r.collectedAmount > 0.0) r.collectedAmount else r.totalValue
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -306,11 +464,15 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text("${r.repName} -> ${r.customerName}", style = MaterialTheme.typography.titleSmall)
-                                            Text("${r.mode.uppercase()} • ${InputGuards.formatKg(r.qtyKg)}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                            Text("${r.salesRep.ifBlank { "Rep" }} -> ${r.customerName}", style = MaterialTheme.typography.titleSmall)
+                                            Text(
+                                                "${r.paymentType} • ${if (r.isRepReturn) InputGuards.formatKg(r.returnedQty) else InputGuards.formatKg(r.quantity)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                         }
                                         Text(
-                                            InputGuards.formatMoney(r.cashReceived, currency, masked),
+                                            InputGuards.formatMoney(displayVal, currency, masked),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = accents.emerald
                                         )
@@ -326,34 +488,60 @@ fun RepSalesScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewM
     }
 
     selectedRepRec?.let { r ->
+        val storeLabel = FormulaEngine.storeLabelFor(r.supplyStore, snapshot.stores)
         SarimDetailBottomSheet(
             title = r.customerName.uppercase(),
-            rightTitle = InputGuards.formatMoney(r.totalAmount.takeIf { it > 0 } ?: r.cashReceived, currency, masked),
-            subtitle = "${DateUtils.formatPretty(r.date).uppercase()} • ${r.repName}",
+            rightTitle = InputGuards.formatMoney(r.totalValue.takeIf { it > 0 } ?: r.collectedAmount, currency, masked),
+            subtitle = "${DateUtils.formatPretty(r.date).uppercase()} • ${r.salesRep}",
             onDismiss = { selectedRepRec = null },
             content = {
                 HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Mode", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(r.mode.uppercase(), style = MaterialTheme.typography.titleSmall)
+                    Text("Type", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text(r.paymentType, style = MaterialTheme.typography.titleSmall)
+                }
+                if (storeLabel.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Store", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(storeLabel, style = MaterialTheme.typography.titleSmall)
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatKg(r.qtyKg), style = MaterialTheme.typography.titleSmall)
+                    Text(if (r.isRepReturn) "Returned Qty" else "Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text(InputGuards.formatKg(if (r.isRepReturn) r.returnedQty else r.quantity), style = MaterialTheme.typography.titleSmall)
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cash collected", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(r.cashReceived, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                    Text("Collected", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text(InputGuards.formatMoney(r.collectedAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                }
+                if (r.gpsLat != null && r.gpsLng != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("GPS", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text("${"%.5f".format(r.gpsLat)}, ${"%.5f".format(r.gpsLng)}", style = MaterialTheme.typography.bodySmall, color = accents.cyan)
+                    }
+                }
+                if (r.notes.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(r.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             },
             footer = {
                 SarimDangerButton(
                     text = "Move to Recycle Bin",
                     onClick = {
-                        vm.recycleRecord("rep_records", r.id, "${r.customerName} (${r.date})")
+                        vm.softDeleteRecord(
+                            collection = "rep",
+                            docId = r.id,
+                            displayName = r.customerName,
+                            displayDetail = "${r.date} • ${r.salesRep}",
+                            displayAmount = InputGuards.formatMoney(r.totalValue, currency, masked),
+                            snapshotMap = WorkspaceJsonCodec.saleToMap(r)
+                        )
                         selectedRepRec = null
                     },
                     modifier = Modifier.fillMaxWidth(),

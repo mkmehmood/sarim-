@@ -1,162 +1,707 @@
 package com.gullzubair.sarim.domain
 
+import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.max
 
-data class AuditFinding(
-    val id: String,
-    val category: String, // "ledger_mirror" | "negative_stock" | "transfer_pair" | "cost_missing"
-    val severity: String, // "warning" | "critical"
-    val title: String,
-    val detail: String,
-    val targetId: String = ""
-)
-
-data class OverviewKpiSummary(
-    val windowMonths: Int,
-    val totalSalesRevenue: Double,
-    val totalCashCollected: Double,
-    val totalProducedKg: Double,
-    val totalProductionProfit: Double,
-    val totalOperatingExpenses: Double,
-    val netOperatingProfit: Double,
-    val openCredits: Double,
-    val cashInHand: Double,
-    val monthlyRevenueSeries: List<Pair<String, Double>>,
-    val monthlyExpenseSeries: List<Pair<String, Double>>,
-    val storeSalesBreakdown: List<Pair<String, Double>>,
-    val findings: List<AuditFinding>
-)
-
+/**
+ * 1:1 Kotlin port of web `overview-data.js`, `overview-extra.js`, and `overview-audit.js`.
+ */
 object OverviewEngine {
 
-    fun computeOverview(snapshot: WorkspaceSnapshot, windowMonths: Int = 3): OverviewKpiSummary {
-        val fromIso = DateUtils.monthsAgoIso(windowMonths.toLong())
-        val todayIso = DateUtils.todayIso()
+    data class AuditFinding(
+        val id: String,
+        val collection: String,
+        val recordId: String,
+        val code: String,
+        val severity: String, // "error" | "warn"
+        val title: String,
+        val label: String,
+        val date: String,
+        val reasons: List<String>,
+        val impact: Double = 0.0
+    )
 
-        val activeProd = snapshot.production.filter {
-            !it.recycled && !it.transfer && DateUtils.isInRange(it.date, fromIso, todayIso)
-        }
-        val activeSales = snapshot.sales.filter {
-            !it.recycled && DateUtils.isInRange(it.date, fromIso, todayIso)
-        }
-        val activeLedger = snapshot.ledgerEntries.filter {
-            !it.recycled && DateUtils.isInRange(it.date, fromIso, todayIso)
-        }
-        val activeTx = snapshot.transactions.filter {
-            !it.recycled && DateUtils.isInRange(it.date, fromIso, todayIso)
+    data class AuditCheckSummary(
+        val code: String,
+        val label: String,
+        val severity: String,
+        val count: Int
+    )
+
+    data class AuditReport(
+        val findings: List<AuditFinding>,
+        val byCheck: List<AuditCheckSummary>,
+        val scannedTotal: Int,
+        val errors: Int,
+        val warnings: Int
+    )
+
+    data class MonthBucket(
+        val key: String, // YYYY-MM
+        val label: String,
+        val prodKg: Double = 0.0,
+        val prodProfit: Double = 0.0,
+        val prodValue: Double = 0.0,
+        val prodCost: Double = 0.0,
+        val soldKg: Double = 0.0,
+        val returnsKg: Double = 0.0,
+        val salesValue: Double = 0.0,
+        val salesProfit: Double = 0.0,
+        val salesCount: Int = 0,
+        val cashIn: Double = 0.0,
+        val cashOut: Double = 0.0,
+        val expenses: Double = 0.0,
+        val factoryUnits: Double = 0.0
+    )
+
+    data class ProfitAnalysis(
+        val count: Int,
+        val losingCount: Int,
+        val losingSum: Double,
+        val gainingCount: Int,
+        val gainingSum: Double,
+        val net: Double,
+        val avgPrice: Double,
+        val avgCost: Double,
+        val worstLosses: List<WorstSaleLoss>
+    )
+
+    data class WorstSaleLoss(
+        val id: String,
+        val date: String,
+        val customer: String,
+        val store: String,
+        val qty: Double,
+        val price: Double,
+        val cost: Double,
+        val profit: Double
+    )
+
+    data class OwedAgingSummary(
+        val total: Double,
+        val count: Int,
+        val d30: Double,
+        val d60: Double,
+        val d90: Double,
+        val oldestDays: Int,
+        val topCustomers: List<Triple<String, Double, Int>> // name, amount, oldestDays
+    )
+
+    data class OverviewKpiSummary(
+        val windowMonths: Int,
+        val months: List<MonthBucket>,
+        val prodKg: Double,
+        val prodProfit: Double,
+        val prodValue: Double,
+        val prodCost: Double,
+        val marginPct: Double,
+        val soldKg: Double,
+        val returnsKg: Double,
+        val remainingKg: Double,
+        val salesValue: Double,
+        val salesProfit: Double,
+        val salesCount: Int,
+        val cashIn: Double,
+        val cashOut: Double,
+        val netCash: Double,
+        val expenses: Double,
+        val openCreditValue: Double,
+        val openCreditCount: Int,
+        val stockValue: Double,
+        val stockItemsCount: Int,
+        val outOfStockNames: List<String>,
+        val todayProdKg: Double,
+        val todaySalesValue: Double,
+        val todayIn: Double,
+        val todayOut: Double,
+        val storeSalesBreakdown: List<Pair<String, Double>>,
+        val topCustomersValue: List<Pair<String, Double>>,
+        val topCustomersKg: List<Pair<String, Double>>,
+        val formulaProductionKg: List<Pair<String, Double>>,
+        val storeProductionKg: List<Pair<String, Double>>,
+        val expenseCategories: List<Pair<String, Double>>,
+        val stockByValue: List<Pair<String, Double>>,
+        val cashVsCredit: List<Pair<String, Double>>,
+        val factoryByFormula: List<Pair<String, Double>>,
+        val formulaCostPerKg: List<Pair<String, Double>>,
+        val profitAnalysis: ProfitAnalysis,
+        val owedAging: OwedAgingSummary,
+        val audit: AuditReport,
+        val recentActivity: List<RecentActivityItem>
+    ) {
+        val totalSalesRevenue: Double get() = salesValue
+        val totalProducedKg: Double get() = prodKg
+        val totalProductionProfit: Double get() = prodProfit
+        val totalOperatingExpenses: Double get() = expenses
+        val netOperatingProfit: Double get() = InputGuards.round2(prodProfit - expenses)
+        val openCredits: Double get() = owedAging.total
+        val findings: List<AuditFinding> get() = audit.findings
+    }
+
+    data class RecentActivityItem(
+        val kind: String,
+        val title: String,
+        val sub: String,
+        val amount: String,
+        val tone: String, // info | good | warn | bad
+        val goTab: String,
+        val timestamp: Long
+    )
+
+    private val CHECK_META: Map<String, Pair<String, String>> = mapOf(
+        "duplicate_id" to ("Same record id used twice" to "error"),
+        "duplicate_record" to ("Identical records entered twice" to "warn"),
+        "bad_date" to ("Missing or invalid date" to "error"),
+        "future_date" to ("Dated in the future" to "warn"),
+        "sale_bad_qty" to ("Sale with zero or negative quantity" to "error"),
+        "sale_negative_value" to ("Sale with negative value" to "error"),
+        "sale_total_mismatch" to ("Sale total differs from quantity x price" to "error"),
+        "sale_profit_mismatch" to ("Sale profit differs from value minus cost" to "warn"),
+        "sale_no_cost" to ("Sale with no cost recorded" to "warn"),
+        "sale_cash_unreceived" to ("Cash sale not marked as received" to "warn"),
+        "prod_no_formula" to ("Production with no formula (cost and profit are unreliable)" to "error"),
+        "prod_bad_net" to ("Production with zero or negative weight" to "error"),
+        "prod_profit_mismatch" to ("Production profit differs from sale minus cost" to "warn"),
+        "txn_bad_type" to ("Payment is neither in nor out" to "error"),
+        "txn_bad_amount" to ("Payment with a negative amount" to "error"),
+        "txn_missing_entity" to ("Payment for an account that no longer exists" to "warn"),
+        "exp_bad_amount" to ("Expense with zero or negative amount" to "error"),
+        "inv_negative_qty" to ("Material with negative stock" to "error"),
+        "inv_bad_cost" to ("Material with no cost" to "warn"),
+        "col_unapplied" to ("Collection cash not applied to any sale" to "error"),
+        "link_orphan" to ("Sale marked paid by a collection that no longer exists" to "error")
+    )
+
+    private fun monthLabel(ym: String): String {
+        val parts = ym.split("-")
+        if (parts.size != 2) return ym
+        val names = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+        val m = (parts[1].toIntOrNull() ?: 1).coerceIn(1, 12)
+        return "${names[m - 1]} ${parts[0].takeLast(2)}"
+    }
+
+    fun computeOverview(snapshot: WorkspaceSnapshot, windowMonths: Int = 6): OverviewKpiSummary {
+        val span = if (windowMonths in listOf(3, 6, 12)) windowMonths else 6
+        val monthKeys = DateUtils.recentMonthKeys(span).map { it.first }
+        val keySet = monthKeys.toSet()
+        val today = DateUtils.todayIso()
+
+        val monthAcc = LinkedHashMap<String, MonthBucket>()
+        monthKeys.forEach { k -> monthAcc[k] = MonthBucket(key = k, label = monthLabel(k)) }
+
+        var todayProdKg = 0.0
+        var todaySalesValue = 0.0
+        var todayIn = 0.0
+        var todayOut = 0.0
+        var openCreditValue = 0.0
+        var openCreditCount = 0
+
+        val formulasMap = LinkedHashMap<String, Double>()
+        val storesMap = LinkedHashMap<String, Double>()
+        val custValMap = LinkedHashMap<String, Double>()
+        val custKgMap = LinkedHashMap<String, Double>()
+        val expCatMap = LinkedHashMap<String, Double>()
+        val storeSalesMap = LinkedHashMap<String, Double>()
+        val factoryByFormula = LinkedHashMap<String, Double>()
+        val recent = mutableListOf<RecentActivityItem>()
+
+        fun bump(map: MutableMap<String, Double>, k: String, v: Double) {
+            map[k] = (map[k] ?: 0.0) + v
         }
 
-        val salesRev = activeSales.filter { it.mode == "sale" }.sumOf { it.totalAmount }
-        val cashCollected = activeSales.sumOf { it.cashReceived }
-        val producedKg = activeProd.sumOf { it.netWeight }
-        val prodProfit = activeProd.sumOf { it.profit }
-
-        val opExpenses = activeTx.filter { it.txType == "expense" }.sumOf { it.amount } +
-            activeLedger.filter { it.entryType == "OUT" && it.expenseScope == "business" && !it.tabEntry }.sumOf { it.amount }
-
-        val health = FinanceEngine.calculateEconomicHealth(snapshot)
-
-        val monthRevMap = sortedMapOf<String, Double>()
-        activeSales.filter { it.mode == "sale" }.forEach { s ->
-            val ym = s.date.take(7)
-            if (ym.length == 7) monthRevMap[ym] = (monthRevMap[ym] ?: 0.0) + s.totalAmount
+        // Production
+        snapshot.production.filter { it.deletedAt == null }.forEach { p ->
+            val d = p.date.take(10)
+            val ym = d.take(7)
+            val m = monthAcc[ym]
+            if (p.isReturn || p.isTransfer) {
+                if (m != null && p.isReturn) {
+                    monthAcc[ym] = m.copy(returnsKg = m.returnsKg + p.net)
+                }
+                return@forEach
+            }
+            if (m != null) {
+                monthAcc[ym] = m.copy(
+                    prodKg = m.prodKg + p.net,
+                    prodProfit = m.prodProfit + p.profit,
+                    prodValue = m.prodValue + p.totalSale,
+                    prodCost = m.prodCost + p.totalCost
+                )
+                bump(formulasMap, p.formulaName.ifBlank { "No formula" }, p.net)
+                bump(storesMap, FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { "Unassigned" }, p.net)
+            }
+            if (d == today) todayProdKg += p.net
+            recent.add(
+                RecentActivityItem(
+                    kind = "Production",
+                    title = FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { "Production" },
+                    sub = p.formulaName,
+                    amount = "${InputGuards.fmtNum(p.net, 1)} kg",
+                    tone = "info",
+                    goTab = "prod",
+                    timestamp = p.timestamp
+                )
+            )
         }
-        val monthExpMap = sortedMapOf<String, Double>()
-        activeLedger.filter { it.entryType == "OUT" && it.expenseScope == "business" }.forEach { l ->
-            val ym = l.date.take(7)
-            if (ym.length == 7) monthExpMap[ym] = (monthExpMap[ym] ?: 0.0) + l.amount
+
+        // Sales
+        val owedByCust = LinkedHashMap<String, Double>()
+        val oldestByCust = LinkedHashMap<String, Int>()
+        var owedTotal = 0.0
+        var owedCount = 0
+        var d30 = 0.0
+        var d60 = 0.0
+        var d90 = 0.0
+        var oldestDays = 0
+        var cashPayTotal = 0.0
+        var creditPayTotal = 0.0
+
+        val activeSales = snapshot.sales.filter { it.deletedAt == null }
+        activeSales.forEach { s ->
+            val d = s.date.take(10)
+            val ym = d.take(7)
+            val m = monthAcc[ym]
+            val valAmt = s.totalValue
+            if (m != null) {
+                monthAcc[ym] = m.copy(
+                    salesValue = m.salesValue + valAmt,
+                    salesProfit = m.salesProfit + s.profit,
+                    salesCount = m.salesCount + 1
+                )
+                bump(custValMap, s.customerName.ifBlank { "Walk-in" }, valAmt)
+            }
+            if (!FinanceEngine.isLedgerRow(s)) {
+                val supplyYmd = s.supplyDate.ifBlank { s.date }.take(10)
+                val sym = supplyYmd.take(7)
+                monthAcc[sym]?.let { sm ->
+                    monthAcc[sym] = sm.copy(soldKg = sm.soldKg + s.quantity)
+                    bump(custKgMap, s.customerName.ifBlank { "Unknown" }, s.quantity)
+                }
+                if (ym in keySet) {
+                    val stLabel = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores).ifBlank { "Unassigned" }
+                    bump(storeSalesMap, stLabel, valAmt)
+                    if (s.paymentType.equals("CASH", ignoreCase = true)) cashPayTotal += valAmt
+                    else creditPayTotal += valAmt
+                }
+                if (!s.paymentType.equals("CASH", ignoreCase = true) && !s.creditReceived && valAmt > 0.0) {
+                    val age = if (d.length == 10) DateUtils.daysBetween(d, today).toInt().coerceAtLeast(0) else 0
+                    val rem = max(0.0, valAmt - s.partialPaymentReceived)
+                    owedTotal += rem
+                    owedCount++
+                    when {
+                        age <= 30 -> d30 += rem
+                        age <= 60 -> d60 += rem
+                        else -> d90 += rem
+                    }
+                    oldestDays = max(oldestDays, age)
+                    val cName = s.customerName.ifBlank { "Walk-in" }
+                    bump(owedByCust, cName, rem)
+                    oldestByCust[cName] = max(oldestByCust[cName] ?: 0, age)
+                }
+            }
+            if (d == today) todaySalesValue += valAmt
+            if (!s.paymentType.equals("CASH", ignoreCase = true) && !s.creditReceived) {
+                openCreditValue += valAmt
+                openCreditCount++
+            }
+            recent.add(
+                RecentActivityItem(
+                    kind = "Sale",
+                    title = s.customerName.ifBlank { "Sale" },
+                    sub = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores),
+                    amount = InputGuards.fmtNum(valAmt, 0),
+                    tone = "good",
+                    goTab = "sales",
+                    timestamp = s.timestamp
+                )
+            )
         }
 
-        val byStore = activeSales.filter { it.mode == "sale" }
-            .groupBy { it.storeName ?: it.storeKey }
-            .mapValues { (_, list) -> InputGuards.round2(list.sumOf { it.totalAmount }) }
-            .entries
+        // Transactions
+        snapshot.transactions.filter { it.deletedAt == null }.forEach { t ->
+            val d = t.date.take(10)
+            val ym = d.take(7)
+            val isIn = t.type.equals("IN", ignoreCase = true)
+            val isCreditPurchase = isIn && t.isPayable
+            if (!isCreditPurchase) {
+                monthAcc[ym]?.let { m ->
+                    monthAcc[ym] = if (isIn) m.copy(cashIn = m.cashIn + t.amount) else m.copy(cashOut = m.cashOut + t.amount)
+                }
+                if (d == today) {
+                    if (isIn) todayIn += t.amount else todayOut += t.amount
+                }
+            }
+            recent.add(
+                RecentActivityItem(
+                    kind = if (isCreditPurchase) "Credit purchase" else if (isIn) "Cash in" else "Cash out",
+                    title = t.entityName.ifBlank { "Payment" },
+                    sub = t.description,
+                    amount = InputGuards.fmtNum(t.amount, 0),
+                    tone = if (isIn) "good" else "bad",
+                    goTab = "payments",
+                    timestamp = t.timestamp
+                )
+            )
+        }
+
+        // Expenses
+        snapshot.expenses.filter { it.deletedAt == null }.forEach { e ->
+            val d = e.date.take(10)
+            val ym = d.take(7)
+            monthAcc[ym]?.let { m ->
+                monthAcc[ym] = m.copy(expenses = m.expenses + e.amount)
+                bump(expCatMap, e.category.ifBlank { "Other" }, e.amount)
+            }
+            recent.add(
+                RecentActivityItem(
+                    kind = "Expense",
+                    title = e.name.ifBlank { e.category.ifBlank { "Expense" } },
+                    sub = e.category,
+                    amount = InputGuards.fmtNum(e.amount, 0),
+                    tone = "warn",
+                    goTab = "payments",
+                    timestamp = e.timestamp
+                )
+            )
+        }
+
+        // Factory
+        snapshot.factory.filter { it.deletedAt == null }.forEach { f ->
+            val ym = f.date.take(7)
+            monthAcc[ym]?.let { m ->
+                monthAcc[ym] = m.copy(factoryUnits = m.factoryUnits + f.units)
+                bump(factoryByFormula, f.formulaName.ifBlank { "No formula" }, f.units)
+            }
+        }
+
+        // Inventory
+        val liveMaterials = FinanceEngine.materialRecords(snapshot.inventory)
+        var stockValue = 0.0
+        var stockItems = 0
+        val stockRows = mutableListOf<Pair<String, Double>>()
+        val outOfStock = mutableListOf<String>()
+        liveMaterials.forEach { m ->
+            if (m.quantity > 0.0) {
+                val v = m.quantity * m.cost
+                stockValue += v
+                stockItems++
+                stockRows.add(m.name.ifBlank { "Material" } to InputGuards.round2(v))
+            } else {
+                outOfStock.add(m.name.ifBlank { "Material" })
+            }
+        }
+
+        val formulaCosts = snapshot.formulas.mapNotNull { f ->
+            val desc = FormulaEngine.describeFormula(f, snapshot.formulas, snapshot.inventory)
+            if (desc.weight > 0.0 && desc.perUnit > 0.0) {
+                val lbl = if (f.ingredients.any { FormulaEngine.isLink(it) }) "${f.name} (linked)" else f.name
+                lbl to InputGuards.round2(desc.perUnit / desc.weight)
+            } else null
+        }.sortedByDescending { it.second }
+
+        val buckets = monthAcc.values.toList()
+        val prodKg = buckets.sumOf { it.prodKg }
+        val prodProfit = buckets.sumOf { it.prodProfit }
+        val prodValue = buckets.sumOf { it.prodValue }
+        val prodCost = buckets.sumOf { it.prodCost }
+        val soldKg = buckets.sumOf { it.soldKg }
+        val returnsKg = buckets.sumOf { it.returnsKg }
+        val salesValue = buckets.sumOf { it.salesValue }
+        val salesProfit = buckets.sumOf { it.salesProfit }
+        val salesCount = buckets.sumOf { it.salesCount }
+        val cashIn = buckets.sumOf { it.cashIn }
+        val cashOut = buckets.sumOf { it.cashOut }
+        val expenses = buckets.sumOf { it.expenses }
+
+        val profitAnalysis = analyseProfit(activeSales, keySet, snapshot)
+        val audit = auditWorkspace(snapshot)
+
+        val topOwedCust = owedByCust.entries
             .sortedByDescending { it.value }
-            .map { it.key to it.value }
-
-        val findings = auditWorkspace(snapshot)
+            .take(8)
+            .map { Triple(it.key, InputGuards.round2(it.value), oldestByCust[it.key] ?: 0) }
 
         return OverviewKpiSummary(
-            windowMonths = windowMonths,
-            totalSalesRevenue = InputGuards.round2(salesRev),
-            totalCashCollected = InputGuards.round2(cashCollected),
-            totalProducedKg = InputGuards.round3(producedKg),
-            totalProductionProfit = InputGuards.round2(prodProfit),
-            totalOperatingExpenses = InputGuards.round2(opExpenses),
-            netOperatingProfit = InputGuards.round2(prodProfit - opExpenses),
-            openCredits = health.customerReceivables,
-            cashInHand = health.cashInHand,
-            monthlyRevenueSeries = monthRevMap.entries.toList().takeLast(6).map { it.key to InputGuards.round2(it.value) },
-            monthlyExpenseSeries = monthExpMap.entries.toList().takeLast(6).map { it.key to InputGuards.round2(it.value) },
-            storeSalesBreakdown = byStore,
-            findings = findings
+            windowMonths = span,
+            months = buckets,
+            prodKg = InputGuards.round2(prodKg),
+            prodProfit = InputGuards.round2(prodProfit),
+            prodValue = InputGuards.round2(prodValue),
+            prodCost = InputGuards.round2(prodCost),
+            marginPct = if (prodValue > 0.0) (prodProfit / prodValue) * 100.0 else 0.0,
+            soldKg = InputGuards.round2(soldKg),
+            returnsKg = InputGuards.round2(returnsKg),
+            remainingKg = InputGuards.round2(prodKg + returnsKg - soldKg),
+            salesValue = InputGuards.round2(salesValue),
+            salesProfit = InputGuards.round2(salesProfit),
+            salesCount = salesCount,
+            cashIn = InputGuards.round2(cashIn),
+            cashOut = InputGuards.round2(cashOut),
+            netCash = InputGuards.round2(cashIn - cashOut),
+            expenses = InputGuards.round2(expenses),
+            openCreditValue = InputGuards.round2(openCreditValue),
+            openCreditCount = openCreditCount,
+            stockValue = InputGuards.round2(stockValue),
+            stockItemsCount = stockItems,
+            outOfStockNames = outOfStock,
+            todayProdKg = InputGuards.round2(todayProdKg),
+            todaySalesValue = InputGuards.round2(todaySalesValue),
+            todayIn = InputGuards.round2(todayIn),
+            todayOut = InputGuards.round2(todayOut),
+            storeSalesBreakdown = storeSalesMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
+            topCustomersValue = custValMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
+            topCustomersKg = custKgMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
+            formulaProductionKg = formulasMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
+            storeProductionKg = storesMap.entries.sortedByDescending { it.value }.take(5).map { it.key to InputGuards.round2(it.value) },
+            expenseCategories = expCatMap.entries.sortedByDescending { it.value }.take(5).map { it.key to InputGuards.round2(it.value) },
+            stockByValue = stockRows.sortedByDescending { it.second }.take(6),
+            cashVsCredit = listOfNotNull(
+                if (cashPayTotal > 0.0) "Cash" to InputGuards.round2(cashPayTotal) else null,
+                if (creditPayTotal > 0.0) "Credit" to InputGuards.round2(creditPayTotal) else null
+            ),
+            factoryByFormula = factoryByFormula.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
+            formulaCostPerKg = formulaCosts,
+            profitAnalysis = profitAnalysis,
+            owedAging = OwedAgingSummary(
+                total = InputGuards.round2(owedTotal),
+                count = owedCount,
+                d30 = InputGuards.round2(d30),
+                d60 = InputGuards.round2(d60),
+                d90 = InputGuards.round2(d90),
+                oldestDays = oldestDays,
+                topCustomers = topOwedCust
+            ),
+            audit = audit,
+            recentActivity = recent.sortedByDescending { it.timestamp }.take(10)
         )
     }
 
-    fun auditWorkspace(snapshot: WorkspaceSnapshot): List<AuditFinding> {
+    private fun analyseProfit(
+        activeSales: List<SalesRecord>,
+        monthKeys: Set<String>,
+        snapshot: WorkspaceSnapshot
+    ): ProfitAnalysis {
+        val inRange = activeSales.filter { it.date.take(7) in monthKeys }
+        var losingCount = 0
+        var losingSum = 0.0
+        var gainingCount = 0
+        var gainingSum = 0.0
+        var net = 0.0
+        var qty = 0.0
+        var value = 0.0
+        var cost = 0.0
+        inRange.forEach { x ->
+            net += x.profit
+            qty += x.quantity
+            value += x.totalValue
+            cost += x.totalCost
+            if (x.profit < 0.0) {
+                losingCount++
+                losingSum += x.profit
+            } else {
+                gainingCount++
+                gainingSum += x.profit
+            }
+        }
+        val worst = inRange.filter { it.profit < 0.0 }.sortedBy { it.profit }.take(8).map { x ->
+            WorstSaleLoss(
+                id = x.id,
+                date = x.date.take(10),
+                customer = x.customerName.ifBlank { "Walk-in" },
+                store = FormulaEngine.storeLabelFor(x.supplyStore, snapshot.stores),
+                qty = x.quantity,
+                price = if (x.quantity > 0.0) x.totalValue / x.quantity else 0.0,
+                cost = if (x.quantity > 0.0) x.totalCost / x.quantity else 0.0,
+                profit = InputGuards.round2(x.profit)
+            )
+        }
+        return ProfitAnalysis(
+            count = inRange.size,
+            losingCount = losingCount,
+            losingSum = InputGuards.round2(losingSum),
+            gainingCount = gainingCount,
+            gainingSum = InputGuards.round2(gainingSum),
+            net = InputGuards.round2(net),
+            avgPrice = if (qty > 0.0) value / qty else 0.0,
+            avgCost = if (qty > 0.0) cost / qty else 0.0,
+            worstLosses = worst
+        )
+    }
+
+    fun auditWorkspace(snapshot: WorkspaceSnapshot): AuditReport {
+        val today = DateUtils.todayIso()
         val findings = mutableListOf<AuditFinding>()
-        val ledgerIds = snapshot.ledgerEntries.filter { !it.recycled }.map { it.id }.toSet()
+        val counts = LinkedHashMap<String, Int>()
+        val entityIds = snapshot.entities.filter { it.deletedAt == null }.map { it.id }.toSet()
+        val hasEntities = entityIds.isNotEmpty()
+        var scannedTotal = 0
 
-        // 1. Check sales marked addToLedger without active ledger mirror
-        snapshot.sales.filter { !it.recycled && it.addToLedger && it.cashReceived > 0 }.forEach { sale ->
-            if (sale.ledgerEntryId.isNullOrBlank() || sale.ledgerEntryId !in ledgerIds) {
+        fun flag(
+            col: String,
+            id: String,
+            title: String,
+            label: String,
+            date: String,
+            code: String,
+            detail: String = "",
+            impact: Double = 0.0
+        ) {
+            counts[code] = (counts[code] ?: 0) + 1
+            val (checkLabel, severity) = CHECK_META[code] ?: (code to "warn")
+            val reason = if (detail.isNotBlank()) "$checkLabel ($detail)" else checkLabel
+            val existing = findings.indexOfFirst { it.collection == col && it.recordId == id }
+            if (existing >= 0) {
+                val cur = findings[existing]
+                findings[existing] = cur.copy(
+                    severity = if (severity == "error") "error" else cur.severity,
+                    reasons = cur.reasons + reason,
+                    impact = if (abs(impact) > abs(cur.impact)) impact else cur.impact
+                )
+            } else {
                 findings.add(
                     AuditFinding(
-                        id = "mirror_sale_${sale.id}",
-                        category = "ledger_mirror",
-                        severity = "warning",
-                        title = "Missing Ledger Mirror for Sale",
-                        detail = "${sale.date} • ${sale.customerName} (${InputGuards.formatMoney(sale.cashReceived)})",
-                        targetId = sale.id
+                        id = "${col}_${code}_$id",
+                        collection = col,
+                        recordId = id,
+                        code = code,
+                        severity = severity,
+                        title = title,
+                        label = label,
+                        date = date,
+                        reasons = listOf(reason),
+                        impact = impact
                     )
                 )
             }
         }
 
-        // 2. Check payments marked addToLedger without active ledger mirror
-        snapshot.transactions.filter { !it.recycled && it.addToLedger && it.amount > 0 && it.txType in listOf("in", "out", "expense") }.forEach { tx ->
-            if (tx.ledgerEntryId.isNullOrBlank() || tx.ledgerEntryId !in ledgerIds) {
-                findings.add(
-                    AuditFinding(
-                        id = "mirror_tx_${tx.id}",
-                        category = "ledger_mirror",
-                        severity = "warning",
-                        title = "Missing Ledger Mirror for Payment",
-                        detail = "${tx.date} • ${tx.entityName} (${InputGuards.formatMoney(tx.amount)})",
-                        targetId = tx.id
-                    )
-                )
+        // Sales
+        val liveSales = snapshot.sales.filter { it.deletedAt == null }
+        scannedTotal += liveSales.size
+        val saleIdCounts = liveSales.groupingBy { it.id }.eachCount()
+        val saleSig = liveSales.filter { !FinanceEngine.isLedgerRow(it) }
+            .groupBy { listOf(it.customerName, it.date, it.time, it.quantity.toString(), it.totalValue.toString()).joinToString("|") }
+
+        liveSales.forEach { s ->
+            val d = s.date.take(10)
+            val title = s.customerName.ifBlank { "Sale" }
+            if (d.length != 10) flag("sales", s.id, title, "Sale", "", "bad_date")
+            else if (d > today) flag("sales", s.id, title, "Sale", d, "future_date", d)
+            if ((saleIdCounts[s.id] ?: 0) > 1) flag("sales", s.id, title, "Sale", d, "duplicate_id", s.id)
+            if (!FinanceEngine.isLedgerRow(s)) {
+                if (s.quantity <= 0.0) flag("sales", s.id, title, "Sale", d, "sale_bad_qty", s.quantity.toString())
+                if (s.totalValue < 0.0) flag("sales", s.id, title, "Sale", d, "sale_negative_value", InputGuards.fmtNum(s.totalValue), s.totalValue)
+                if (s.unitPrice > 0.0 && s.quantity > 0.0 && abs(s.unitPrice * s.quantity - s.totalValue) > max(1.0, s.totalValue * 0.005)) {
+                    flag("sales", s.id, title, "Sale", d, "sale_total_mismatch", "${InputGuards.fmtNum(s.quantity)} x ${InputGuards.fmtNum(s.unitPrice)} vs ${InputGuards.fmtNum(s.totalValue)}", s.unitPrice * s.quantity - s.totalValue)
+                }
+                if (abs(s.profit - (s.totalValue - s.totalCost)) > 1.0) {
+                    flag("sales", s.id, title, "Sale", d, "sale_profit_mismatch", "saved ${InputGuards.fmtNum(s.profit)} vs ${InputGuards.fmtNum(s.totalValue - s.totalCost)}", s.profit - (s.totalValue - s.totalCost))
+                }
+                if (s.totalCost <= 0.0 && s.totalValue > 0.0) {
+                    flag("sales", s.id, title, "Sale", d, "sale_no_cost", "value ${InputGuards.fmtNum(s.totalValue)}", s.totalValue)
+                }
+                if (s.paymentType.equals("CASH", ignoreCase = true) && !s.creditReceived) {
+                    flag("sales", s.id, title, "Sale", d, "sale_cash_unreceived")
+                }
+            }
+        }
+        saleSig.values.filter { it.size > 1 }.forEach { grp ->
+            grp.forEach { s ->
+                flag("sales", s.id, s.customerName.ifBlank { "Sale" }, "Sale", s.date.take(10), "duplicate_record", "${grp.size} copies", s.totalValue)
             }
         }
 
-        // 3. Check negative store stock
-        FinanceEngine.computeStoreStockSnapshots(snapshot).filter { it.availableKg < -0.001 }.forEach { stock ->
-            findings.add(
-                AuditFinding(
-                    id = "neg_stock_${stock.storeKey}",
-                    category = "negative_stock",
-                    severity = "critical",
-                    title = "Negative Store Stock: ${stock.storeName}",
-                    detail = "Available balance is ${InputGuards.formatKg(stock.availableKg)}",
-                    targetId = stock.storeKey
-                )
-            )
+        // Collection links in sales & rep
+        listOf("sales" to liveSales, "rep" to snapshot.repRecords.filter { it.deletedAt == null }).forEach { (col, list) ->
+            val honor = FinanceEngine.allocHonor(list)
+            val liveCols = list.filter { FinanceEngine.isCollectionRow(it) }.map { it.id }.toSet()
+            list.forEach { r ->
+                val title = r.customerName.ifBlank { "Record" }
+                val lbl = if (col == "rep") "Rep record" else "Sale"
+                if (FinanceEngine.isCollectionRow(r)) {
+                    val left = FinanceEngine.collectionUnapplied(r, honor)
+                    if (left > 0.01) flag(col, r.id, title, lbl, r.date.take(10), "col_unapplied", "${InputGuards.fmtNum(left)} unapplied", left)
+                } else if (r.collectionAllocs.isNotEmpty()) {
+                    val orphanAmt = r.collectionAllocs.filterKeys { it !in liveCols }.values.sumOf { max(0.0, it) }
+                    if (orphanAmt > 0.01) flag(col, r.id, title, lbl, r.date.take(10), "link_orphan", "${InputGuards.fmtNum(orphanAmt)} linked to missing collection", orphanAmt)
+                }
+            }
         }
 
-        // 4. Check low raw material inventory
-        snapshot.inventory.filter { !it.recycled && it.minThreshold > 0 && it.stockQty <= it.minThreshold }.forEach { item ->
-            findings.add(
-                AuditFinding(
-                    id = "low_inv_${item.id}",
-                    category = "low_inventory",
-                    severity = "warning",
-                    title = "Low Raw Material: ${item.name}",
-                    detail = "${InputGuards.formatKg(item.stockQty)} remaining (min ${InputGuards.formatKg(item.minThreshold)})",
-                    targetId = item.id
-                )
-            )
+        // Production
+        val liveProd = snapshot.production.filter { it.deletedAt == null }
+        scannedTotal += liveProd.size
+        liveProd.forEach { p ->
+            val d = p.date.take(10)
+            val title = FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { p.formulaName.ifBlank { "Production" } }
+            if (d.length != 10) flag("production", p.id, title, "Production", "", "bad_date")
+            else if (d > today) flag("production", p.id, title, "Production", d, "future_date", d)
+            if (!p.isReturn && !p.isTransfer) {
+                if (p.net <= 0.0) flag("production", p.id, title, "Production", d, "prod_bad_net", p.net.toString())
+                if (p.formulaName.isBlank()) flag("production", p.id, title, "Production", d, "prod_no_formula", "${InputGuards.fmtNum(p.net)} kg", p.profit)
+                if (p.totalSale != 0.0 && abs(p.profit - (p.totalSale - p.totalCost)) > 1.0) {
+                    flag("production", p.id, title, "Production", d, "prod_profit_mismatch", "saved ${InputGuards.fmtNum(p.profit)}", p.profit - (p.totalSale - p.totalCost))
+                }
+            }
         }
 
-        return findings
+        // Transactions
+        val liveTx = snapshot.transactions.filter { it.deletedAt == null }
+        scannedTotal += liveTx.size
+        liveTx.forEach { t ->
+            val d = t.date.take(10)
+            val title = t.entityName.ifBlank { "Payment" }
+            if (d.length != 10) flag("transactions", t.id, title, "Payment", "", "bad_date")
+            else if (d > today) flag("transactions", t.id, title, "Payment", d, "future_date", d)
+            if (t.type != "IN" && t.type != "OUT") flag("transactions", t.id, title, "Payment", d, "txn_bad_type", t.type)
+            if (t.amount < 0.0) flag("transactions", t.id, title, "Payment", d, "txn_bad_amount", t.amount.toString())
+            if (hasEntities && t.entityId.isNotBlank() && t.entityId !in entityIds) {
+                flag("transactions", t.id, title, "Payment", d, "txn_missing_entity", t.entityName.ifBlank { t.entityId }, t.amount)
+            }
+        }
+
+        // Expenses
+        val liveExp = snapshot.expenses.filter { it.deletedAt == null }
+        scannedTotal += liveExp.size
+        liveExp.forEach { e ->
+            val d = e.date.take(10)
+            val title = e.name.ifBlank { e.category.ifBlank { "Expense" } }
+            if (d.length != 10) flag("expenses", e.id, title, "Expense", "", "bad_date")
+            if (e.amount <= 0.0) flag("expenses", e.id, title, "Expense", d, "exp_bad_amount", e.amount.toString())
+        }
+
+        // Inventory materials
+        val liveInv = FinanceEngine.materialRecords(snapshot.inventory)
+        scannedTotal += liveInv.size
+        liveInv.forEach { m ->
+            val title = m.name.ifBlank { "Material" }
+            if (m.quantity < 0.0) flag("inventory", m.id, title, "Material", "", "inv_negative_qty", m.quantity.toString(), m.quantity * m.cost)
+            if (m.cost <= 0.0 && m.quantity > 0.0) flag("inventory", m.id, title, "Material", "", "inv_bad_cost")
+        }
+
+        findings.sortWith(
+            compareBy<AuditFinding> { if (it.severity == "error") 0 else 1 }
+                .thenByDescending { abs(it.impact) }
+                .thenByDescending { it.date }
+        )
+
+        val byCheck = counts.map { (code, count) ->
+            val (label, sev) = CHECK_META[code] ?: (code to "warn")
+            AuditCheckSummary(code = code, label = label, severity = sev, count = count)
+        }.sortedWith(
+            compareBy<AuditCheckSummary> { if (it.severity == "error") 0 else 1 }
+                .thenByDescending { it.count }
+        )
+
+        return AuditReport(
+            findings = findings,
+            byCheck = byCheck,
+            scannedTotal = scannedTotal,
+            errors = findings.count { it.severity == "error" },
+            warnings = findings.count { it.severity != "error" }
+        )
     }
 }

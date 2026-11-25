@@ -12,6 +12,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,9 +27,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
@@ -93,7 +95,8 @@ fun RawMaterialScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
 
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var name by remember { mutableStateOf("") }
@@ -105,20 +108,25 @@ fun RawMaterialScreen(
     var supplierMode by remember { mutableStateOf("none") } // none | existing | new
     var supplier by remember { mutableStateOf("") }
     var paidStr by remember { mutableStateOf("0") }
-    var minStr by remember { mutableStateOf("10") }
     var notes by remember { mutableStateOf("") }
 
-    val existingInv = remember(snapshot.inventory, name) {
-        snapshot.inventory.firstOrNull { !it.recycled && it.name.equals(name.trim(), true) }
+    val materials = remember(snapshot.inventory) { FinanceEngine.materialRecords(snapshot.inventory) }
+    val existingInv = remember(materials, name) {
+        materials.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
     }
-    val collectedKg = remember(snapshot.factory, name) {
-        snapshot.factory.filter { !it.recycled && it.recordType == "purchase" && (name.isBlank() || it.rawItemName.equals(name.trim(), true)) }
-            .sumOf { it.qtyKg }
+    val allLots = remember(snapshot.inventory) {
+        snapshot.inventory.filter { it.deletedAt == null && it.isPurchaseLot }
     }
-    val inStockKg = existingInv?.stockQty ?: snapshot.inventory.filter { !it.recycled }.sumOf { it.stockQty }
-    val pendingSuppliers = remember(snapshot.factory, name) {
-        snapshot.factory.filter { !it.recycled && it.recordType == "purchase" && (name.isBlank() || it.rawItemName.equals(name.trim(), true)) }
-            .sumOf { it.payableBalance }
+    val collectedKg = remember(existingInv, materials) {
+        existingInv?.let { FinanceEngine.collectedKg(it) } ?: materials.sumOf { FinanceEngine.collectedKg(it) }
+    }
+    val inStockKg = existingInv?.quantity ?: materials.sumOf { it.quantity }
+    val pendingSuppliers = remember(existingInv, allLots) {
+        if (existingInv != null) {
+            FinanceEngine.materialPending(existingInv, FinanceEngine.purchasesOf(allLots, existingInv.id))
+        } else {
+            allLots.filter { it.paymentStatus != "paid" }.sumOf { it.totalPayable }
+        }
     }
 
     val unitsBought = unitsBoughtStr.toDoubleOrNull() ?: 0.0
@@ -129,10 +137,12 @@ fun RawMaterialScreen(
     val costPerKg = if (addedKg > 0.0) InputGuards.round2(totalAmount / addedKg) else 0.0
 
     val supplierList = remember(snapshot.entities) {
-        snapshot.entities.filter { !it.recycled && it.entityType == "supplier" }.map { it.name }.distinct().sorted()
+        snapshot.entities.filter { it.deletedAt == null && (it.isSupplier || it.type == "supplier") }
+            .map { it.name }.distinct().sorted()
     }
-    val purchasesHistory = remember(snapshot.factory) {
-        snapshot.factory.filter { !it.recycled && it.recordType == "purchase" }.groupBy { it.date.ifBlank { "No date" } }
+    val purchasesHistory = remember(allLots, name) {
+        allLots.filter { name.isBlank() || it.materialName.equals(name.trim(), ignoreCase = true) }
+            .groupBy { it.purchaseDate.ifBlank { "No date" } }
             .entries.sortedByDescending { it.key }
     }
 
@@ -156,7 +166,7 @@ fun RawMaterialScreen(
                                 label = "Search or add material",
                                 placeholder = "Search saved or type new",
                                 leadingIcon = { Icon(Icons.Outlined.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = if (snapshot.inventory.any { !it.recycled }) {
+                                trailingIcon = if (materials.isNotEmpty()) {
                                     {
                                         Text(
                                             "▾",
@@ -168,13 +178,13 @@ fun RawMaterialScreen(
                                 testTag = "rm_name_input"
                             )
                             DropdownMenu(expanded = matMenuOpen, onDismissRequest = { matMenuOpen = false }) {
-                                snapshot.inventory.filter { !it.recycled }.forEach { item ->
+                                materials.forEach { item ->
                                     DropdownMenuItem(
-                                        text = { Text("${item.name.uppercase()} (${InputGuards.formatKg(item.stockQty)})") },
+                                        text = { Text("${item.name.uppercase()} (${InputGuards.formatKg(item.quantity)})") },
                                         onClick = {
                                             name = item.name
-                                            unitName = item.unitName
-                                            weightPerUnitStr = InputGuards.formatNum(item.conversionFactor).replace(",", "")
+                                            unitName = item.purchaseUnitName
+                                            weightPerUnitStr = InputGuards.fmtNum(item.conversionFactor).replace(",", "")
                                             matMenuOpen = false
                                         }
                                     )
@@ -256,11 +266,10 @@ fun RawMaterialScreen(
                     }
                     if (supplierMode != "none") {
                         Spacer(Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            DecimalField("Paid Now", paidStr, { paidStr = it }, "rm_paid_input", Modifier.weight(1f))
-                            DecimalField("Low Alert", minStr, { minStr = it }, "rm_min_input", Modifier.weight(1f), suffix = "kg")
-                        }
+                        DecimalField("Paid Now", paidStr, { paidStr = it }, "rm_paid_input")
                     }
+                    Spacer(Modifier.height(10.dp))
+                    SarimPillInput(value = notes, onValueChange = { notes = it.take(300) }, label = "NOTES (OPTIONAL)", testTag = "rm_notes_input")
                 }
             }
 
@@ -268,12 +277,12 @@ fun RawMaterialScreen(
                 items(purchasesHistory.take(8).size) { idx ->
                     val (day, list) = purchasesHistory[idx]
                     var expanded by remember(day) { mutableStateOf(false) }
-                    val dayTotal = list.sumOf { it.totalCost }
+                    val dayTotal = list.sumOf { it.totalValue }
                     Column(modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 4.dp, vertical = 4.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
                                 Text(DateUtils.formatPretty(day), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Text("Purchased ${InputGuards.formatNum(dayTotal)}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                Text("Purchased ${InputGuards.formatMoney(dayTotal, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("${list.size} ${if (list.size == 1) "entry" else "entries"}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
@@ -282,13 +291,17 @@ fun RawMaterialScreen(
                         }
                         AnimatedVisibility(visible = expanded) {
                             Column(modifier = Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                list.forEach { p ->
+                                list.forEach { lot ->
                                     SarimCard(contentPadding = PaddingValues(12.dp)) {
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(p.rawItemName ?: "Material", style = MaterialTheme.typography.titleSmall)
-                                            Text(InputGuards.formatKg(p.qtyKg), color = accents.emerald, style = MaterialTheme.typography.labelLarge)
+                                            Text(lot.materialName.ifBlank { lot.name }, style = MaterialTheme.typography.titleSmall)
+                                            Text(InputGuards.formatKg(lot.purchaseKg), color = accents.emerald, style = MaterialTheme.typography.labelLarge)
                                         }
-                                        Text("Total ${InputGuards.formatMoney(p.totalCost, currency, masked)} • Payable ${InputGuards.formatMoney(p.payableBalance, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                        Text(
+                                            "Total ${InputGuards.formatMoney(lot.totalValue, currency, masked)} • Payable ${InputGuards.formatMoney(lot.totalPayable, currency, masked)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = accents.textMuted
+                                        )
                                     }
                                 }
                             }
@@ -310,7 +323,14 @@ fun RawMaterialScreen(
                     SarimDangerButton(
                         text = "Delete Material",
                         onClick = {
-                            vm.recycleRecord("inventory", existingInv.id, existingInv.name)
+                            vm.softDeleteRecord(
+                                collection = "inventory",
+                                docId = existingInv.id,
+                                displayName = existingInv.name,
+                                displayDetail = "Raw material",
+                                displayAmount = InputGuards.formatKg(existingInv.quantity),
+                                snapshotMap = WorkspaceJsonCodec.inventoryToMap(existingInv)
+                            )
                             onBack()
                         },
                         modifier = Modifier.weight(0.85f)
@@ -325,10 +345,9 @@ fun RawMaterialScreen(
                             unitName = unitName.ifBlank { "kg" },
                             factor = factor,
                             qtyUnits = unitsBought,
-                            totalCost = totalAmount,
+                            costPerUnit = costPerUnit,
                             paidNow = paidStr.toDoubleOrNull() ?: 0.0,
                             supplier = if (supplierMode == "none") "" else supplier,
-                            minThreshold = minStr.toDoubleOrNull() ?: 10.0,
                             notes = notes
                         )
                         onBack()
@@ -401,17 +420,20 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                                 testTag = "ent_name_input"
                             )
                             Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf("party", "supplier", "staff", "bank").forEach { t ->
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("party", "supplier", "staff", "expense", "bank").forEach { t ->
                                     val sel = type == t
                                     Surface(
                                         onClick = { type = t },
                                         shape = RoundedCornerShape(14.dp),
                                         color = if (sel) accents.softPillFill else accents.inputFill,
                                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 34.dp)
+                                        modifier = Modifier.defaultMinSize(minHeight = 36.dp)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                                             Text(t.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else MaterialTheme.colorScheme.onSurface)
                                         }
                                     }
@@ -475,7 +497,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                             walletDetails.trim().takeIf { it.isNotBlank() },
                             bookPage.trim().takeIf { it.isNotBlank() }?.let { "Book Page: $it" }
                         ).joinToString(" • ")
-                        vm.addEntity(name, type, phone, openingStr.toDoubleOrNull() ?: 0.0, packedNotes)
+                        vm.addOrUpdateEntity(null, name, type, phone, openingStr.toDoubleOrNull() ?: 0.0, packedNotes)
                         onBack()
                     },
                     enabled = name.isNotBlank(),
@@ -490,6 +512,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
 fun EditCustomerScreen(
     snapshot: WorkspaceSnapshot,
     customerName: String,
+    isRepClient: Boolean = false,
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
@@ -497,30 +520,43 @@ fun EditCustomerScreen(
     val context = LocalContext.current
     val currency = snapshot.settings.currencySymbol
 
-    val existing = remember(snapshot.customers, customerName) {
-        snapshot.customers.firstOrNull { !it.recycled && it.name.equals(customerName, true) }
+    val sourceList = if (isRepClient) snapshot.clients else snapshot.customers
+    val existing = remember(sourceList, customerName) {
+        sourceList.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
             ?: CustomerRecord(name = customerName)
     }
-    val parsedNotes = existing.notes ?: ""
-    val initialCustomPrice = remember(parsedNotes) {
-        Regex("rate:([0-9.]+)").find(parsedNotes)?.groupValues?.getOrNull(1) ?: ""
+    val initialCustomPrice = remember(existing) {
+        when {
+            existing.customSalePrice > 0.0 -> InputGuards.fmtNum(existing.customSalePrice).replace(",", "")
+            else -> Regex("rate:([0-9.]+)").find(existing.notes)?.groupValues?.getOrNull(1) ?: ""
+        }
     }
-    val initialPage = remember(parsedNotes) {
-        Regex("page:([^;\\n]+)").find(parsedNotes)?.groupValues?.getOrNull(1)?.trim() ?: ""
+    val initialPage = remember(existing.notes) {
+        Regex("page:([^;\\n]+)").find(existing.notes)?.groupValues?.getOrNull(1)?.trim() ?: existing.notes
     }
 
     var name by remember(existing) { mutableStateOf(existing.name) }
     var phone by remember(existing) { mutableStateOf(existing.phone) }
     var address by remember(existing) { mutableStateOf(existing.address) }
+    var salesRep by remember(existing) { mutableStateOf(existing.salesRep) }
     var openingStr by remember(existing) {
-        val currentBal = if (existing.id.isNotBlank()) existing.openingBalance
-        else FinanceEngine.computeCustomerBalance(customerName, snapshot.customers, snapshot.sales, snapshot.repRecords)
-        mutableStateOf(InputGuards.formatNum(currentBal).replace(",", ""))
+        val currentBal = if (existing.id.isNotBlank()) existing.oldDebit
+        else FinanceEngine.computeCustomerBalance(
+            customerName,
+            snapshot.customers,
+            snapshot.sales,
+            snapshot.repRecords,
+            snapshot.calculator,
+            snapshot.stores,
+            snapshot.clients,
+            includeClients = isRepClient
+        )
+        mutableStateOf(InputGuards.fmtNum(currentBal).replace(",", ""))
     }
     var customRateStr by remember(existing) { mutableStateOf(initialCustomPrice) }
     var bookPageStr by remember(existing) { mutableStateOf(initialPage) }
-    var routeLat by remember(existing) { mutableStateOf(existing.routeLat) }
-    var routeLng by remember(existing) { mutableStateOf(existing.routeLng) }
+    var gpsLat by remember(existing) { mutableStateOf(existing.gpsLat) }
+    var gpsLng by remember(existing) { mutableStateOf(existing.gpsLng) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -529,14 +565,17 @@ fun EditCustomerScreen(
     val gpsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             LocationHelper.getBestLastLocation(context)?.let { (la, ln) ->
-                routeLat = la; routeLng = ln
+                gpsLat = la; gpsLng = ln
                 if (address.isBlank()) address = "${String.format("%.4f", la)}, ${String.format("%.4f", ln)}"
             }
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(title = "EDIT CUSTOMER", onBack = onBack)
+        SarimSubpageHeader(
+            title = if (isRepClient) "EDIT REP CUSTOMER" else "EDIT CUSTOMER",
+            onBack = onBack
+        )
 
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -558,7 +597,7 @@ fun EditCustomerScreen(
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = "Editing the name updates this customer profile.",
+                                text = if (isRepClient) "Rep customer profile in clients collection." else "Customer profile in customers collection.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = accents.textMuted
                             )
@@ -593,7 +632,7 @@ fun EditCustomerScreen(
                             onClick = {
                                 if (LocationHelper.hasLocationPermission(context)) {
                                     LocationHelper.getBestLastLocation(context)?.let { (la, ln) ->
-                                        routeLat = la; routeLng = ln
+                                        gpsLat = la; gpsLng = ln
                                         if (address.isBlank()) address = "${String.format("%.4f", la)}, ${String.format("%.4f", ln)}"
                                     }
                                 } else {
@@ -610,6 +649,17 @@ fun EditCustomerScreen(
                             }
                         }
                     }
+                    if (snapshot.settings.reps.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        PickerField(
+                            label = "Assigned Sales Rep",
+                            selectedLabel = salesRep.ifBlank { "None" },
+                            items = listOf("") + snapshot.settings.reps,
+                            itemLabel = { it.ifBlank { "None" } },
+                            onSelect = { salesRep = it },
+                            testTag = "ec_rep_picker"
+                        )
+                    }
                 }
             }
 
@@ -623,15 +673,9 @@ fun EditCustomerScreen(
                     Spacer(Modifier.height(10.dp))
                     SarimPillInput(
                         value = bookPageStr,
-                        onValueChange = { bookPageStr = it.take(40) },
-                        label = "Manual ledger book page",
-                        placeholder = "e.g. 176"
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Shown as a small badge on the customer avatar.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accents.textMuted
+                        onValueChange = { bookPageStr = it.take(120) },
+                        label = "Manual ledger book page / notes",
+                        placeholder = "e.g. page:176"
                     )
                 }
             }
@@ -649,7 +693,14 @@ fun EditCustomerScreen(
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.recycleRecord("customers", existing.id, existing.name)
+                            vm.softDeleteRecord(
+                                collection = if (isRepClient) "clients" else "customers",
+                                docId = existing.id,
+                                displayName = existing.name,
+                                displayDetail = existing.phone,
+                                displayAmount = "",
+                                snapshotMap = WorkspaceJsonCodec.customerToMap(existing)
+                            )
                             onBack()
                         },
                         modifier = Modifier.weight(0.55f),
@@ -659,19 +710,18 @@ fun EditCustomerScreen(
                 SarimGradientButton(
                     text = "Update Customer",
                     onClick = {
-                        val packedNotes = listOfNotNull(
-                            customRateStr.toDoubleOrNull()?.let { "rate:$it" },
-                            bookPageStr.trim().takeIf { it.isNotBlank() }?.let { "page:$it" }
-                        ).joinToString(";")
-                        vm.updateCustomer(
-                            existing = existing,
+                        vm.saveCustomerOrClient(
+                            existing = existing.takeIf { it.id.isNotBlank() },
+                            isRepClient = isRepClient,
                             name = name,
                             phone = phone,
                             address = address,
-                            openingBalance = openingStr.toDoubleOrNull() ?: 0.0,
-                            notes = packedNotes,
-                            lat = routeLat,
-                            lng = routeLng
+                            oldDebit = openingStr.toDoubleOrNull() ?: 0.0,
+                            customSalePrice = customRateStr.toDoubleOrNull() ?: 0.0,
+                            salesRep = salesRep,
+                            notes = bookPageStr,
+                            lat = gpsLat,
+                            lng = gpsLng
                         )
                         onBack()
                     },

@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -49,6 +47,7 @@ import com.gullzubair.sarim.data.model.ProductionRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
+import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
@@ -73,7 +72,7 @@ fun ApprovalsScreen(
     onBack: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val isAdmin = snapshot.profile.role == "admin" || snapshot.profile.uid == snapshot.profile.workspaceOwnerUid
+    val isAdmin = snapshot.profile.isAdmin
     val pendingList = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.filter { it.status == "pending" } }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -110,11 +109,13 @@ fun ApprovalsScreen(
             } else {
                 items(pendingList, key = { it.id }) { item ->
                     SarimCard(accentBorder = accents.gold) {
-                        Text(item.summaryTitle, style = MaterialTheme.typography.titleMedium)
-                        Text(item.summaryDetail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Text(item.summaryTitle.ifBlank { "${item.collection.uppercase()} ${item.action.uppercase()}" }, style = MaterialTheme.typography.titleMedium)
+                        if (item.summaryBody.isNotBlank()) {
+                            Text(item.summaryBody, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Submitted by ${item.submittedByName} • ${item.targetCollection.uppercase()} • ${item.action.uppercase()}",
+                            "Submitted by ${item.submittedByName.ifBlank { item.submittedByEmail }} • ${item.collection.uppercase()} • ${item.action.uppercase()}",
                             style = MaterialTheme.typography.labelSmall,
                             color = accents.cyan
                         )
@@ -153,7 +154,7 @@ fun StockTransferScreen(
     onBack: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.active } }
+    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
     val stocks = remember(snapshot) { FinanceEngine.computeStoreStockSnapshots(snapshot) }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var fromStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
@@ -163,11 +164,11 @@ fun StockTransferScreen(
     var selectedTransfer by remember { mutableStateOf<ProductionRecord?>(null) }
 
     val availableAtSource = remember(fromStore, stocks) {
-        stocks.firstOrNull { it.storeKey == fromStore?.storeKey }?.availableKg ?: 0.0
+        stocks.firstOrNull { it.storeKey.equals(fromStore?.key ?: "", true) }?.availableKg ?: 0.0
     }
     val transferOutRecords = remember(snapshot.production) {
-        snapshot.production.filter { !it.recycled && it.transfer && it.transferType == "out" }
-            .sortedByDescending { it.date }
+        snapshot.production.filter { it.deletedAt == null && it.isTransfer && it.transferDirection == "out" }
+            .sortedWith(compareByDescending<ProductionRecord> { it.date }.thenByDescending { it.timestamp })
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -221,7 +222,7 @@ fun StockTransferScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "${InputGuards.formatKg(availableAtSource)} available at ${fromStore?.name ?: "store"} on $date",
+                        "${InputGuards.formatKg(availableAtSource)} available at ${fromStore?.name ?: "store"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (availableAtSource <= 0.0) accents.danger else accents.emerald
                     )
@@ -236,7 +237,7 @@ fun StockTransferScreen(
                                 notes = ""
                             }
                         },
-                        enabled = fromStore != null && toStore != null && fromStore!!.storeKey != toStore!!.storeKey && qty > 0.0,
+                        enabled = fromStore != null && toStore != null && !fromStore!!.key.equals(toStore!!.key, true) && qty > 0.0,
                         testTag = "st_save_btn"
                     )
                 }
@@ -261,8 +262,10 @@ fun StockTransferScreen(
                     SarimYearMonthDayTree(
                         items = transferOutRecords,
                         dateOf = { it.date },
-                        summaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.netWeight) }) },
+                        summaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.net) }) },
                         itemRow = { rec ->
+                            val fromLbl = FormulaEngine.storeLabelFor(rec.store, snapshot.stores)
+                            val toLbl = FormulaEngine.storeLabelFor(rec.transferPeerStore, snapshot.stores)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -273,11 +276,11 @@ fun StockTransferScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("${rec.storeName} -> ${rec.transferPeerStore ?: ""}", style = MaterialTheme.typography.titleSmall)
+                                    Text("$fromLbl -> $toLbl", style = MaterialTheme.typography.titleSmall)
                                     Text("TRANSFER", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                 }
                                 Text(
-                                    InputGuards.formatKg(kotlin.math.abs(rec.netWeight)),
+                                    InputGuards.formatKg(kotlin.math.abs(rec.net)),
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
@@ -287,22 +290,25 @@ fun StockTransferScreen(
             }
 
             item {
-                SarimNoteBanner("Note: A transfer is only allowed up to the stock currently available at the source store on the selected date. Transfers are recorded against both stores' stock history and sync to all connected devices automatically.")
+                SarimNoteBanner("Note: A transfer is only allowed up to the stock currently available at the source store. Transfers are recorded against both stores' stock history and sync across devices.")
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 
     selectedTransfer?.let { tr ->
-        val absQty = kotlin.math.abs(tr.netWeight)
+        val absQty = kotlin.math.abs(tr.net)
+        val fromLbl = FormulaEngine.storeLabelFor(tr.store, snapshot.stores)
+        val toLbl = FormulaEngine.storeLabelFor(tr.transferPeerStore, snapshot.stores)
+        val noteStr = tr.transferNote.ifBlank { tr.returnNote }
         SarimDetailBottomSheet(
-            title = "${tr.storeName} -> ${tr.transferPeerStore ?: ""}",
+            title = "$fromLbl -> $toLbl",
             rightTitle = InputGuards.formatKg(absQty),
             subtitle = DateUtils.formatPretty(tr.date).uppercase(),
             onDismiss = { selectedTransfer = null },
             content = {
-                if (!tr.notes.isNullOrBlank()) {
-                    Text(tr.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                if (noteStr.isNotBlank()) {
+                    Text(noteStr, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             },
             footer = {
@@ -310,7 +316,7 @@ fun StockTransferScreen(
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.recyclePair("production", tr.transferPairId, tr.id, "Transfer ${tr.storeName} -> ${tr.transferPeerStore}")
+                            vm.recyclePair("production", tr.transferPairId, tr.id, "Transfer $fromLbl -> $toLbl")
                             selectedTransfer = null
                         },
                         modifier = Modifier.weight(0.38f)
@@ -318,11 +324,11 @@ fun StockTransferScreen(
                     SarimGradientButton(
                         text = "Edit",
                         onClick = {
-                            fromStore = activeStores.firstOrNull { it.storeKey == tr.storeKey } ?: fromStore
-                            toStore = activeStores.firstOrNull { it.name.equals(tr.transferPeerStore, true) } ?: toStore
+                            fromStore = activeStores.firstOrNull { it.key.equals(tr.store, true) || it.name.equals(tr.store, true) } ?: fromStore
+                            toStore = activeStores.firstOrNull { it.key.equals(tr.transferPeerStore, true) || it.name.equals(tr.transferPeerStore, true) } ?: toStore
                             date = tr.date
                             qtyStr = absQty.toString()
-                            notes = tr.notes ?: ""
+                            notes = noteStr
                             selectedTransfer = null
                         },
                         modifier = Modifier.weight(0.62f)
@@ -341,7 +347,11 @@ fun PaymentTransferScreen(
     onBack: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val activeEntities = remember(snapshot.entities) { snapshot.entities.filter { !it.recycled && it.entityType != "expense" } }
+    val currency = snapshot.settings.currencySymbol
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val activeEntities = remember(snapshot.entities) {
+        snapshot.entities.filter { it.deletedAt == null && !it.isExpenseEntity && it.type != "expense" }
+    }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var fromEntity by remember(activeEntities) { mutableStateOf(activeEntities.firstOrNull()) }
     var toEntity by remember(activeEntities) { mutableStateOf(activeEntities.getOrElse(1) { activeEntities.firstOrNull() }) }
@@ -358,7 +368,8 @@ fun PaymentTransferScreen(
     }
 
     val transferHistory = remember(snapshot.transactions) {
-        snapshot.transactions.filter { !it.recycled && it.txType == "transfer_out" }.sortedByDescending { it.date }
+        snapshot.transactions.filter { it.deletedAt == null && it.isTransfer && it.transferDirection == "out" }
+            .sortedWith(compareByDescending<PaymentTransaction> { it.date }.thenByDescending { it.timestamp })
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -378,8 +389,8 @@ fun PaymentTransferScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PickerField("From Entity", fromEntity?.name ?: "Search entity...", activeEntities, { it.name }, { fromEntity = it }, "pt_from_picker", Modifier.weight(1f))
-                        PickerField("To Entity", toEntity?.name ?: "Search entity...", activeEntities, { it.name }, { toEntity = it }, "pt_to_picker", Modifier.weight(1f))
+                        PickerField("From Entity", fromEntity?.name ?: "Select entity...", activeEntities, { it.name }, { fromEntity = it }, "pt_from_picker", Modifier.weight(1f))
+                        PickerField("To Entity", toEntity?.name ?: "Select entity...", activeEntities, { it.name }, { toEntity = it }, "pt_to_picker", Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -451,7 +462,7 @@ fun PaymentTransferScreen(
                     SarimYearMonthDayTree(
                         items = transferHistory,
                         dateOf = { it.date },
-                        summaryLabel = { list -> InputGuards.formatNum(list.sumOf { it.amount }) },
+                        summaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked) },
                         itemRow = { tx ->
                             Row(
                                 modifier = Modifier
@@ -463,10 +474,10 @@ fun PaymentTransferScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("${tx.entityName} -> ${tx.peerEntityName ?: ""}", style = MaterialTheme.typography.titleSmall)
+                                    Text("${tx.entityName} -> ${tx.peerEntityName}", style = MaterialTheme.typography.titleSmall)
                                     Text("TRANSFER", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                 }
-                                Text(InputGuards.formatNum(tx.amount), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                Text(InputGuards.formatMoney(tx.amount, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             }
                         }
                     )
@@ -474,7 +485,7 @@ fun PaymentTransferScreen(
             }
 
             item {
-                SarimNoteBanner("Note: A payment transfer records an OUT transaction against the source entity and an IN transaction against the destination entity. Both entities' balances update immediately and sync to all connected devices automatically.")
+                SarimNoteBanner("Note: A payment transfer records an OUT transaction against the source entity and an IN transaction against the destination entity. Both entities' balances update immediately and sync across devices.")
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
@@ -482,13 +493,13 @@ fun PaymentTransferScreen(
 
     selectedTransfer?.let { tx ->
         SarimDetailBottomSheet(
-            title = "${tx.entityName} -> ${tx.peerEntityName ?: ""}",
-            rightTitle = InputGuards.formatNum(tx.amount),
+            title = "${tx.entityName} -> ${tx.peerEntityName}",
+            rightTitle = InputGuards.formatMoney(tx.amount, currency, masked),
             subtitle = DateUtils.formatPretty(tx.date).uppercase(),
             onDismiss = { selectedTransfer = null },
             content = {
-                if (!tx.notes.isNullOrBlank()) {
-                    Text(tx.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                if (tx.description.isNotBlank()) {
+                    Text(tx.description, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             },
             footer = {

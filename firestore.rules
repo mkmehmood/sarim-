@@ -7,13 +7,25 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 2. Global Hardened Helpers
-    function isSignedIn() {
+    // 2. Identity, Workspace & RBAC Helpers
+    function signedIn() {
       return request.auth != null;
     }
 
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
     function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 160 && id.matches('^[a-zA-Z0-9_\\-:.=]+$');
+    }
+
+    function meRef() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function getUserData() {
+      return get(meRef()).data;
     }
 
     function incoming() {
@@ -24,729 +36,290 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function isNum(val) {
-      return (val is int || val is float);
+    // Active = has a user doc, is not suspended (approved != false), and email matches when present.
+    function notSuspended() {
+      return signedIn() && exists(meRef())
+        && getUserData().get('approved', true) != false
+        && (request.auth.token.email == null
+            || getUserData().get('email', request.auth.token.email).lower()
+               == request.auth.token.email.lower());
     }
 
-    function isBoundedStr(val, minLen, maxLen) {
-      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    function dataIsAdmin(data) {
+      return 'admin' in data.get('roles', []) || data.get('role', 'user') == 'admin';
     }
 
-    function isValidTs(val) {
-      return val is timestamp && val <= request.time;
+    function isAdmin() {
+      return notSuspended() && dataIsAdmin(getUserData());
     }
 
-    function isValidMemberUids(list, ownerId) {
-      return list is list &&
-             list.size() >= 1 &&
-             list.size() <= 20 &&
-             list[0] is string &&
-             list[0].size() <= 128 &&
-             ownerId in list;
+    // Workspace = owner's UID. Owners have ownerUid absent/null; members point at ownerUid.
+    function wsOwner() {
+      return (getUserData().get('ownerUid', null) is string && getUserData().get('ownerUid', '') != '')
+        ? getUserData().ownerUid
+        : request.auth.uid;
     }
 
-    function isValidStringList(list, maxLen) {
-      return list is list &&
-             list.size() <= maxLen &&
-             (list.size() == 0 || (list[0] is string && list[0].size() <= 80));
+    function inWorkspace(owner) {
+      return notSuspended() && wsOwner() == owner;
     }
 
-    function isValidMapList(list, maxLen) {
-      return list is list &&
-             list.size() <= maxLen &&
-             (list.size() == 0 || list[0] is map);
+    function managedByMe(data, uid) {
+      return data.get('ownerUid', null) == wsOwner()
+        || (data.get('ownerUid', null) == null
+            && data.get('createdBy', '') == request.auth.token.email)
+        || uid == wsOwner();
     }
 
-    function userDocPath(uid) {
-      return /databases/$(database)/documents/users/$(uid);
+    function targetUser(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    function isWorkspaceOwner(ownerId) {
-      return isSignedIn() && request.auth.uid == ownerId;
+    function isValidInvite(data) {
+      return data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 120
+        && data.memberEmail is string && data.memberEmail.size() >= 3 && data.memberEmail.size() <= 160
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.roles is list && data.roles.size() <= 10
+        && data.approved is bool
+        && data.status in ['pending', 'accepted', 'revoked']
+        && data.createdAt is timestamp && data.createdAt <= request.time
+        && data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
-    // Single-document parent gate for workspace membership & admin status
-    function isActiveWorkspaceMember(ownerId) {
-      return isWorkspaceOwner(ownerId) || (
-        isSignedIn() &&
-        exists(userDocPath(request.auth.uid)) &&
-        get(userDocPath(request.auth.uid)).data.workspaceOwnerUid == ownerId &&
-        get(userDocPath(request.auth.uid)).data.approved == true
-      );
-    }
+    // 3. Root User & Invite Documents
 
-    function isWorkspaceAdmin(ownerId) {
-      return isWorkspaceOwner(ownerId) || (
-        isActiveWorkspaceMember(ownerId) &&
-        get(userDocPath(request.auth.uid)).data.role == 'admin'
-      );
-    }
-
-    // 3. Schema Validators (Anti-Update-Gap Blueprints)
-
-    function isValidUserProfile(data, userId) {
-      return data.uid is string && data.uid == userId &&
-             isBoundedStr(data.email, 3, 160) &&
-             isBoundedStr(data.displayName, 1, 80) &&
-             isBoundedStr(data.workspaceOwnerUid, 1, 128) &&
-             data.role in ['admin', 'member'] &&
-             isValidStringList(data.roles, 8) &&
-             data.approved is bool &&
-             (!('inviteId' in data) || (data.inviteId is string && data.inviteId.size() <= 128)) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidWorkspaceInvite(data) {
-      return isBoundedStr(data.ownerUid, 1, 128) &&
-             isBoundedStr(data.ownerName, 1, 80) &&
-             isBoundedStr(data.memberEmail, 3, 160) &&
-             isBoundedStr(data.displayName, 1, 80) &&
-             isValidStringList(data.roles, 8) &&
-             data.approved is bool &&
-             data.status in ['pending', 'accepted', 'revoked'] &&
-             (!('acceptedByUid' in data) || isBoundedStr(data.acceptedByUid, 1, 128)) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidStoreConfig(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.storeKey, 1, 64) &&
-             isBoundedStr(data.name, 1, 80) &&
-             isBoundedStr(data.formulaId, 0, 128) &&
-             isNum(data.salePrice) && data.salePrice >= 0 && data.salePrice <= 100000000 &&
-             data.active is bool &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidFormulaConfig(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.name, 1, 80) &&
-             isNum(data.unitsPerBatch) && data.unitsPerBatch > 0 && data.unitsPerBatch <= 1000000 &&
-             isNum(data.additionalCost) && data.additionalCost >= 0 && data.additionalCost <= 100000000 &&
-             isNum(data.costAdjustment) && data.costAdjustment >= -100000000 && data.costAdjustment <= 100000000 &&
-             isValidMapList(data.ingredients, 40) &&
-             isValidMapList(data.savedMixes, 40) &&
-             isValidMapList(data.savedCorrections, 40) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidCustomerRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.name, 1, 80) &&
-             isBoundedStr(data.phone, 0, 32) &&
-             isBoundedStr(data.address, 0, 200) &&
-             (!('routeLat' in data) || isNum(data.routeLat)) &&
-             (!('routeLng' in data) || isNum(data.routeLng)) &&
-             data.visitCount is int && data.visitCount >= 0 && data.visitCount <= 1000000 &&
-             isNum(data.openingBalance) && data.openingBalance >= -100000000 && data.openingBalance <= 100000000 &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidEntityRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.name, 1, 80) &&
-             data.entityType in ['party', 'supplier', 'staff', 'expense', 'bank'] &&
-             isBoundedStr(data.phone, 0, 32) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             isNum(data.openingBalance) && data.openingBalance >= -100000000 && data.openingBalance <= 100000000 &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidInventoryItem(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.name, 1, 80) &&
-             isBoundedStr(data.unitName, 1, 32) &&
-             isNum(data.conversionFactor) && data.conversionFactor > 0 && data.conversionFactor <= 100000 &&
-             isNum(data.stockQty) && data.stockQty >= -10000000 && data.stockQty <= 10000000 &&
-             isNum(data.avgCostPerKg) && data.avgCostPerKg >= 0 && data.avgCostPerKg <= 100000000 &&
-             isNum(data.minThreshold) && data.minThreshold >= 0 && data.minThreshold <= 10000000 &&
-             (!('supplierName' in data) || isBoundedStr(data.supplierName, 0, 80)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidProductionRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             isBoundedStr(data.storeKey, 1, 64) &&
-             isBoundedStr(data.storeName, 1, 80) &&
-             (!('formulaId' in data) || isBoundedStr(data.formulaId, 0, 128)) &&
-             isNum(data.formulaUnits) && data.formulaUnits >= 0 && data.formulaUnits <= 1000000 &&
-             isNum(data.grossWeight) && data.grossWeight >= 0 && data.grossWeight <= 1000000 &&
-             isNum(data.containerWeight) && data.containerWeight >= 0 && data.containerWeight <= 1000000 &&
-             isNum(data.netWeight) && data.netWeight >= -1000000 && data.netWeight <= 1000000 &&
-             isNum(data.costPerKg) && data.costPerKg >= 0 && data.costPerKg <= 100000000 &&
-             isNum(data.salePrice) && data.salePrice >= 0 && data.salePrice <= 100000000 &&
-             isNum(data.totalCost) && data.totalCost >= -1000000000 && data.totalCost <= 1000000000 &&
-             isNum(data.totalRevenue) && data.totalRevenue >= -1000000000 && data.totalRevenue <= 1000000000 &&
-             isNum(data.profit) &&
-             data.transfer is bool &&
-             data.transferType in ['none', 'out', 'in'] &&
-             (!('transferPairId' in data) || isBoundedStr(data.transferPairId, 0, 128)) &&
-             (!('transferPeerStore' in data) || isBoundedStr(data.transferPeerStore, 0, 80)) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidSalesRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             data.mode in ['sale', 'collection'] &&
-             (!('customerId' in data) || isBoundedStr(data.customerId, 0, 128)) &&
-             isBoundedStr(data.customerName, 1, 80) &&
-             isBoundedStr(data.storeKey, 0, 64) &&
-             (!('storeName' in data) || isBoundedStr(data.storeName, 0, 80)) &&
-             isBoundedStr(data.repName, 1, 80) &&
-             isNum(data.qtyKg) && data.qtyKg >= 0 && data.qtyKg <= 1000000 &&
-             isNum(data.ratePerKg) && data.ratePerKg >= 0 && data.ratePerKg <= 100000000 &&
-             isNum(data.totalAmount) && data.totalAmount >= 0 && data.totalAmount <= 1000000000 &&
-             isNum(data.cashReceived) && data.cashReceived >= 0 && data.cashReceived <= 1000000000 &&
-             isNum(data.creditAmount) && data.creditAmount >= 0 && data.creditAmount <= 1000000000 &&
-             isNum(data.expiredKg) && data.expiredKg >= 0 && data.expiredKg <= 1000000 &&
-             isNum(data.choraValue) && data.choraValue >= 0 && data.choraValue <= 1000000000 &&
-             data.addToLedger is bool &&
-             (!('ledgerEntryId' in data) || isBoundedStr(data.ledgerEntryId, 0, 128)) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidRepRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             isBoundedStr(data.repName, 1, 80) &&
-             data.mode in ['sale', 'collection', 'return'] &&
-             (!('customerId' in data) || isBoundedStr(data.customerId, 0, 128)) &&
-             isBoundedStr(data.customerName, 1, 80) &&
-             isBoundedStr(data.storeKey, 0, 64) &&
-             isNum(data.qtyKg) && data.qtyKg >= 0 && data.qtyKg <= 1000000 &&
-             isNum(data.ratePerKg) && data.ratePerKg >= 0 && data.ratePerKg <= 100000000 &&
-             isNum(data.totalAmount) && data.totalAmount >= 0 && data.totalAmount <= 1000000000 &&
-             isNum(data.cashReceived) && data.cashReceived >= 0 && data.cashReceived <= 1000000000 &&
-             isNum(data.creditAmount) && data.creditAmount >= 0 && data.creditAmount <= 1000000000 &&
-             (!('routeLat' in data) || isNum(data.routeLat)) &&
-             (!('routeLng' in data) || isNum(data.routeLng)) &&
-             data.addressConfirmed is bool &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidCalculatorSettlement(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.dateFrom, 8, 20) &&
-             isBoundedStr(data.dateTo, 8, 20) &&
-             isBoundedStr(data.repName, 1, 80) &&
-             isBoundedStr(data.storeKey, 1, 64) &&
-             isNum(data.totalSoldKg) && data.totalSoldKg >= 0 && data.totalSoldKg <= 1000000 &&
-             isNum(data.returnedKg) && data.returnedKg >= 0 && data.returnedKg <= 1000000 &&
-             data.returnTarget in ['store', 'rep'] &&
-             (!('returnTargetName' in data) || isBoundedStr(data.returnTargetName, 0, 80)) &&
-             isNum(data.expiredKg) && data.expiredKg >= 0 && data.expiredKg <= 1000000 &&
-             isNum(data.sharedDeduction) && data.sharedDeduction >= 0 && data.sharedDeduction <= 1000000000 &&
-             isNum(data.netSoldKg) &&
-             isNum(data.cashQtyKg) && isNum(data.creditQtyKg) &&
-             isNum(data.ratePerKg) && data.ratePerKg >= 0 && data.ratePerKg <= 100000000 &&
-             isNum(data.commissionTotal) &&
-             isValidMapList(data.commissions, 25) &&
-             isNum(data.expenseTotal) &&
-             isValidMapList(data.expenses, 40) &&
-             isNum(data.expectedCash) && isNum(data.physicalCash) && isNum(data.variance) &&
-             data.addToLedger is bool &&
-             (!('ledgerEntryId' in data) || isBoundedStr(data.ledgerEntryId, 0, 128)) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidFactoryRecord(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             data.recordType in ['batch', 'purchase'] &&
-             (!('formulaId' in data) || isBoundedStr(data.formulaId, 0, 128)) &&
-             (!('formulaName' in data) || isBoundedStr(data.formulaName, 0, 80)) &&
-             (!('storeKey' in data) || isBoundedStr(data.storeKey, 0, 64)) &&
-             data.unitsProduced is int && data.unitsProduced >= 0 && data.unitsProduced <= 1000000 &&
-             (!('rawItemId' in data) || isBoundedStr(data.rawItemId, 0, 128)) &&
-             (!('rawItemName' in data) || isBoundedStr(data.rawItemName, 0, 80)) &&
-             (!('supplierName' in data) || isBoundedStr(data.supplierName, 0, 80)) &&
-             isNum(data.qtyRawUnit) && data.qtyRawUnit >= 0 &&
-             isNum(data.conversionFactor) && data.conversionFactor > 0 &&
-             isNum(data.qtyKg) && data.qtyKg >= 0 &&
-             isNum(data.unitCost) && data.unitCost >= 0 &&
-             isNum(data.totalCost) && data.totalCost >= 0 &&
-             isNum(data.paidAmount) && data.paidAmount >= 0 &&
-             isNum(data.payableBalance) && data.payableBalance >= 0 &&
-             isNum(data.allocatedPaid) && data.allocatedPaid >= 0 &&
-             data.settled is bool &&
-             isValidMapList(data.ingredientsUsed, 40) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidPaymentTransaction(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             data.txType in ['in', 'out', 'expense', 'transfer_out', 'transfer_in'] &&
-             (!('entityId' in data) || isBoundedStr(data.entityId, 0, 128)) &&
-             isBoundedStr(data.entityName, 1, 80) &&
-             isBoundedStr(data.entityCategory, 1, 40) &&
-             isBoundedStr(data.paymentChannel, 1, 40) &&
-             isNum(data.amount) && data.amount >= 0 && data.amount <= 1000000000 &&
-             (!('transferPairId' in data) || isBoundedStr(data.transferPairId, 0, 128)) &&
-             (!('peerEntityName' in data) || isBoundedStr(data.peerEntityName, 0, 80)) &&
-             data.addToLedger is bool &&
-             (!('ledgerEntryId' in data) || isBoundedStr(data.ledgerEntryId, 0, 128)) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidDailyLedgerEntry(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.date, 8, 20) &&
-             data.entryType in ['IN', 'OUT', 'TRANSFER'] &&
-             data.expenseScope in ['business', 'home', 'none'] &&
-             isBoundedStr(data.channel, 1, 40) &&
-             (!('toChannel' in data) || isBoundedStr(data.toChannel, 0, 40)) &&
-             isBoundedStr(data.category, 1, 60) &&
-             isBoundedStr(data.partyName, 0, 80) &&
-             isNum(data.amount) && data.amount > 0 && data.amount <= 1000000000 &&
-             data.tabEntry is bool &&
-             (!('sourceCollection' in data) || isBoundedStr(data.sourceCollection, 0, 40)) &&
-             (!('sourceDocId' in data) || isBoundedStr(data.sourceDocId, 0, 128)) &&
-             (!('notes' in data) || isBoundedStr(data.notes, 0, 500)) &&
-             data.recycled is bool &&
-             data.recycledAtEpoch is int && data.recycledAtEpoch >= 0 &&
-             isBoundedStr(data.createdByUid, 1, 128) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidPendingApproval(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.submittedByUid, 1, 128) &&
-             isBoundedStr(data.submittedByName, 1, 80) &&
-             isBoundedStr(data.submittedByEmail, 3, 160) &&
-             data.action in ['set', 'delete'] &&
-             data.targetCollection in [
-               'production', 'sales', 'rep_records', 'calculator',
-               'factory', 'transactions', 'ledger_entries', 'inventory',
-               'customers', 'entities'
-             ] &&
-             isBoundedStr(data.targetDocId, 1, 128) &&
-             isBoundedStr(data.summaryTitle, 1, 120) &&
-             isBoundedStr(data.summaryDetail, 0, 500) &&
-             isBoundedStr(data.recordDate, 0, 20) &&
-             data.payloadData is map && data.payloadData.size() <= 40 &&
-             data.status in ['pending', 'approved', 'rejected'] &&
-             (!('reviewedByUid' in data) || isBoundedStr(data.reviewedByUid, 0, 128)) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    function isValidWorkspaceSettings(data, ownerId) {
-      return data.ownerUid == ownerId &&
-             isValidMemberUids(data.memberUids, ownerId) &&
-             isBoundedStr(data.currencySymbol, 1, 12) &&
-             data.financialYearStartMonth is int && data.financialYearStartMonth >= 1 && data.financialYearStartMonth <= 12 &&
-             data.hideSensitiveMoney is bool &&
-             data.biometricLockEnabled is bool &&
-             data.themeMode in ['dark', 'light', 'system'] &&
-             isValidStringList(data.paymentChannels, 15) &&
-             isValidStringList(data.expenseCategories, 30) &&
-             isValidTs(data.createdAt) &&
-             isValidTs(data.updatedAt);
-    }
-
-    // 4. Collection Rules
-
-    match /users/{userId} {
-      allow list: if isSignedIn() && (
-        request.auth.uid == userId ||
-        resource.data.workspaceOwnerUid == request.auth.uid
-      );
-      allow get: if isValidId(userId) && isSignedIn() && (
-        request.auth.uid == userId ||
-        resource.data.workspaceOwnerUid == request.auth.uid
+    match /users/{uid} {
+      allow list: if signedIn() && (
+        request.auth.uid == uid
+        || inWorkspace(uid)
+        || (isAdmin() && managedByMe(existing(), uid))
       );
 
-      allow create: if isValidId(userId) &&
-        isSignedIn() &&
-        request.auth.uid == userId &&
-        isValidUserProfile(incoming(), userId) &&
-        incoming().keys().hasAll(['uid', 'email', 'displayName', 'workspaceOwnerUid', 'role', 'roles', 'approved', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['uid', 'email', 'displayName', 'workspaceOwnerUid', 'role', 'roles', 'approved', 'inviteId', 'createdAt', 'updatedAt']) &&
+      allow get: if isValidId(uid) && signedIn() && (
+        isOwner(uid)
+        || inWorkspace(uid)
+        || (isAdmin() && managedByMe(existing(), uid))
+      );
+
+      allow create: if isValidId(uid) && signedIn() && (
+        // Case A: First-time workspace owner self-bootstrap (Google Sign-In new user)
         (
-          (incoming().workspaceOwnerUid == request.auth.uid && incoming().role == 'admin' && incoming().approved == true) ||
-          (
-            'inviteId' in incoming() &&
-            isValidId(incoming().inviteId) &&
-            exists(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)) &&
-            get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.ownerUid == incoming().workspaceOwnerUid &&
-            get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.status == 'pending' &&
-            get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.approved == true &&
-            request.auth.token.email_verified == true &&
-            get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.memberEmail == request.auth.token.email.lower() &&
-            incoming().role == 'member'
-          )
-        );
-
-      allow update: if isValidId(userId) &&
-        isSignedIn() &&
-        isValidUserProfile(incoming(), userId) &&
-        incoming().uid == existing().uid &&
-        incoming().createdAt == existing().createdAt &&
+          isOwner(uid)
+          && !exists(meRef())
+          && incoming().get('ownerUid', null) == null
+          && dataIsAdmin(incoming())
+          && incoming().get('approved', true) == true
+          && incoming().keys().hasOnly([
+            'uid', 'email', 'displayName', 'role', 'roles', 'approved',
+            'ownerUid', 'authProviders', 'lastLoginAt', 'lastWrite', 'createdAt', 'updatedAt'
+          ])
+          && (!('uid' in incoming()) || incoming().uid == uid)
+        ) ||
+        // Case B: Verified team member joining via workspace invite
         (
-          // User updating own harmless displayName/updatedAt
-          (
-            request.auth.uid == userId &&
-            incoming().workspaceOwnerUid == existing().workspaceOwnerUid &&
-            incoming().role == existing().role &&
-            incoming().roles == existing().roles &&
-            incoming().approved == existing().approved &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
-          ) ||
-          // Workspace owner updating a team member's roles / approval
-          (
-            userId != request.auth.uid &&
-            existing().workspaceOwnerUid == request.auth.uid &&
-            incoming().workspaceOwnerUid == existing().workspaceOwnerUid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'roles', 'approved', 'displayName', 'updatedAt'])
-          )
-        );
+          isOwner(uid)
+          && !exists(meRef())
+          && 'inviteId' in incoming()
+          && isValidId(incoming().inviteId)
+          && exists(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId))
+          && get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.ownerUid == incoming().ownerUid
+          && get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.status == 'pending'
+          && get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.approved == true
+          && request.auth.token.email_verified == true
+          && get(/databases/$(database)/documents/workspace_invites/$(incoming().inviteId)).data.memberEmail == request.auth.token.email.lower()
+          && !dataIsAdmin(incoming())
+          && incoming().get('role', 'user') != 'admin'
+        ) ||
+        // Case C: Existing workspace admin creating a member document (web parity)
+        (
+          isAdmin()
+          && incoming().get('ownerUid', null) == wsOwner()
+        )
+      );
 
-      allow delete: if isValidId(userId) &&
-        isSignedIn() &&
-        userId != request.auth.uid &&
-        existing().workspaceOwnerUid == request.auth.uid;
+      allow update: if isValidId(uid) && signedIn() && (
+        // Admin managing someone else in their workspace (never the workspace owner)
+        (
+          isAdmin() && uid != request.auth.uid && uid != wsOwner()
+          && managedByMe(existing(), uid)
+          && (incoming().get('ownerUid', null) == wsOwner()
+              || incoming().get('ownerUid', null) == existing().get('ownerUid', null))
+        ) ||
+        // Admin editing themselves may not drop admin status or switch workspace owner
+        (
+          isAdmin() && isOwner(uid) && dataIsAdmin(incoming())
+          && incoming().get('ownerUid', null) == existing().get('ownerUid', null)
+        ) ||
+        // Owners may update harmless profile/sync fields on their own doc
+        (
+          isOwner(uid) && notSuspended()
+          && incoming().diff(existing()).affectedKeys()
+               .hasOnly(['lastWrite', 'lastLoginAt', 'authProviders', 'displayName', 'updatedAt'])
+        ) ||
+        // Members ping the workspace owner's doc so every device re-syncs
+        (
+          inWorkspace(uid) && !isOwner(uid)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['lastWrite'])
+        )
+      );
+
+      allow delete: if isValidId(uid) && isAdmin()
+        && uid != request.auth.uid && uid != wsOwner()
+        && managedByMe(existing(), uid);
     }
 
     match /workspace_invites/{inviteId} {
-      allow list: if isSignedIn() && (
-        resource.data.ownerUid == request.auth.uid ||
-        (request.auth.token.email_verified == true && resource.data.memberEmail == request.auth.token.email.lower())
+      allow list: if signedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        (request.auth.token.email_verified == true && existing().memberEmail == request.auth.token.email.lower())
       );
-      allow get: if isValidId(inviteId) && isSignedIn() && (
-        resource.data.ownerUid == request.auth.uid ||
-        (request.auth.token.email_verified == true && resource.data.memberEmail == request.auth.token.email.lower())
+      allow get: if isValidId(inviteId) && signedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        (request.auth.token.email_verified == true && existing().memberEmail == request.auth.token.email.lower())
       );
-
-      allow create: if isValidId(inviteId) &&
-        isSignedIn() &&
-        incoming().ownerUid == request.auth.uid &&
-        isValidWorkspaceInvite(incoming()) &&
-        incoming().keys().hasAll(['ownerUid', 'ownerName', 'memberEmail', 'displayName', 'roles', 'approved', 'status', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'ownerName', 'memberEmail', 'displayName', 'roles', 'approved', 'status', 'acceptedByUid', 'createdAt', 'updatedAt']);
-
-      allow update: if isValidId(inviteId) &&
-        isSignedIn() &&
-        isValidWorkspaceInvite(incoming()) &&
-        incoming().ownerUid == existing().ownerUid &&
-        incoming().createdAt == existing().createdAt &&
-        (
-          // Workspace owner updates invite roles/status
+      allow create: if isValidId(inviteId) && isAdmin()
+        && incoming().ownerUid == wsOwner()
+        && isValidInvite(incoming())
+        && incoming().keys().hasAll(['ownerUid', 'ownerName', 'memberEmail', 'displayName', 'roles', 'approved', 'status', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['ownerUid', 'ownerName', 'memberEmail', 'displayName', 'roles', 'approved', 'status', 'acceptedByUid', 'createdAt', 'updatedAt']);
+      allow update: if isValidId(inviteId) && signedIn()
+        && isValidInvite(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && (
           (
-            existing().ownerUid == request.auth.uid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'roles', 'approved', 'status', 'updatedAt'])
-          ) ||
-          // Invited member accepts pending invite with verified email
-          (
-            existing().status == 'pending' &&
-            request.auth.token.email_verified == true &&
-            existing().memberEmail == request.auth.token.email.lower() &&
-            incoming().status == 'accepted' &&
-            incoming().acceptedByUid == request.auth.uid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'acceptedByUid', 'updatedAt'])
-          )
-        );
-
-      allow delete: if isValidId(inviteId) &&
-        isSignedIn() &&
-        existing().ownerUid == request.auth.uid;
-    }
-
-    // Standard workspace subcollections (Admin writes directly; owner/members list via memberUids without get())
-
-    match /users/{ownerId}/stores/{storeId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(storeId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(storeId) && isWorkspaceAdmin(ownerId) && isValidStoreConfig(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'storeKey', 'name', 'formulaId', 'salePrice', 'active', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'storeKey', 'name', 'formulaId', 'salePrice', 'active', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(storeId) && isValidStoreConfig(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'storeKey', 'name', 'formulaId', 'salePrice', 'active', 'updatedAt']);
-      allow delete: if isValidId(storeId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/formulas/{formulaId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(formulaId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(formulaId) && isWorkspaceAdmin(ownerId) && isValidFormulaConfig(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'name', 'unitsPerBatch', 'additionalCost', 'costAdjustment', 'ingredients', 'savedMixes', 'savedCorrections', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'name', 'unitsPerBatch', 'additionalCost', 'costAdjustment', 'ingredients', 'savedMixes', 'savedCorrections', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(formulaId) && isValidFormulaConfig(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'name', 'unitsPerBatch', 'additionalCost', 'costAdjustment', 'ingredients', 'savedMixes', 'savedCorrections', 'updatedAt']);
-      allow delete: if isValidId(formulaId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/customers/{customerId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(customerId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(customerId) && isWorkspaceAdmin(ownerId) && isValidCustomerRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'name', 'phone', 'address', 'visitCount', 'openingBalance', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'name', 'phone', 'address', 'routeLat', 'routeLng', 'visitCount', 'openingBalance', 'notes', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(customerId) && isValidCustomerRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'name', 'phone', 'address', 'routeLat', 'routeLng', 'visitCount', 'openingBalance', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(customerId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/entities/{entityId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(entityId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(entityId) && isWorkspaceAdmin(ownerId) && isValidEntityRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'name', 'entityType', 'phone', 'openingBalance', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'name', 'entityType', 'phone', 'notes', 'openingBalance', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(entityId) && isValidEntityRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'name', 'entityType', 'phone', 'notes', 'openingBalance', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(entityId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/inventory/{itemId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(itemId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(itemId) && isWorkspaceAdmin(ownerId) && isValidInventoryItem(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'name', 'unitName', 'conversionFactor', 'stockQty', 'avgCostPerKg', 'minThreshold', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'name', 'unitName', 'conversionFactor', 'stockQty', 'avgCostPerKg', 'minThreshold', 'supplierName', 'recycled', 'recycledAtEpoch', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(itemId) && isValidInventoryItem(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'name', 'unitName', 'conversionFactor', 'stockQty', 'avgCostPerKg', 'minThreshold', 'supplierName', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(itemId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/production/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidProductionRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'storeKey', 'storeName', 'formulaUnits', 'grossWeight', 'containerWeight', 'netWeight', 'costPerKg', 'salePrice', 'totalCost', 'totalRevenue', 'profit', 'transfer', 'transferType', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'storeKey', 'storeName', 'formulaId', 'formulaUnits', 'grossWeight', 'containerWeight', 'netWeight', 'costPerKg', 'salePrice', 'totalCost', 'totalRevenue', 'profit', 'transfer', 'transferType', 'transferPairId', 'transferPeerStore', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidProductionRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'storeKey', 'storeName', 'formulaId', 'formulaUnits', 'grossWeight', 'containerWeight', 'netWeight', 'costPerKg', 'salePrice', 'totalCost', 'totalRevenue', 'profit', 'transfer', 'transferType', 'transferPairId', 'transferPeerStore', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/sales/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidSalesRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'mode', 'customerName', 'storeKey', 'repName', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'expiredKg', 'choraValue', 'addToLedger', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'mode', 'customerId', 'customerName', 'storeKey', 'storeName', 'repName', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'expiredKg', 'choraValue', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidSalesRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'mode', 'customerId', 'customerName', 'storeKey', 'storeName', 'repName', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'expiredKg', 'choraValue', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/rep_records/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidRepRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'repName', 'mode', 'customerName', 'storeKey', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'addressConfirmed', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'repName', 'mode', 'customerId', 'customerName', 'storeKey', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'routeLat', 'routeLng', 'addressConfirmed', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidRepRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'repName', 'mode', 'customerId', 'customerName', 'storeKey', 'qtyKg', 'ratePerKg', 'totalAmount', 'cashReceived', 'creditAmount', 'routeLat', 'routeLng', 'addressConfirmed', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/calculator/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidCalculatorSettlement(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'dateFrom', 'dateTo', 'repName', 'storeKey', 'totalSoldKg', 'returnedKg', 'returnTarget', 'expiredKg', 'sharedDeduction', 'netSoldKg', 'cashQtyKg', 'creditQtyKg', 'ratePerKg', 'commissionTotal', 'commissions', 'expenseTotal', 'expenses', 'expectedCash', 'physicalCash', 'variance', 'addToLedger', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'dateFrom', 'dateTo', 'repName', 'storeKey', 'totalSoldKg', 'returnedKg', 'returnTarget', 'returnTargetName', 'expiredKg', 'sharedDeduction', 'netSoldKg', 'cashQtyKg', 'creditQtyKg', 'ratePerKg', 'commissionTotal', 'commissions', 'expenseTotal', 'expenses', 'expectedCash', 'physicalCash', 'variance', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidCalculatorSettlement(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'dateFrom', 'dateTo', 'repName', 'storeKey', 'totalSoldKg', 'returnedKg', 'returnTarget', 'returnTargetName', 'expiredKg', 'sharedDeduction', 'netSoldKg', 'cashQtyKg', 'creditQtyKg', 'ratePerKg', 'commissionTotal', 'commissions', 'expenseTotal', 'expenses', 'expectedCash', 'physicalCash', 'variance', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/factory/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidFactoryRecord(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'recordType', 'unitsProduced', 'qtyRawUnit', 'conversionFactor', 'qtyKg', 'unitCost', 'totalCost', 'paidAmount', 'payableBalance', 'allocatedPaid', 'settled', 'ingredientsUsed', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'recordType', 'formulaId', 'formulaName', 'storeKey', 'unitsProduced', 'rawItemId', 'rawItemName', 'supplierName', 'qtyRawUnit', 'conversionFactor', 'qtyKg', 'unitCost', 'totalCost', 'paidAmount', 'payableBalance', 'allocatedPaid', 'settled', 'ingredientsUsed', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidFactoryRecord(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'recordType', 'formulaId', 'formulaName', 'storeKey', 'unitsProduced', 'rawItemId', 'rawItemName', 'supplierName', 'qtyRawUnit', 'conversionFactor', 'qtyKg', 'unitCost', 'totalCost', 'paidAmount', 'payableBalance', 'allocatedPaid', 'settled', 'ingredientsUsed', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/transactions/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidPaymentTransaction(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'txType', 'entityName', 'entityCategory', 'paymentChannel', 'amount', 'addToLedger', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'txType', 'entityId', 'entityName', 'entityCategory', 'paymentChannel', 'amount', 'transferPairId', 'peerEntityName', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidPaymentTransaction(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'txType', 'entityId', 'entityName', 'entityCategory', 'paymentChannel', 'amount', 'transferPairId', 'peerEntityName', 'addToLedger', 'ledgerEntryId', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/ledger_entries/{recordId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(recordId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(recordId) && isWorkspaceAdmin(ownerId) && isValidDailyLedgerEntry(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'date', 'entryType', 'expenseScope', 'channel', 'category', 'partyName', 'amount', 'tabEntry', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'date', 'entryType', 'expenseScope', 'channel', 'toChannel', 'category', 'partyName', 'amount', 'tabEntry', 'sourceCollection', 'sourceDocId', 'notes', 'recycled', 'recycledAtEpoch', 'createdByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(recordId) && isValidDailyLedgerEntry(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'date', 'entryType', 'expenseScope', 'channel', 'toChannel', 'category', 'partyName', 'amount', 'tabEntry', 'sourceCollection', 'sourceDocId', 'notes', 'recycled', 'recycledAtEpoch', 'updatedAt']);
-      allow delete: if isValidId(recordId) && isWorkspaceAdmin(ownerId);
-    }
-
-    match /users/{ownerId}/pending/{pendingId} {
-      allow list: if isSignedIn() && (
-        request.auth.uid == ownerId ||
-        resource.data.submittedByUid == request.auth.uid
-      );
-      allow get: if isValidId(pendingId) && isSignedIn() && (
-        isWorkspaceAdmin(ownerId) ||
-        (resource.data.submittedByUid == request.auth.uid && isActiveWorkspaceMember(ownerId))
-      );
-      allow create: if isValidId(pendingId) &&
-        isActiveWorkspaceMember(ownerId) &&
-        isValidPendingApproval(incoming(), ownerId) &&
-        incoming().submittedByUid == request.auth.uid &&
-        incoming().status == 'pending' &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'submittedByUid', 'submittedByName', 'submittedByEmail', 'action', 'targetCollection', 'targetDocId', 'summaryTitle', 'summaryDetail', 'recordDate', 'payloadData', 'status', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'submittedByUid', 'submittedByName', 'submittedByEmail', 'action', 'targetCollection', 'targetDocId', 'summaryTitle', 'summaryDetail', 'recordDate', 'payloadData', 'status', 'reviewedByUid', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(pendingId) &&
-        isValidPendingApproval(incoming(), ownerId) &&
-        incoming().ownerUid == existing().ownerUid &&
-        incoming().submittedByUid == existing().submittedByUid &&
-        incoming().createdAt == existing().createdAt &&
-        (
-          (
-            isWorkspaceAdmin(ownerId) &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedByUid', 'updatedAt'])
+            isAdmin() && existing().ownerUid == wsOwner()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'roles', 'approved', 'status', 'updatedAt'])
           ) ||
           (
-            isActiveWorkspaceMember(ownerId) &&
-            existing().submittedByUid == request.auth.uid &&
-            existing().status == 'pending' &&
-            incoming().status == 'pending' &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['action', 'targetCollection', 'targetDocId', 'summaryTitle', 'summaryDetail', 'recordDate', 'payloadData', 'updatedAt'])
+            existing().status == 'pending'
+            && request.auth.token.email_verified == true
+            && existing().memberEmail == request.auth.token.email.lower()
+            && incoming().status == 'accepted'
+            && incoming().acceptedByUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'acceptedByUid', 'updatedAt'])
           )
         );
-      allow delete: if isValidId(pendingId) && (
-        isWorkspaceAdmin(ownerId) ||
-        (isActiveWorkspaceMember(ownerId) && existing().submittedByUid == request.auth.uid)
-      );
+      allow delete: if isValidId(inviteId) && isAdmin() && existing().ownerUid == wsOwner();
     }
 
-    match /users/{ownerId}/settings/{settingId} {
-      allow list: if isSignedIn() && (request.auth.uid == ownerId || request.auth.uid in resource.data.memberUids);
-      allow get: if isValidId(settingId) && isSignedIn() && (request.auth.uid == ownerId || (request.auth.uid in resource.data.memberUids && isActiveWorkspaceMember(ownerId)));
-      allow create: if isValidId(settingId) && isWorkspaceAdmin(ownerId) && isValidWorkspaceSettings(incoming(), ownerId) &&
-        incoming().keys().hasAll(['ownerUid', 'memberUids', 'currencySymbol', 'financialYearStartMonth', 'hideSensitiveMoney', 'biometricLockEnabled', 'themeMode', 'paymentChannels', 'expenseCategories', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['ownerUid', 'memberUids', 'currencySymbol', 'financialYearStartMonth', 'hideSensitiveMoney', 'biometricLockEnabled', 'themeMode', 'paymentChannels', 'expenseCategories', 'createdAt', 'updatedAt']);
-      allow update: if isValidId(settingId) && isValidWorkspaceSettings(incoming(), ownerId) && isWorkspaceAdmin(ownerId) &&
-        incoming().ownerUid == existing().ownerUid && incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'currencySymbol', 'financialYearStartMonth', 'hideSensitiveMoney', 'biometricLockEnabled', 'themeMode', 'paymentChannels', 'expenseCategories', 'updatedAt']);
-      allow delete: if isValidId(settingId) && isWorkspaceAdmin(ownerId);
+    // 4. Pending Approvals (Non-admin team submissions)
+
+    function validPending(pid) {
+      let d = incoming();
+      return d.status == 'pending'
+        && d.id == pid
+        && d.submittedBy is map
+        && d.submittedBy.uid == request.auth.uid
+        && d.action in ['set', 'delete']
+        && d.collection in [
+          'production', 'sales', 'rep', 'clients', 'customers', 'calculator',
+          'inventory', 'factory', 'entities', 'transactions', 'expenses', 'returns'
+        ];
     }
 
-    // 5. Web-app parity: rules that previously existed only for the web app.
-
-    // Photos attach to records (expenses, customers, production...). Any approved
-    // workspace member may add one, as in the web app. Documents are keyed by
-    // base64url(photoKey) and are either a photo or a deletion tombstone.
-    function isValidPhotoId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 400 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    match /users/{uid}/pending/{pid} {
+      allow list: if isValidId(uid) && inWorkspace(uid)
+        && (isAdmin() || existing().submittedBy.uid == request.auth.uid);
+      allow get: if isValidId(uid) && isValidId(pid) && inWorkspace(uid)
+        && (isAdmin() || existing().submittedBy.uid == request.auth.uid);
+      allow create: if isValidId(uid) && isValidId(pid) && inWorkspace(uid)
+        && (isAdmin() || validPending(pid));
+      allow update: if isValidId(uid) && isValidId(pid) && inWorkspace(uid)
+        && (isAdmin()
+            || (validPending(pid)
+                && (existing().status != 'pending'
+                    || existing().submittedBy.uid == request.auth.uid)));
+      allow delete: if isValidId(uid) && isValidId(pid) && inWorkspace(uid)
+        && (isAdmin() || existing().submittedBy.uid == request.auth.uid);
     }
+
+    // 5. Push Device Tokens (Admin self-managed only)
+
+    match /users/{uid}/fcm_tokens/{tokenId} {
+      allow list: if isValidId(uid) && inWorkspace(uid) && isAdmin()
+        && existing().uid == request.auth.uid;
+      allow get, delete: if isValidId(uid) && isValidId(tokenId)
+        && inWorkspace(uid) && isAdmin()
+        && existing().uid == request.auth.uid;
+      allow create, update: if isValidId(uid) && isValidId(tokenId)
+        && inWorkspace(uid) && isAdmin()
+        && incoming().uid == request.auth.uid
+        && tokenId.matches(request.auth.uid + '_.*')
+        && incoming().keys().hasOnly(['uid', 'token', 'platform', 'updatedAt'])
+        && incoming().token is string
+        && incoming().token.size() < 400;
+    }
+
+    // 6. Synced Photos (All workspace members read/write photo payloads & deletion tombstones; admin only hard-delete)
 
     function isValidPhotoDoc(data) {
-      return data.keys().hasAll(['key', 'data', 'updatedAt']) &&
-             data.keys().hasOnly(['key', 'data', 'deleted', 'updatedAt']) &&
-             isBoundedStr(data.key, 1, 300) &&
-             isValidTs(data.updatedAt) &&
-             (
-               (data.data is string && data.data.size() <= 900000 && !('deleted' in data)) ||
-               (data.data == null && data.deleted == true)
-             );
+      return data.keys().hasAll(['key', 'updatedAt'])
+        && data.keys().hasOnly(['key', 'data', 'deleted', 'updatedAt'])
+        && data.key is string && data.key.size() >= 1 && data.key.size() <= 240
+        && (!('data' in data) || data.data == null || (data.data is string && data.data.size() <= 900000))
+        && (!('deleted' in data) || data.deleted is bool);
     }
 
-    match /users/{ownerId}/photos/{photoId} {
-      allow get, list: if isSignedIn() && isActiveWorkspaceMember(ownerId);
-      allow create, update: if isValidPhotoId(photoId) && isActiveWorkspaceMember(ownerId) && isValidPhotoDoc(incoming());
-      allow delete: if isValidPhotoId(photoId) && isWorkspaceAdmin(ownerId);
+    match /users/{uid}/photos/{photoId} {
+      allow list: if isValidId(uid) && inWorkspace(uid);
+      allow get: if isValidId(uid) && isValidId(photoId) && inWorkspace(uid);
+      allow create, update: if isValidId(uid) && isValidId(photoId) && inWorkspace(uid) && isValidPhotoDoc(incoming());
+      allow delete: if isValidId(uid) && isValidId(photoId) && inWorkspace(uid) && isAdmin();
     }
 
-    // Push device tokens: an admin registers and removes only their own devices.
-    // Nobody else can read them; the push Worker uses its own service account.
-    match /users/{ownerId}/fcm_tokens/{tokenId} {
-      allow read, delete: if isSignedIn() && isWorkspaceAdmin(ownerId) &&
-        resource.data.uid == request.auth.uid;
-      allow create, update: if isSignedIn() && isWorkspaceAdmin(ownerId) &&
-        incoming().uid == request.auth.uid &&
-        tokenId.matches(request.auth.uid + '_.*') &&
-        incoming().keys().hasOnly(['uid', 'token', 'platform', 'updatedAt']) &&
-        incoming().token is string &&
-        incoming().token.size() < 400;
+    // 7. Workspace Sync Collections & Singletons (Web Parity RBAC)
+
+    function allowedWorkspaceSub(subcollection) {
+      return subcollection in [
+        'production', 'sales', 'rep', 'clients', 'customers', 'calculator',
+        'inventory', 'factory', 'entities', 'transactions', 'expenses', 'returns',
+        'deletions', 'settings', 'formulas', 'stores', 'categories', 'daily_ledger',
+        'field_expense_categories', 'commission_categories', 'account', 'devices'
+      ];
+    }
+
+    match /users/{uid}/{subcollection}/{docId} {
+      allow list: if isValidId(uid)
+        && allowedWorkspaceSub(subcollection)
+        && inWorkspace(uid)
+        && (isAdmin() || subcollection != 'settings');
+
+      allow get: if isValidId(uid) && isValidId(docId)
+        && allowedWorkspaceSub(subcollection)
+        && (
+          (inWorkspace(uid) && (isAdmin() || !(subcollection == 'settings' && docId == 'accounts')))
+          || (subcollection in ['devices', 'settings'] && isAdmin() && managedByMe(targetUser(uid), uid))
+        );
+
+      allow write: if isValidId(uid) && isValidId(docId)
+        && allowedWorkspaceSub(subcollection)
+        && (
+          (inWorkspace(uid) && isAdmin())
+          || (subcollection in ['devices', 'settings'] && isAdmin() && managedByMe(targetUser(uid), uid))
+        );
+    }
+
+    match /users/{uid}/{subcollection}/{docId}/{rest=**} {
+      allow list: if isValidId(uid)
+        && allowedWorkspaceSub(subcollection)
+        && inWorkspace(uid)
+        && (isAdmin() || subcollection != 'settings');
+
+      allow get: if isValidId(uid) && isValidId(docId)
+        && allowedWorkspaceSub(subcollection)
+        && (
+          (inWorkspace(uid) && (isAdmin() || !(subcollection == 'settings' && docId == 'accounts')))
+          || (subcollection in ['devices', 'settings'] && isAdmin() && managedByMe(targetUser(uid), uid))
+        );
+
+      allow write: if isValidId(uid) && isValidId(docId)
+        && allowedWorkspaceSub(subcollection)
+        && (
+          (inWorkspace(uid) && isAdmin())
+          || (subcollection in ['devices', 'settings'] && isAdmin() && managedByMe(targetUser(uid), uid))
+        );
     }
   }
 }

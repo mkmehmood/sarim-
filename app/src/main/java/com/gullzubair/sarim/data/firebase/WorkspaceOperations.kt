@@ -1,29 +1,39 @@
 package com.gullzubair.sarim.data.firebase
 
+import android.util.Base64
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.SetOptions
 import com.gullzubair.sarim.data.local.OfflineSyncRepository
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.PendingApproval
 import com.gullzubair.sarim.data.model.UserProfile
-import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.InputGuards
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Date
 import java.util.UUID
 
 class WorkspaceOperations(private val repo: AppRepository) {
     private val db: FirebaseFirestore get() = repo.db
     private val offline: OfflineSyncRepository? get() = repo.offlineRepo
 
+    companion object {
+        const val TOMBSTONE_EXPIRY_MS = 90L * 24L * 60L * 60L * 1000L
+        val GATED_COLLECTIONS = setOf(
+            "production", "sales", "rep", "clients", "customers", "calculator",
+            "inventory", "factory", "entities", "transactions", "expenses", "returns"
+        )
+    }
+
     private fun workspaceCol(ownerUid: String, collection: String) =
         db.collection("users").document(ownerUid).collection(collection)
 
-    private fun isAdmin(profile: UserProfile): Boolean =
-        profile.role == "admin" || profile.uid == profile.workspaceOwnerUid
-
-    private fun newId(prefix: String): String =
+    fun newId(prefix: String): String =
         "${prefix}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
 
     private fun isOfflineFirestoreException(e: Throwable): Boolean {
@@ -33,111 +43,86 @@ class WorkspaceOperations(private val repo: AppRepository) {
     }
 
     private suspend fun executeRemoteOrKeepQueued(
-        opId: String?,
+        outboxId: Long,
         remoteCall: suspend () -> Unit
     ) {
         if (!repo.isOnline()) return
-        val synced = withTimeoutOrNull(1800L) {
+        val synced = withTimeoutOrNull(2500L) {
             remoteCall()
             true
         }
-        if (synced == true && opId != null) {
-            offline?.markOpSynced(opId)
+        if (synced == true && outboxId > 0L) {
+            offline?.markOutboxSynced(outboxId)
+        }
+    }
+
+    private suspend fun pingWorkspaceOwner(ownerUid: String, profile: UserProfile) {
+        if (profile.uid == ownerUid) return
+        runCatching {
+            db.collection("users").document(ownerUid).update("lastWrite", System.currentTimeMillis()).await()
         }
     }
 
     suspend fun submitOrExecuteWrite(
         profile: UserProfile,
-        memberUids: List<String>,
         targetCollection: String,
         docId: String?,
         summaryTitle: String,
         summaryDetail: String,
-        recordDate: String,
         payload: Map<String, Any?>,
-        isUpdate: Boolean = false
+        isEdit: Boolean = false
     ): Result<String> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
+        val ownerUid = profile.effectiveOwnerUid
         val resolvedId = docId?.takeIf { it.isNotBlank() } ?: newId(targetCollection.take(4))
         val path = "users/$ownerUid/$targetCollection/$resolvedId"
-        var opId: String? = null
+        var outboxId = 0L
         return try {
             val uid = repo.requireUserId()
-            val cleanMembers = (memberUids + ownerUid).distinct().take(20)
-            if (isAdmin(profile)) {
-                val nowMs = System.currentTimeMillis()
-                val queueAndLocalMap = payload.toMutableMap().apply {
-                    put("id", resolvedId)
-                    put("ownerUid", ownerUid)
-                    put("memberUids", cleanMembers)
-                    put("updatedAt", nowMs)
-                    if (!isUpdate) {
-                        put("createdByUid", uid)
-                        put("createdAt", nowMs)
-                    }
-                }.filterValues { it != null }
+            val cleanPayload = payload.filterValues { it != null }.mapValues { (_, v) -> v as Any }
+            val nowMs = System.currentTimeMillis()
+            val docMap = cleanPayload.toMutableMap().apply {
+                put("id", resolvedId)
+                if (!containsKey("timestamp")) put("timestamp", nowMs)
+                if (!containsKey("createdAt")) put("createdAt", nowMs)
+            }
 
-                val firestoreMap = payload.toMutableMap().apply {
-                    put("memberUids", cleanMembers)
+            if (profile.isAdmin || targetCollection !in GATED_COLLECTIONS) {
+                offline?.upsertLocalCollectionDoc(ownerUid, targetCollection, resolvedId, docMap)
+                outboxId = offline?.enqueueOutbox(ownerUid, "SET", targetCollection, resolvedId, docMap) ?: 0L
+
+                val remoteMap = docMap.toMutableMap().apply {
                     put("updatedAt", FieldValue.serverTimestamp())
-                    if (!isUpdate) {
-                        put("ownerUid", ownerUid)
-                        put("createdByUid", uid)
-                        put("createdAt", FieldValue.serverTimestamp())
-                    } else {
-                        remove("createdAt")
-                        remove("createdByUid")
-                        remove("ownerUid")
-                    }
-                }.filterValues { it != null } as Map<String, Any>
-
-                offline?.applyLocalMutation(ownerUid, targetCollection, resolvedId, queueAndLocalMap, isUpdate)
-                opId = offline?.enqueueSyncOp(
-                    ownerUid = ownerUid,
-                    collection = targetCollection,
-                    docId = resolvedId,
-                    opType = if (isUpdate) "UPDATE" else "SET",
-                    payload = queueAndLocalMap - "id"
-                )
-
-                val docRef = workspaceCol(ownerUid, targetCollection).document(resolvedId)
-                executeRemoteOrKeepQueued(opId) {
-                    if (isUpdate) docRef.update(firestoreMap).await() else docRef.set(firestoreMap).await()
+                    put("syncedAt", Date().toInstant().toString())
+                }
+                executeRemoteOrKeepQueued(outboxId) {
+                    workspaceCol(ownerUid, targetCollection).document(resolvedId)
+                        .set(remoteMap, SetOptions.merge()).await()
+                    pingWorkspaceOwner(ownerUid, profile)
                 }
                 Result.success(resolvedId)
             } else {
-                val pendingId = newId("pend")
-                val safeData = payload.filterValues { it != null }.mapValues { (_, v) -> v as Any }
-                val nowMs = System.currentTimeMillis()
-                val localPending = mapOf<String, Any?>(
-                    "id" to pendingId,
-                    "ownerUid" to ownerUid,
-                    "memberUids" to (cleanMembers + uid).distinct().take(20),
-                    "submittedByUid" to uid,
-                    "submittedByName" to profile.displayName.ifBlank { profile.email },
-                    "submittedByEmail" to profile.email,
-                    "action" to "set",
-                    "targetCollection" to targetCollection,
-                    "targetDocId" to resolvedId,
-                    "summaryTitle" to summaryTitle.take(120),
-                    "summaryDetail" to summaryDetail.take(500),
-                    "recordDate" to recordDate.take(20),
-                    "payloadData" to safeData,
-                    "status" to "pending",
-                    "createdAt" to nowMs,
-                    "updatedAt" to nowMs
+                val pendingId = "${targetCollection}__${resolvedId.replace("/", "_")}"
+                val pendingObj = PendingApproval(
+                    id = pendingId,
+                    collection = targetCollection,
+                    docId = resolvedId,
+                    action = "set",
+                    dataMap = docMap,
+                    isEdit = isEdit,
+                    status = "pending",
+                    submittedByUid = uid,
+                    submittedByName = profile.displayName.ifBlank { profile.email },
+                    submittedByEmail = profile.email,
+                    submittedAt = nowMs,
+                    summaryTitle = summaryTitle.take(120),
+                    summaryBody = summaryDetail.take(500)
                 )
-                val pendingPayload = localPending.toMutableMap().apply {
-                    remove("id")
-                    put("createdAt", FieldValue.serverTimestamp())
-                    put("updatedAt", FieldValue.serverTimestamp())
-                } as Map<String, Any>
-
-                offline?.applyLocalMutation(ownerUid, "pending", pendingId, localPending, isUpdate = false)
-                opId = offline?.enqueueSyncOp(ownerUid, "pending", pendingId, "SET", localPending - "id")
-
-                executeRemoteOrKeepQueued(opId) {
-                    workspaceCol(ownerUid, "pending").document(pendingId).set(pendingPayload).await()
+                val pendingMap = WorkspaceJsonCodec.pendingToMap(pendingObj)
+                offline?.upsertLocalCollectionDoc(ownerUid, "pending", pendingId, pendingMap)
+                outboxId = offline?.enqueueOutbox(ownerUid, "PENDING", "pending", pendingId, pendingMap) ?: 0L
+                executeRemoteOrKeepQueued(outboxId) {
+                    workspaceCol(ownerUid, "pending").document(pendingId).set(pendingMap, SetOptions.merge()).await()
+                    pingWorkspaceOwner(ownerUid, profile)
                 }
                 Result.success("PENDING:$pendingId")
             }
@@ -145,349 +130,266 @@ class WorkspaceOperations(private val repo: AppRepository) {
             throw e
         } catch (e: Exception) {
             if (isOfflineFirestoreException(e)) {
-                Result.success(if (isAdmin(profile)) resolvedId else "PENDING:offline")
+                Result.success(if (profile.isAdmin) resolvedId else "PENDING:offline")
             } else {
-                opId?.let { offline?.discardSyncOp(it) }
+                offline?.discardOutboxOp(outboxId)
                 handleFirestoreError(e, OperationType.WRITE, path)
                 Result.failure(e)
             }
         }
     }
 
-    suspend fun updateFieldsOfflineSafe(
-        ownerUid: String,
-        collection: String,
-        docId: String,
-        fields: Map<String, Any?>
-    ): Result<Unit> {
-        val path = "users/$ownerUid/$collection/$docId"
-        var opId: String? = null
-        return try {
-            repo.requireUserId()
-            val cleanFields = fields.filterValues { it != null }
-            val localMap = cleanFields.toMutableMap().apply {
-                put("updatedAt", System.currentTimeMillis())
-            }
-            val remoteMap = cleanFields.toMutableMap().apply {
-                remove("ownerUid")
-                remove("createdAt")
-                remove("createdByUid")
-                put("updatedAt", FieldValue.serverTimestamp())
-            } as Map<String, Any>
-
-            offline?.applyLocalMutation(ownerUid, collection, docId, localMap, isUpdate = true)
-            opId = offline?.enqueueSyncOp(ownerUid, collection, docId, "UPDATE", localMap)
-
-            executeRemoteOrKeepQueued(opId) {
-                workspaceCol(ownerUid, collection).document(docId).update(remoteMap).await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.UPDATE, path)
-                Result.failure(e)
-            }
-        }
-    }
-
-    suspend fun softRecycleRecord(
+    suspend fun softDeleteToRecycleBin(
         profile: UserProfile,
-        memberUids: List<String>,
         collection: String,
         docId: String,
-        summaryTitle: String
+        displayName: String,
+        displayDetail: String,
+        displayAmount: String,
+        snapshotMap: Map<String, Any>
     ): Result<Unit> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
+        val ownerUid = profile.effectiveOwnerUid
         val path = "users/$ownerUid/$collection/$docId"
-        var opId: String? = null
+        var outboxId = 0L
         return try {
             val uid = repo.requireUserId()
             val nowMs = System.currentTimeMillis()
-            if (isAdmin(profile)) {
-                val localPatch = mapOf<String, Any?>(
-                    "recycled" to true,
-                    "recycledAtEpoch" to nowMs,
-                    "updatedAt" to nowMs
+            if (profile.isAdmin) {
+                val tombstone = DeletionTombstone(
+                    id = docId,
+                    recordId = docId,
+                    collection = collection,
+                    recordType = collection,
+                    deletedAt = nowMs,
+                    expiresAt = nowMs + TOMBSTONE_EXPIRY_MS,
+                    displayName = displayName,
+                    displayDetail = displayDetail,
+                    displayAmount = displayAmount,
+                    snapshotJson = WorkspaceJsonCodec.mapToJson(snapshotMap),
+                    deletedBy = profile.email.ifBlank { uid },
+                    syncedToCloud = false
                 )
-                offline?.applyLocalMutation(ownerUid, collection, docId, localPatch, isUpdate = true)
-                opId = offline?.enqueueSyncOp(ownerUid, collection, docId, "UPDATE", localPatch)
+                offline?.removeLocalCollectionDoc(ownerUid, collection, docId)
+                offline?.upsertLocalDeletion(ownerUid, tombstone)
 
-                executeRemoteOrKeepQueued(opId) {
-                    workspaceCol(ownerUid, collection).document(docId).update(
-                        mapOf(
-                            "recycled" to true,
-                            "recycledAtEpoch" to nowMs,
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
+                val remoteTombstone = mapOf<String, Any>(
+                    "id" to docId,
+                    "recordId" to docId,
+                    "collection" to collection,
+                    "recordType" to collection,
+                    "deletedAt" to FieldValue.serverTimestamp(),
+                    "expiresAt" to Timestamp(Date(nowMs + TOMBSTONE_EXPIRY_MS)),
+                    "displayName" to displayName,
+                    "displayDetail" to displayDetail,
+                    "displayAmount" to displayAmount,
+                    "snapshot" to snapshotMap,
+                    "deleted_by" to profile.email.ifBlank { uid }
+                )
+                val queuePayload = WorkspaceJsonCodec.deletionToLocalMap(tombstone)
+                outboxId = offline?.enqueueOutbox(ownerUid, "DELETE", collection, docId, queuePayload) ?: 0L
+
+                executeRemoteOrKeepQueued(outboxId) {
+                    val batch = db.batch()
+                    batch.delete(workspaceCol(ownerUid, collection).document(docId))
+                    batch.set(workspaceCol(ownerUid, "deletions").document(docId), remoteTombstone, SetOptions.merge())
+                    batch.commit().await()
                 }
             } else {
-                val pendingId = newId("pend")
-                val localPending = mapOf<String, Any?>(
-                    "id" to pendingId,
-                    "ownerUid" to ownerUid,
-                    "memberUids" to (memberUids + ownerUid + uid).distinct().take(20),
-                    "submittedByUid" to uid,
-                    "submittedByName" to profile.displayName.ifBlank { profile.email },
-                    "submittedByEmail" to profile.email,
-                    "action" to "delete",
-                    "targetCollection" to collection,
-                    "targetDocId" to docId,
-                    "summaryTitle" to "Recycle: $summaryTitle".take(120),
-                    "summaryDetail" to "Requested move to Recycle Bin",
-                    "recordDate" to DateUtils.todayIso(),
-                    "payloadData" to mapOf("recycled" to true),
-                    "status" to "pending",
-                    "createdAt" to nowMs,
-                    "updatedAt" to nowMs
+                val pendingId = "${collection}__${docId.replace("/", "_")}"
+                val pendingObj = PendingApproval(
+                    id = pendingId,
+                    collection = collection,
+                    docId = docId,
+                    action = "delete",
+                    dataMap = emptyMap(),
+                    isEdit = true,
+                    status = "pending",
+                    submittedByUid = uid,
+                    submittedByName = profile.displayName.ifBlank { profile.email },
+                    submittedByEmail = profile.email,
+                    submittedAt = nowMs,
+                    summaryTitle = "Delete $collection",
+                    summaryBody = "$displayName ($displayDetail)".take(400)
                 )
-                offline?.applyLocalMutation(ownerUid, "pending", pendingId, localPending, isUpdate = false)
-                opId = offline?.enqueueSyncOp(ownerUid, "pending", pendingId, "SET", localPending - "id")
-
-                val remotePayload = localPending.toMutableMap().apply {
-                    remove("id")
-                    put("createdAt", FieldValue.serverTimestamp())
-                    put("updatedAt", FieldValue.serverTimestamp())
-                } as Map<String, Any>
-                executeRemoteOrKeepQueued(opId) {
-                    workspaceCol(ownerUid, "pending").document(pendingId).set(remotePayload).await()
+                val pendingMap = WorkspaceJsonCodec.pendingToMap(pendingObj)
+                offline?.upsertLocalCollectionDoc(ownerUid, "pending", pendingId, pendingMap)
+                outboxId = offline?.enqueueOutbox(ownerUid, "PENDING", "pending", pendingId, pendingMap) ?: 0L
+                executeRemoteOrKeepQueued(outboxId) {
+                    workspaceCol(ownerUid, "pending").document(pendingId).set(pendingMap, SetOptions.merge()).await()
+                    pingWorkspaceOwner(ownerUid, profile)
                 }
             }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.UPDATE, path)
-                Result.failure(e)
-            }
-        }
-    }
-
-    suspend fun restoreFromRecycleBin(ownerUid: String, collection: String, docId: String): Result<Unit> {
-        val path = "users/$ownerUid/$collection/$docId"
-        var opId: String? = null
-        return try {
-            repo.requireUserId()
-            val localPatch = mapOf<String, Any?>(
-                "recycled" to false,
-                "recycledAtEpoch" to 0L,
-                "updatedAt" to System.currentTimeMillis()
-            )
-            offline?.applyLocalMutation(ownerUid, collection, docId, localPatch, isUpdate = true)
-            opId = offline?.enqueueSyncOp(ownerUid, collection, docId, "UPDATE", localPatch)
-
-            executeRemoteOrKeepQueued(opId) {
-                workspaceCol(ownerUid, collection).document(docId).update(
-                    mapOf(
-                        "recycled" to false,
-                        "recycledAtEpoch" to 0L,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.UPDATE, path)
-                Result.failure(e)
-            }
-        }
-    }
-
-    suspend fun permanentDelete(ownerUid: String, collection: String, docId: String): Result<Unit> {
-        val path = "users/$ownerUid/$collection/$docId"
-        var opId: String? = null
-        return try {
-            repo.requireUserId()
-            offline?.applyLocalDelete(ownerUid, collection, docId)
-            opId = offline?.enqueueSyncOp(ownerUid, collection, docId, "DELETE")
-
-            executeRemoteOrKeepQueued(opId) {
-                workspaceCol(ownerUid, collection).document(docId).delete().await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
+            if (isOfflineFirestoreException(e)) Result.success(Unit)
+            else {
+                offline?.discardOutboxOp(outboxId)
                 handleFirestoreError(e, OperationType.DELETE, path)
                 Result.failure(e)
             }
         }
     }
 
-    suspend fun reviewPendingApproval(
-        profile: UserProfile,
-        memberUids: List<String>,
-        item: PendingApproval,
-        approve: Boolean
-    ): Result<Unit> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
-        val pendingPath = "users/$ownerUid/pending/${item.id}"
-        var targetOpId: String? = null
-        var pendingOpId: String? = null
+    suspend fun restoreFromRecycleBin(profile: UserProfile, tombstone: DeletionTombstone): Result<Unit> {
+        val ownerUid = profile.effectiveOwnerUid
+        val path = "users/$ownerUid/${tombstone.collection}/${tombstone.recordId}"
         return try {
-            val uid = repo.requireUserId()
-            val cleanMembers = (memberUids + ownerUid).distinct().take(20)
-            val nowMs = System.currentTimeMillis()
-            if (approve) {
-                val targetRef = workspaceCol(ownerUid, item.targetCollection).document(item.targetDocId)
-                if (item.action == "delete") {
-                    val recyclePatch = mapOf<String, Any?>(
-                        "recycled" to true,
-                        "recycledAtEpoch" to nowMs,
-                        "updatedAt" to nowMs
-                    )
-                    offline?.applyLocalMutation(ownerUid, item.targetCollection, item.targetDocId, recyclePatch, isUpdate = true)
-                    targetOpId = offline?.enqueueSyncOp(ownerUid, item.targetCollection, item.targetDocId, "UPDATE", recyclePatch)
-                    executeRemoteOrKeepQueued(targetOpId) {
-                        targetRef.update(
-                            mapOf(
-                                "recycled" to true,
-                                "recycledAtEpoch" to nowMs,
-                                "updatedAt" to FieldValue.serverTimestamp()
-                            )
-                        ).await()
-                    }
-                } else {
-                    val localTarget = item.payloadData.toMutableMap().apply {
-                        put("id", item.targetDocId)
-                        put("ownerUid", ownerUid)
-                        put("memberUids", cleanMembers)
-                        put("createdByUid", item.submittedByUid)
-                        put("createdAt", nowMs)
-                        put("updatedAt", nowMs)
-                    }
-                    offline?.applyLocalMutation(ownerUid, item.targetCollection, item.targetDocId, localTarget, isUpdate = false)
-                    targetOpId = offline?.enqueueSyncOp(ownerUid, item.targetCollection, item.targetDocId, "SET", localTarget - "id")
-
-                    val merged = item.payloadData.toMutableMap().apply {
-                        put("ownerUid", ownerUid)
-                        put("memberUids", cleanMembers)
-                        put("createdByUid", item.submittedByUid)
-                        put("createdAt", FieldValue.serverTimestamp())
-                        put("updatedAt", FieldValue.serverTimestamp())
-                    }
-                    executeRemoteOrKeepQueued(targetOpId) {
-                        targetRef.set(merged).await()
-                    }
-                }
+            repo.requireUserId()
+            val restoredMap = WorkspaceJsonCodec.jsonToMap(tombstone.snapshotJson).toMutableMap().apply {
+                put("id", tombstone.recordId.ifBlank { tombstone.id })
+                remove("deletedAt")
             }
-            val nextStatus = if (approve) "approved" else "rejected"
-            val pendingPatch = mapOf<String, Any?>(
-                "status" to nextStatus,
-                "reviewedByUid" to uid,
-                "updatedAt" to nowMs
-            )
-            offline?.applyLocalMutation(ownerUid, "pending", item.id, pendingPatch, isUpdate = true)
-            pendingOpId = offline?.enqueueSyncOp(ownerUid, "pending", item.id, "UPDATE", pendingPatch)
+            val col = tombstone.collection
+            val docId = tombstone.recordId.ifBlank { tombstone.id }
+            offline?.upsertLocalCollectionDoc(ownerUid, col, docId, restoredMap)
+            offline?.removeLocalDeletionAndOptionallyErase(ownerUid, docId, erasePermanently = false)
 
-            executeRemoteOrKeepQueued(pendingOpId) {
-                workspaceCol(ownerUid, "pending").document(item.id).update(
-                    mapOf(
-                        "status" to nextStatus,
-                        "reviewedByUid" to uid,
-                        "updatedAt" to FieldValue.serverTimestamp()
+            if (repo.isOnline()) {
+                withTimeoutOrNull(2500L) {
+                    val batch = db.batch()
+                    batch.set(
+                        workspaceCol(ownerUid, col).document(docId),
+                        restoredMap + ("updatedAt" to FieldValue.serverTimestamp()),
+                        SetOptions.merge()
                     )
-                ).await()
+                    batch.delete(workspaceCol(ownerUid, "deletions").document(docId))
+                    batch.commit().await()
+                }
             }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                targetOpId?.let { offline?.discardSyncOp(it) }
-                pendingOpId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.UPDATE, pendingPath)
-                Result.failure(e)
-            }
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
         }
     }
 
-    suspend fun saveLedgerMirror(
-        profile: UserProfile,
-        memberUids: List<String>,
-        date: String,
-        entryType: String,
-        expenseScope: String,
-        channel: String,
-        category: String,
-        partyName: String,
-        amount: Double,
-        sourceCollection: String,
-        sourceDocId: String,
-        notes: String
-    ): Result<String> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
-        val ledgerId = newId("ldg")
-        var opId: String? = null
+    suspend fun purgeDeletedForever(profile: UserProfile, tombstone: DeletionTombstone): Result<Unit> {
+        val ownerUid = profile.effectiveOwnerUid
+        val docId = tombstone.recordId.ifBlank { tombstone.id }
+        val path = "users/$ownerUid/deletions/$docId"
         return try {
-            val uid = repo.requireUserId()
-            val cleanMembers = (memberUids + ownerUid).distinct().take(20)
-            val nowMs = System.currentTimeMillis()
-            val localMap = mapOf<String, Any?>(
-                "id" to ledgerId,
-                "ownerUid" to ownerUid,
-                "memberUids" to cleanMembers,
-                "date" to date,
-                "entryType" to entryType,
-                "expenseScope" to expenseScope,
-                "channel" to channel,
-                "toChannel" to "",
-                "category" to category.take(60),
-                "partyName" to InputGuards.sanitizeName(partyName),
-                "amount" to InputGuards.round2(amount),
-                "tabEntry" to true,
-                "sourceCollection" to sourceCollection,
-                "sourceDocId" to sourceDocId,
-                "notes" to InputGuards.sanitizeNotes(notes),
-                "recycled" to false,
-                "recycledAtEpoch" to 0L,
-                "createdByUid" to uid,
-                "createdAt" to nowMs,
-                "updatedAt" to nowMs
-            )
-            offline?.applyLocalMutation(ownerUid, "ledger_entries", ledgerId, localMap, isUpdate = false)
-            opId = offline?.enqueueSyncOp(ownerUid, "ledger_entries", ledgerId, "SET", localMap - "id")
-
-            val remoteMap = localMap.toMutableMap().apply {
-                remove("id")
-                put("createdAt", FieldValue.serverTimestamp())
-                put("updatedAt", FieldValue.serverTimestamp())
-            } as Map<String, Any>
-            executeRemoteOrKeepQueued(opId) {
-                workspaceCol(ownerUid, "ledger_entries").document(ledgerId).set(remoteMap).await()
+            repo.requireUserId()
+            offline?.removeLocalDeletionAndOptionallyErase(ownerUid, docId, erasePermanently = true)
+            if (repo.isOnline()) {
+                withTimeoutOrNull(2500L) {
+                    db.batch().apply {
+                        delete(workspaceCol(ownerUid, "deletions").document(docId))
+                        delete(workspaceCol(ownerUid, tombstone.collection).document(docId))
+                    }.commit().await()
+                }
             }
-            Result.success(ledgerId)
+            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(ledgerId)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.CREATE, "users/$ownerUid/ledger_entries/$ledgerId")
-                Result.failure(e)
+            handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun reviewPendingApproval(
+        profile: UserProfile,
+        item: PendingApproval,
+        approve: Boolean
+    ): Result<Unit> {
+        val ownerUid = profile.effectiveOwnerUid
+        val path = "users/$ownerUid/pending/${item.id}"
+        return try {
+            val uid = repo.requireUserId()
+            val nowMs = System.currentTimeMillis()
+            if (approve) {
+                if (item.action == "delete") {
+                    softDeleteToRecycleBin(
+                        profile = profile,
+                        collection = item.collection,
+                        docId = item.docId,
+                        displayName = item.summaryTitle,
+                        displayDetail = item.summaryBody,
+                        displayAmount = "",
+                        snapshotMap = item.dataMap
+                    )
+                } else {
+                    val targetMap = item.dataMap.toMutableMap().apply {
+                        put("id", item.docId)
+                    }
+                    offline?.upsertLocalCollectionDoc(ownerUid, item.collection, item.docId, targetMap)
+                    if (repo.isOnline()) {
+                        workspaceCol(ownerUid, item.collection).document(item.docId)
+                            .set(targetMap + ("updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+                            .await()
+                    } else {
+                        offline?.enqueueOutbox(ownerUid, "SET", item.collection, item.docId, targetMap)
+                    }
+                }
             }
+
+            val nextStatus = if (approve) "approved" else "rejected"
+            val updatedPending = WorkspaceJsonCodec.pendingToMap(
+                item.copy(
+                    status = nextStatus,
+                    decidedByUid = uid,
+                    decidedByName = profile.displayName.ifBlank { profile.email },
+                    decidedAt = nowMs
+                )
+            )
+            offline?.upsertLocalCollectionDoc(ownerUid, "pending", item.id, updatedPending)
+            if (repo.isOnline()) {
+                workspaceCol(ownerUid, "pending").document(item.id).set(updatedPending, SetOptions.merge()).await()
+            } else {
+                offline?.enqueueOutbox(ownerUid, "PENDING", "pending", item.id, updatedPending)
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun savePhoto(profile: UserProfile, photoKey: String, dataUri: String?): Result<Unit> {
+        val ownerUid = profile.effectiveOwnerUid
+        val deleted = dataUri.isNullOrBlank()
+        val encodedId = Base64.encodeToString(
+            photoKey.toByteArray(Charsets.UTF_8),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        )
+        return try {
+            repo.requireUserId()
+            offline?.upsertLocalPhoto(ownerUid, photoKey, dataUri, deleted)
+            val payload = buildMap<String, Any> {
+                put("key", photoKey)
+                if (deleted) {
+                    put("deleted", true)
+                } else {
+                    put("data", dataUri!!)
+                    put("deleted", false)
+                }
+            }
+            val outboxId = offline?.enqueueOutbox(ownerUid, "PHOTO", "photos", photoKey, payload) ?: 0L
+            executeRemoteOrKeepQueued(outboxId) {
+                val remote = payload.toMutableMap().apply {
+                    if (deleted) put("data", null as Any? ?: "")
+                    put("updatedAt", FieldValue.serverTimestamp())
+                }
+                val docMap = buildMap<String, Any?> {
+                    put("key", photoKey)
+                    put("data", if (deleted) null else dataUri)
+                    put("deleted", deleted)
+                    put("updatedAt", FieldValue.serverTimestamp())
+                }
+                workspaceCol(ownerUid, "photos").document(encodedId).set(docMap, SetOptions.merge()).await()
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, "users/$ownerUid/photos/$encodedId")
+            Result.failure(e)
         }
     }
 
@@ -497,116 +399,63 @@ class WorkspaceOperations(private val repo: AppRepository) {
         displayName: String,
         roles: List<String>
     ): Result<Unit> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
+        val ownerUid = profile.effectiveOwnerUid
         val inviteId = newId("inv")
-        var opId: String? = null
         return try {
             repo.requireUserId()
-            val nowMs = System.currentTimeMillis()
-            val localMap = mapOf<String, Any?>(
-                "id" to inviteId,
+            val remoteMap = mapOf(
                 "ownerUid" to ownerUid,
                 "ownerName" to InputGuards.sanitizeName(profile.displayName.ifBlank { "Admin" }),
                 "memberEmail" to memberEmail.trim().lowercase().take(160),
                 "displayName" to InputGuards.sanitizeName(displayName),
-                "roles" to roles.take(8),
+                "roles" to roles.take(10),
                 "approved" to true,
                 "status" to "pending",
-                "createdAt" to nowMs,
-                "updatedAt" to nowMs
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
             )
-            offline?.applyLocalMutation(ownerUid, "workspace_invites", inviteId, localMap, isUpdate = false)
-            opId = offline?.enqueueSyncOp(ownerUid, "workspace_invites", inviteId, "INVITE", localMap - "id")
-
-            val remoteMap = localMap.toMutableMap().apply {
-                remove("id")
-                put("createdAt", FieldValue.serverTimestamp())
-                put("updatedAt", FieldValue.serverTimestamp())
-            } as Map<String, Any>
-            executeRemoteOrKeepQueued(opId) {
-                db.collection("workspace_invites").document(inviteId).set(remoteMap).await()
-            }
+            db.collection("workspace_invites").document(inviteId).set(remoteMap).await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.CREATE, "workspace_invites/$inviteId")
-                Result.failure(e)
-            }
+            handleFirestoreError(e, OperationType.CREATE, "workspace_invites/$inviteId")
+            Result.failure(e)
         }
     }
 
-    suspend fun revokeInvite(ownerUid: String, inviteId: String): Result<Unit> {
-        var opId: String? = null
-        return try {
-            repo.requireUserId()
-            offline?.applyLocalDelete(ownerUid, "workspace_invites", inviteId)
-            opId = offline?.enqueueSyncOp(ownerUid, "workspace_invites", inviteId, "REVOKE_INVITE")
-
-            executeRemoteOrKeepQueued(opId) {
-                db.collection("workspace_invites").document(inviteId).delete().await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.DELETE, "workspace_invites/$inviteId")
-                Result.failure(e)
-            }
-        }
+    suspend fun revokeInvite(inviteId: String): Result<Unit> = try {
+        repo.requireUserId()
+        db.collection("workspace_invites").document(inviteId).delete().await()
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        handleFirestoreError(e, OperationType.DELETE, "workspace_invites/$inviteId")
+        Result.failure(e)
     }
 
     suspend fun updateMemberRoles(
         memberUid: String,
         roles: List<String>,
-        approved: Boolean,
-        ownerUid: String = ""
-    ): Result<Unit> {
-        var opId: String? = null
-        return try {
-            val resolvedOwner = ownerUid.ifBlank { repo.requireUserId() }
-            repo.requireUserId()
-            val cleanRoles = roles.take(8)
-            val nextRole = if ("admin" in cleanRoles) "admin" else "member"
-            val nowMs = System.currentTimeMillis()
-            val localPatch = mapOf<String, Any?>(
+        approved: Boolean
+    ): Result<Unit> = try {
+        repo.requireUserId()
+        val cleanRoles = roles.take(10)
+        val nextRole = if ("admin" in cleanRoles) "admin" else "user"
+        db.collection("users").document(memberUid).update(
+            mapOf(
                 "role" to nextRole,
                 "roles" to cleanRoles,
                 "approved" to approved,
-                "updatedAt" to nowMs
+                "updatedAt" to FieldValue.serverTimestamp()
             )
-            offline?.applyLocalMutation(resolvedOwner, "team_members", memberUid, localPatch, isUpdate = true)
-            opId = offline?.enqueueSyncOp(resolvedOwner, "team_members", memberUid, "MEMBER_ROLE", localPatch)
-
-            executeRemoteOrKeepQueued(opId) {
-                db.collection("users").document(memberUid).update(
-                    mapOf(
-                        "role" to nextRole,
-                        "roles" to cleanRoles,
-                        "approved" to approved,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (isOfflineFirestoreException(e)) {
-                Result.success(Unit)
-            } else {
-                opId?.let { offline?.discardSyncOp(it) }
-                handleFirestoreError(e, OperationType.UPDATE, "users/$memberUid")
-                Result.failure(e)
-            }
-        }
+        ).await()
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        handleFirestoreError(e, OperationType.UPDATE, "users/$memberUid")
+        Result.failure(e)
     }
 }

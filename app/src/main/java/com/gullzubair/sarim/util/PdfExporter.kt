@@ -35,7 +35,7 @@ object PdfExporter {
         val lineHeight = 20f
 
         val headerPaint = Paint().apply {
-            color = Color.rgb(6, 78, 59)
+            color = Color.rgb(5, 150, 105)
             textSize = 18f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
@@ -73,8 +73,8 @@ object PdfExporter {
             y += 16f
             canvas.drawText("Date", margin, y, tableHeaderPaint)
             canvas.drawText("Description", margin + 72f, y, tableHeaderPaint)
-            canvas.drawText("Debit", margin + 300f, y, tableHeaderPaint)
-            canvas.drawText("Credit", margin + 380f, y, tableHeaderPaint)
+            canvas.drawText("Debit", margin + 295f, y, tableHeaderPaint)
+            canvas.drawText("Credit", margin + 375f, y, tableHeaderPaint)
             canvas.drawText("Balance", margin + 455f, y, tableHeaderPaint)
             y += 8f
             canvas.drawLine(margin, y, pageWidth - margin, y, dividerPaint)
@@ -93,10 +93,10 @@ object PdfExporter {
                 drawHeader()
             }
             canvas.drawText(row.date.take(10), margin, y, bodyPaint)
-            canvas.drawText(row.description.take(38), margin + 72f, y, bodyPaint)
-            canvas.drawText(row.debit.take(14), margin + 300f, y, bodyPaint)
-            canvas.drawText(row.credit.take(14), margin + 380f, y, bodyPaint)
-            canvas.drawText(row.balance.take(14), margin + 455f, y, bodyPaint)
+            canvas.drawText(row.description.take(36), margin + 72f, y, bodyPaint)
+            canvas.drawText(row.debit.take(15), margin + 295f, y, bodyPaint)
+            canvas.drawText(row.credit.take(15), margin + 375f, y, bodyPaint)
+            canvas.drawText(row.balance.take(15), margin + 455f, y, bodyPaint)
             y += lineHeight
         }
 

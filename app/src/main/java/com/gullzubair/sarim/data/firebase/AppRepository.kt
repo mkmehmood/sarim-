@@ -12,27 +12,32 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
 import com.gullzubair.sarim.R
 import com.gullzubair.sarim.data.local.OfflineSyncRepository
 import com.gullzubair.sarim.data.local.SarimOfflineDatabase
-import com.gullzubair.sarim.data.model.CalculatorSettlement
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.CalculatorRecord
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.DailyLedgerEntry
+import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.EntityRecord
+import com.gullzubair.sarim.data.model.ExpenseRecord
 import com.gullzubair.sarim.data.model.FactoryRecord
 import com.gullzubair.sarim.data.model.FormulaConfig
-import com.gullzubair.sarim.data.model.InventoryItem
+import com.gullzubair.sarim.data.model.InventoryRecord
 import com.gullzubair.sarim.data.model.PaymentTransaction
 import com.gullzubair.sarim.data.model.PendingApproval
+import com.gullzubair.sarim.data.model.PhotoBlob
 import com.gullzubair.sarim.data.model.ProductionRecord
-import com.gullzubair.sarim.data.model.RepRecord
+import com.gullzubair.sarim.data.model.ReturnRecord
 import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.StoreConfig
 import com.gullzubair.sarim.data.model.UserProfile
+import com.gullzubair.sarim.data.model.WorkspaceAccountRecord
 import com.gullzubair.sarim.data.model.WorkspaceInvite
-import com.gullzubair.sarim.data.model.WorkspaceSettings
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.InputGuards
 import kotlinx.coroutines.CancellationException
@@ -75,26 +80,30 @@ class AppRepository(
     }
 
     fun requireUserId(): String = auth.currentUser?.uid
-        ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
+        ?: throw IllegalStateException("User must be signed in before accessing Firestore.")
+
+    private fun userRoot(ownerUid: String) = db.collection("users").document(ownerUid)
 
     private fun workspaceCol(ownerUid: String, collection: String) =
-        db.collection("users").document(ownerUid).collection(collection)
+        userRoot(ownerUid).collection(collection)
 
-    private inline fun <reified T> observeSubcollection(
+    private fun <T> observeCollectionMapped(
         ownerUid: String,
         viewerUid: String,
-        collection: String
+        collection: String,
+        mapper: (String, Map<String, Any>) -> T
     ): Flow<List<T>> = flow {
         val colRef = workspaceCol(ownerUid, collection)
-        val query: Query = if (ownerUid == viewerUid) {
-            colRef
-        } else {
-            colRef.whereArrayContains("memberUids", viewerUid)
-        }
         val path = "users/$ownerUid/$collection"
         emitAll(
-            query.snapshots()
-                .map { snap -> snap.toObjects(T::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
+            colRef.snapshots()
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        val raw = WorkspaceJsonCodec.snapshotToMap(doc)
+                        if (raw["_placeholder"] == true) null
+                        else runCatching { mapper(doc.id, raw) }.getOrNull()
+                    }
+                }
                 .catch { error ->
                     val unwrapped = unwrapFirestoreError(error)
                     if (unwrapped == null && error is CancellationException) throw error
@@ -106,142 +115,190 @@ class AppRepository(
         )
     }
 
+    private fun observeSingletonMap(
+        ownerUid: String,
+        viewerUid: String,
+        collection: String,
+        docId: String
+    ): Flow<Map<String, Any>> = flow {
+        val docRef = workspaceCol(ownerUid, collection).document(docId)
+        val path = "users/$ownerUid/$collection/$docId"
+        emitAll(
+            docRef.snapshots()
+                .map { snap -> if (snap.exists()) WorkspaceJsonCodec.snapshotToMap(snap) else emptyMap() }
+                .catch { error ->
+                    val unwrapped = unwrapFirestoreError(error)
+                    if (unwrapped == null && error is CancellationException) throw error
+                    if (auth.currentUser?.uid == viewerUid) {
+                        handleFirestoreError(unwrapped ?: error, OperationType.GET, path)
+                    }
+                    emit(emptyMap())
+                }
+        )
+    }
+
     suspend fun ensureUserProfileAndWorkspace(): Result<UserProfile> {
         return try {
-        val user = auth.currentUser ?: error("Not authenticated")
-        val uid = user.uid
-        val email = (user.email ?: "$uid@local.user").lowercase().take(160)
-        val displayName = InputGuards.sanitizeName(user.displayName?.ifBlank { null } ?: email.substringBefore("@"))
+            val user = auth.currentUser ?: error("Not authenticated")
+            val uid = user.uid
+            val email = (user.email ?: "$uid@local.user").lowercase().take(160)
+            val displayName = InputGuards.sanitizeName(user.displayName?.ifBlank { null } ?: email.substringBefore("@"))
 
-        // Instant offline startup from Room SQLite cache when already initialized
-        offlineRepo?.getCachedProfile(uid)?.let { cached ->
-            return Result.success(cached)
-        }
+            offlineRepo?.getCachedProfile(uid)?.let { cached ->
+                if (!isOnline()) return Result.success(cached)
+            }
 
-        val profileRef = db.collection("users").document(uid)
-        val cachedFirestoreSnap = runCatching { profileRef.get(Source.CACHE).await() }.getOrNull()
-        if (cachedFirestoreSnap != null && cachedFirestoreSnap.exists()) {
-            val profile = cachedFirestoreSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
-            offlineRepo?.cacheProfile(profile)
-            return Result.success(profile)
-        }
+            val profileRef = db.collection("users").document(uid)
+            val cachedFirestoreSnap = runCatching { profileRef.get(Source.CACHE).await() }.getOrNull()
+            if (cachedFirestoreSnap != null && cachedFirestoreSnap.exists() && !isOnline()) {
+                val profile = WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(cachedFirestoreSnap))
+                offlineRepo?.cacheProfile(profile)
+                return Result.success(profile)
+            }
 
-        if (!isOnline()) {
-            return Result.failure(IllegalStateException("No internet connection. Connect once to download your workspace offline cache."))
-        }
+            if (!isOnline()) {
+                offlineRepo?.getCachedProfile(uid)?.let { return Result.success(it) }
+                return Result.failure(IllegalStateException("No internet connection. Connect once to download your workspace offline cache."))
+            }
 
-        val existingSnap = withTimeoutOrNull(8000L) { profileRef.get().await() }
-            ?: return Result.failure(IllegalStateException("Workspace connection timed out. Check your connection and retry."))
+            val existingSnap = withTimeoutOrNull(8000L) { profileRef.get().await() }
+                ?: return offlineRepo?.getCachedProfile(uid)?.let { Result.success(it) }
+                    ?: Result.failure(IllegalStateException("Workspace connection timed out. Check your connection and retry."))
 
-        if (existingSnap.exists()) {
-            val profile = existingSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
-            offlineRepo?.cacheProfile(profile)
-            Result.success(profile)
-        } else {
-            // Check verified pending workspace invite for this user's email
-            var invitedProfile: UserProfile? = null
-            if (user.isEmailVerified && !user.email.isNullOrBlank()) {
-                val invites = try {
-                    db.collection("workspace_invites")
-                        .whereEqualTo("memberEmail", email)
-                        .get()
-                        .await()
-                        .toObjects(WorkspaceInvite::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                } catch (_: Exception) {
-                    emptyList()
+            if (existingSnap.exists()) {
+                val profile = WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(existingSnap))
+                offlineRepo?.cacheProfile(profile)
+                Result.success(profile)
+            } else {
+                var invitedProfile: UserProfile? = null
+                if (user.isEmailVerified && !user.email.isNullOrBlank()) {
+                    val invites = try {
+                        db.collection("workspace_invites")
+                            .whereEqualTo("memberEmail", email)
+                            .get()
+                            .await()
+                            .documents
+                            .mapNotNull { doc ->
+                                runCatching {
+                                    WorkspaceJsonCodec.mapToInvite(doc.id, WorkspaceJsonCodec.snapshotToMap(doc))
+                                }.getOrNull()
+                            }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    val match = invites.firstOrNull { it.status == "pending" && it.approved }
+                    if (match != null) {
+                        val payload = mapOf(
+                            "uid" to uid,
+                            "email" to email,
+                            "displayName" to displayName,
+                            "ownerUid" to match.ownerUid,
+                            "role" to "user",
+                            "roles" to match.roles.filter { it != "admin" }.take(8).ifEmpty { listOf("rep") },
+                            "approved" to true,
+                            "inviteId" to match.id,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                        profileRef.set(payload).await()
+                        db.collection("workspace_invites").document(match.id).update(
+                            mapOf(
+                                "status" to "accepted",
+                                "acceptedByUid" to uid,
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        ).await()
+                        val loaded = profileRef.get().await()
+                        invitedProfile = WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(loaded))
+                    }
                 }
-                val match = invites.firstOrNull { it.status == "pending" && it.approved }
-                if (match != null) {
-                    val payload = mapOf(
+
+                val resolved = if (invitedProfile != null) {
+                    invitedProfile
+                } else {
+                    val ownerPayload = mapOf(
                         "uid" to uid,
                         "email" to email,
                         "displayName" to displayName,
-                        "workspaceOwnerUid" to match.ownerUid,
-                        "role" to "member",
-                        "roles" to match.roles.take(8),
+                        "role" to "admin",
+                        "roles" to listOf("admin"),
                         "approved" to true,
-                        "inviteId" to match.id,
                         "createdAt" to FieldValue.serverTimestamp(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
-                    profileRef.set(payload).await()
-                    db.collection("workspace_invites").document(match.id).update(
-                        mapOf(
-                            "status" to "accepted",
-                            "acceptedByUid" to uid,
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
-                    invitedProfile = profileRef.get().await()
-                        .toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    profileRef.set(ownerPayload).await()
+                    seedDefaultWorkspaceIfEmpty(uid)
+                    val loaded = profileRef.get().await()
+                    WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(loaded))
                 }
+                offlineRepo?.cacheProfile(resolved)
+                Result.success(resolved)
             }
-
-            val resolved = if (invitedProfile != null) {
-                invitedProfile
-            } else {
-                val ownerPayload = mapOf(
-                    "uid" to uid,
-                    "email" to email,
-                    "displayName" to displayName,
-                    "workspaceOwnerUid" to uid,
-                    "role" to "admin",
-                    "roles" to listOf("admin"),
-                    "approved" to true,
-                    "createdAt" to FieldValue.serverTimestamp(),
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-                profileRef.set(ownerPayload).await()
-                seedDefaultWorkspaceIfEmpty(uid)
-                profileRef.get().await()
-                    .toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
-            }
-            offlineRepo?.cacheProfile(resolved)
-            Result.success(resolved)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, "users/${auth.currentUser?.uid}")
+            Result.failure(e)
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        handleFirestoreError(e, OperationType.WRITE, "users/${auth.currentUser?.uid}")
-        Result.failure(e)
-    }
     }
 
     private suspend fun seedDefaultWorkspaceIfEmpty(ownerUid: String) {
-        val settingsRef = workspaceCol(ownerUid, "settings").document("preferences")
-        if (!settingsRef.get().await().exists()) {
-            settingsRef.set(
+        val now = System.currentTimeMillis()
+        val settingsConfigRef = workspaceCol(ownerUid, "settings").document("config")
+        if (!settingsConfigRef.get().await().exists()) {
+            settingsConfigRef.set(
                 mapOf(
-                    "ownerUid" to ownerUid,
-                    "memberUids" to listOf(ownerUid),
-                    "currencySymbol" to "Rs",
-                    "financialYearStartMonth" to 7L,
-                    "hideSensitiveMoney" to false,
-                    "biometricLockEnabled" to false,
-                    "themeMode" to "light",
-                    "paymentChannels" to listOf("Cash", "Bank", "Easypaisa", "JazzCash"),
-                    "expenseCategories" to listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other"),
-                    "createdAt" to FieldValue.serverTimestamp(),
-                    "updatedAt" to FieldValue.serverTimestamp()
+                    "settings" to mapOf(
+                        "currencySymbol" to "Rs",
+                        "financialYearStartMonth" to 7L,
+                        "hideSensitiveMoney" to false,
+                        "themeMode" to "light",
+                        "paymentModes" to listOf("Cash", "Bank", "Easypaisa", "JazzCash")
+                    ),
+                    "settings_timestamp" to now,
+                    "repProfile" to "",
+                    "repProfile_timestamp" to now,
+                    "reps" to emptyList<String>(),
+                    "reps_timestamp" to now
                 )
             ).await()
         }
-        val storesSnap = workspaceCol(ownerUid, "stores").limit(1).get().await()
-        if (storesSnap.isEmpty) {
-            workspaceCol(ownerUid, "stores").document("store_gull_special").set(
+        val storesRef = workspaceCol(ownerUid, "stores").document("list")
+        if (!storesRef.get().await().exists()) {
+            storesRef.set(
                 mapOf(
-                    "ownerUid" to ownerUid,
-                    "memberUids" to listOf(ownerUid),
-                    "storeKey" to "GULL_SPECIAL",
-                    "name" to "GULL SPECIAL",
-                    "formulaId" to "",
-                    "salePrice" to 1600.0,
-                    "active" to true,
-                    "createdAt" to FieldValue.serverTimestamp(),
-                    "updatedAt" to FieldValue.serverTimestamp()
+                    "stores" to listOf(
+                        mapOf("key" to "zubair", "name" to "Zubair", "salePrice" to 0.0, "active" to true, "updatedAt" to now),
+                        mapOf("key" to "mahmood", "name" to "Mahmood", "salePrice" to 0.0, "active" to true, "updatedAt" to now),
+                        mapOf("key" to "asaan", "name" to "Asaan", "salePrice" to 0.0, "active" to true, "updatedAt" to now)
+                    ),
+                    "stores_timestamp" to now
+                )
+            ).await()
+        }
+        val formulasRef = workspaceCol(ownerUid, "formulas").document("config")
+        if (!formulasRef.get().await().exists()) {
+            formulasRef.set(
+                mapOf(
+                    "formulas" to emptyList<Map<String, Any>>(),
+                    "formulas_timestamp" to now,
+                    "defaults" to emptyMap<String, Double>(),
+                    "defaults_timestamp" to now,
+                    "costs" to emptyMap<String, Double>(),
+                    "costs_timestamp" to now,
+                    "adjustment" to emptyMap<String, Double>(),
+                    "adjustment_timestamp" to now,
+                    "tracking" to emptyMap<String, Boolean>(),
+                    "tracking_timestamp" to now
+                )
+            ).await()
+        }
+        val ledgerRef = workspaceCol(ownerUid, "daily_ledger").document("entries")
+        if (!ledgerRef.get().await().exists()) {
+            ledgerRef.set(
+                mapOf(
+                    "daily_ledger" to emptyList<Map<String, Any>>(),
+                    "daily_ledger_timestamp" to now
                 )
             ).await()
         }
@@ -250,11 +307,12 @@ class AppRepository(
     fun observeProfile(uid: String): Flow<UserProfile?> =
         db.collection("users").document(uid)
             .snapshots()
-            .map { it.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
+            .map { snap ->
+                if (snap.exists()) WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(snap))
+                else null
+            }
             .onEach { profile ->
-                if (profile != null) {
-                    offlineRepo?.cacheProfile(profile)
-                }
+                if (profile != null) offlineRepo?.cacheProfile(profile)
             }
             .catch { error ->
                 val unwrapped = unwrapFirestoreError(error)
@@ -272,178 +330,228 @@ class AppRepository(
 
     @Suppress("UNCHECKED_CAST")
     fun observeWorkspace(profile: UserProfile): Flow<WorkspaceSnapshot> {
-        val ownerUid = profile.workspaceOwnerUid.ifBlank { profile.uid }
+        val ownerUid = profile.effectiveOwnerUid
         val viewerUid = profile.uid
 
-        val coreFlows = listOf(
-            observeSubcollection<WorkspaceSettings>(ownerUid, viewerUid, "settings"),
-            observeSubcollection<StoreConfig>(ownerUid, viewerUid, "stores"),
-            observeSubcollection<FormulaConfig>(ownerUid, viewerUid, "formulas"),
-            observeSubcollection<CustomerRecord>(ownerUid, viewerUid, "customers"),
-            observeSubcollection<EntityRecord>(ownerUid, viewerUid, "entities"),
-            observeSubcollection<InventoryItem>(ownerUid, viewerUid, "inventory")
-        )
-        val txFlows = listOf(
-            observeSubcollection<ProductionRecord>(ownerUid, viewerUid, "production"),
-            observeSubcollection<SalesRecord>(ownerUid, viewerUid, "sales"),
-            observeSubcollection<RepRecord>(ownerUid, viewerUid, "rep_records"),
-            observeSubcollection<CalculatorSettlement>(ownerUid, viewerUid, "calculator"),
-            observeSubcollection<FactoryRecord>(ownerUid, viewerUid, "factory"),
-            observeSubcollection<PaymentTransaction>(ownerUid, viewerUid, "transactions"),
-            observeSubcollection<DailyLedgerEntry>(ownerUid, viewerUid, "ledger_entries")
-        )
+        // Group 1: Singleton configs
+        val singletonsFlow = combine(
+            listOf(
+                observeSingletonMap(ownerUid, viewerUid, "stores", "list"),
+                observeSingletonMap(ownerUid, viewerUid, "formulas", "config"),
+                observeSingletonMap(ownerUid, viewerUid, "settings", "config"),
+                observeSingletonMap(ownerUid, viewerUid, "settings", "team"),
+                observeSingletonMap(ownerUid, viewerUid, "daily_ledger", "entries"),
+                observeSingletonMap(ownerUid, viewerUid, "categories", "list"),
+                observeSingletonMap(ownerUid, viewerUid, "field_expense_categories", "list"),
+                observeSingletonMap(ownerUid, viewerUid, "commission_categories", "list"),
+                observeSingletonMap(ownerUid, viewerUid, "settings", "yearCloseSignal")
+            )
+        ) { arr -> arr.toList() }
+
+        // Group 2: Entity/Directory & Inventory collections
+        val dirFlow = combine(
+            observeCollectionMapped(ownerUid, viewerUid, "customers", WorkspaceJsonCodec::mapToCustomer),
+            observeCollectionMapped(ownerUid, viewerUid, "clients", WorkspaceJsonCodec::mapToCustomer),
+            observeCollectionMapped(ownerUid, viewerUid, "entities", WorkspaceJsonCodec::mapToEntity),
+            observeCollectionMapped(ownerUid, viewerUid, "inventory", WorkspaceJsonCodec::mapToInventory)
+        ) { customers, clients, entities, inventory ->
+            listOf(customers, clients, entities, inventory)
+        }
+
+        // Group 3: Operations collections
+        val opsFlow = combine(
+            observeCollectionMapped(ownerUid, viewerUid, "production", WorkspaceJsonCodec::mapToProduction),
+            observeCollectionMapped(ownerUid, viewerUid, "sales", WorkspaceJsonCodec::mapToSale),
+            observeCollectionMapped(ownerUid, viewerUid, "rep", WorkspaceJsonCodec::mapToSale),
+            observeCollectionMapped(ownerUid, viewerUid, "calculator", WorkspaceJsonCodec::mapToCalculator),
+            observeCollectionMapped(ownerUid, viewerUid, "factory", WorkspaceJsonCodec::mapToFactory)
+        ) { prod, sales, rep, calc, factory ->
+            listOf(prod, sales, rep, calc, factory)
+        }
+
+        // Group 4: Finance & Deletions & Photos
+        val finFlow = combine(
+            observeCollectionMapped(ownerUid, viewerUid, "transactions", WorkspaceJsonCodec::mapToTransaction),
+            observeCollectionMapped(ownerUid, viewerUid, "expenses", WorkspaceJsonCodec::mapToExpense),
+            observeCollectionMapped(ownerUid, viewerUid, "returns", WorkspaceJsonCodec::mapToReturn),
+            observeCollectionMapped(ownerUid, viewerUid, "deletions", WorkspaceJsonCodec::mapToDeletion),
+            observeCollectionMapped(ownerUid, viewerUid, "photos", WorkspaceJsonCodec::mapToPhoto)
+        ) { txns, exp, rets, dels, photos ->
+            listOf(txns, exp, rets, dels, photos)
+        }
+
+        // Group 5: RBAC, Pending Approvals, Invites, Accounts
         val pendingFlow: Flow<List<PendingApproval>> = flow {
             val colRef = workspaceCol(ownerUid, "pending")
-            val query = if (profile.role == "admin" || ownerUid == viewerUid) {
-                colRef
-            } else {
-                colRef.whereEqualTo("submittedByUid", viewerUid)
-            }
+            val query: Query = if (profile.isAdmin) colRef else colRef.whereEqualTo("submittedBy.uid", viewerUid)
             emitAll(
                 query.snapshots()
-                    .map { it.toObjects(PendingApproval::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
-                    .catch { error ->
-                        val unwrapped = unwrapFirestoreError(error)
-                        if (unwrapped == null && error is CancellationException) throw error
-                        if (auth.currentUser?.uid == viewerUid) {
-                            handleFirestoreError(unwrapped ?: error, OperationType.LIST, "users/$ownerUid/pending")
+                    .map { snap ->
+                        snap.documents.mapNotNull { d ->
+                            runCatching { WorkspaceJsonCodec.mapToPending(d.id, WorkspaceJsonCodec.snapshotToMap(d)) }.getOrNull()
                         }
-                        throw error
                     }
+                    .catch { emit(emptyList()) }
             )
         }
+        val accountsFlow: Flow<List<WorkspaceAccountRecord>> = flow {
+            if (!profile.isAdmin) {
+                emit(emptyList())
+            } else {
+                emitAll(
+                    observeSingletonMap(ownerUid, viewerUid, "settings", "accounts")
+                        .map { doc ->
+                            val raw = doc["accounts"] as? Iterable<*> ?: emptyList<Any>()
+                            raw.mapNotNull { item ->
+                                val m = item as? Map<*, *> ?: return@mapNotNull null
+                                val typed = m.entries.mapNotNull { (k, v) ->
+                                    if (k != null && v != null) k.toString() to v else null
+                                }.toMap()
+                                WorkspaceJsonCodec.mapToAccountRecord(typed)
+                            }
+                        }
+                )
+            }
+        }
         val invitesFlow: Flow<List<WorkspaceInvite>> = flow {
-            if (ownerUid != viewerUid) {
+            if (!profile.isAdmin) {
                 emit(emptyList())
             } else {
                 emitAll(
                     db.collection("workspace_invites")
                         .whereEqualTo("ownerUid", ownerUid)
                         .snapshots()
-                        .map { it.toObjects(WorkspaceInvite::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
-                        .catch { error ->
-                            val unwrapped = unwrapFirestoreError(error)
-                            if (unwrapped == null && error is CancellationException) throw error
-                            emit(emptyList())
+                        .map { snap ->
+                            snap.documents.mapNotNull { d ->
+                                runCatching { WorkspaceJsonCodec.mapToInvite(d.id, WorkspaceJsonCodec.snapshotToMap(d)) }.getOrNull()
+                            }
                         }
+                        .catch { emit(emptyList()) }
                 )
             }
         }
         val membersFlow: Flow<List<UserProfile>> = flow {
-            if (ownerUid != viewerUid) {
+            if (!profile.isAdmin) {
                 emit(listOf(profile))
             } else {
                 emitAll(
                     db.collection("users")
-                        .whereEqualTo("workspaceOwnerUid", ownerUid)
+                        .whereEqualTo("ownerUid", ownerUid)
                         .snapshots()
-                        .map { it.toObjects(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
-                        .catch { error ->
-                            val unwrapped = unwrapFirestoreError(error)
-                            if (unwrapped == null && error is CancellationException) throw error
-                            emit(listOf(profile))
+                        .map { snap ->
+                            snap.documents.mapNotNull { d ->
+                                runCatching { WorkspaceJsonCodec.mapToUserProfile(d.id, WorkspaceJsonCodec.snapshotToMap(d)) }.getOrNull()
+                            }
                         }
+                        .catch { emit(listOf(profile)) }
                 )
             }
         }
 
-        val coreCombined = combine(coreFlows) { arr -> arr }
-        val txCombined = combine(txFlows) { arr -> arr }
-        val adminCombined = combine(pendingFlow, invitesFlow, membersFlow) { p, i, m -> Triple(p, i, m) }
+        val adminFlow = combine(pendingFlow, accountsFlow, invitesFlow, membersFlow) { p, a, i, m ->
+            listOf(p, a, i, m)
+        }
 
-        return combine(coreCombined, txCombined, adminCombined) { core, tx, admin ->
-            val settingsList = core[0] as List<WorkspaceSettings>
+        return combine(singletonsFlow, dirFlow, opsFlow, finFlow, adminFlow) { s, dir, ops, fin, adm ->
+            val storesDoc = s[0]
+            val formulasDoc = s[1]
+            val settingsDoc = s[2]
+            val teamDoc = s[3]
+            val ledgerDoc = s[4]
+            val categoriesDoc = s[5]
+            val fieldCatDoc = s[6]
+            val commCatDoc = s[7]
+            val yearCloseDoc = s[8]
+
+            val deletions = (fin[3] as List<DeletionTombstone>)
+            val deletedIds = deletions.map { it.recordId.ifBlank { it.id } }.toSet()
+
+            fun asListMaps(raw: Any?): List<Map<String, Any>> {
+                val items = raw as? Iterable<*> ?: return emptyList()
+                return items.mapNotNull { entry ->
+                    val m = entry as? Map<*, *> ?: return@mapNotNull null
+                    m.entries.mapNotNull { (k, v) -> if (k != null && v != null) k.toString() to v else null }.toMap()
+                }
+            }
+
+            fun asStrList(raw: Any?): List<String> =
+                (raw as? Iterable<*>)?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) } ?: emptyList()
+
+            val stores = asListMaps(storesDoc["stores"]).map(WorkspaceJsonCodec::mapToStore).filter { it.deletedAt == null }
+            val formulas = asListMaps(formulasDoc["formulas"]).map(WorkspaceJsonCodec::mapToFormula)
+            val ledgerEntries = asListMaps(ledgerDoc["daily_ledger"])
+                .map(WorkspaceJsonCodec::mapToDailyLedgerEntry)
+                .sortedByDescending { it.date }
+            val teamReps = asStrList(teamDoc["reps"])
+            val expenseCats = asStrList(categoriesDoc["categories"])
+            val fieldCats = asStrList(fieldCatDoc["categories"])
+            val commCats = asStrList(commCatDoc["categories"])
+
+            val mergedSettings = WorkspaceJsonCodec.mergeSettings(
+                settingsConfigMap = settingsDoc,
+                formulasConfigMap = formulasDoc,
+                teamReps = teamReps,
+                expenseCats = expenseCats,
+                fieldExpenseCats = fieldCats,
+                commissionCats = commCats,
+                yearCloseMap = yearCloseDoc,
+                localTheme = null,
+                localAppSettings = emptyMap()
+            )
+
+            val photos = (fin[4] as List<PhotoBlob>).associateBy { it.key }
+            val members = ((adm[3] as List<UserProfile>) + profile).distinctBy { it.uid }
+
             WorkspaceSnapshot(
                 profile = profile,
-                settings = settingsList.firstOrNull { it.id == "preferences" } ?: settingsList.firstOrNull() ?: WorkspaceSettings(ownerUid = ownerUid),
-                stores = core[1] as List<StoreConfig>,
-                formulas = core[2] as List<FormulaConfig>,
-                customers = core[3] as List<CustomerRecord>,
-                entities = core[4] as List<EntityRecord>,
-                inventory = core[5] as List<InventoryItem>,
-                production = (tx[0] as List<ProductionRecord>).sortedByDescending { it.date },
-                sales = (tx[1] as List<SalesRecord>).sortedByDescending { it.date },
-                repRecords = (tx[2] as List<RepRecord>).sortedByDescending { it.date },
-                calculator = (tx[3] as List<CalculatorSettlement>).sortedByDescending { it.dateTo },
-                factory = (tx[4] as List<FactoryRecord>).sortedByDescending { it.date },
-                transactions = (tx[5] as List<PaymentTransaction>).sortedByDescending { it.date },
-                ledgerEntries = (tx[6] as List<DailyLedgerEntry>).sortedByDescending { it.date },
-                pendingApprovals = admin.first.sortedByDescending { it.createdAt?.seconds ?: 0L },
-                invites = admin.second,
-                teamMembers = admin.third
+                settings = mergedSettings,
+                stores = stores,
+                formulas = formulas,
+                customers = (dir[0] as List<CustomerRecord>).filter { it.deletedAt == null && it.id !in deletedIds },
+                clients = (dir[1] as List<CustomerRecord>).filter { it.deletedAt == null && it.id !in deletedIds },
+                entities = (dir[2] as List<EntityRecord>).filter { it.deletedAt == null && it.id !in deletedIds },
+                inventory = (dir[3] as List<InventoryRecord>).filter { it.deletedAt == null && it.id !in deletedIds },
+                production = (ops[0] as List<ProductionRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                sales = (ops[1] as List<SalesRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                repRecords = (ops[2] as List<SalesRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                calculator = (ops[3] as List<CalculatorRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                factory = (ops[4] as List<FactoryRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                transactions = (fin[0] as List<PaymentTransaction>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                expenses = (fin[1] as List<ExpenseRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                returns = (fin[2] as List<ReturnRecord>).filter { it.deletedAt == null && it.id !in deletedIds }.sortedByDescending { it.date },
+                ledgerEntries = ledgerEntries,
+                deletions = deletions.sortedByDescending { it.deletedAt },
+                photos = photos,
+                pendingApprovals = (adm[0] as List<PendingApproval>).sortedByDescending { it.submittedAt },
+                accounts = adm[1] as List<WorkspaceAccountRecord>,
+                invites = adm[2] as List<WorkspaceInvite>,
+                teamMembers = members
             )
         }
     }
 
-    suspend fun saveSettings(ownerUid: String, memberUids: List<String>, settings: WorkspaceSettings): Result<Unit> {
-        val path = "users/$ownerUid/settings/preferences"
-        var opId: String? = null
+    suspend fun saveSingleton(
+        ownerUid: String,
+        collection: String,
+        docId: String,
+        payload: Map<String, Any>,
+        kvUpdates: Map<String, String> = emptyMap()
+    ): Result<Unit> {
+        val path = "users/$ownerUid/$collection/$docId"
+        var outboxId = 0L
         return try {
             requireUserId()
-            val members = (memberUids + ownerUid).distinct().take(20)
-            val currency = settings.currencySymbol.take(12).ifBlank { "Rs" }
-            val fyMonth = settings.financialYearStartMonth.coerceIn(1L, 12L)
-            val channels = settings.paymentChannels.take(15)
-            val categories = settings.expenseCategories.take(30)
-
-            val localPayload = mapOf<String, Any?>(
-                "id" to "preferences",
-                "ownerUid" to ownerUid,
-                "memberUids" to members,
-                "currencySymbol" to currency,
-                "financialYearStartMonth" to fyMonth,
-                "hideSensitiveMoney" to settings.hideSensitiveMoney,
-                "biometricLockEnabled" to settings.biometricLockEnabled,
-                "themeMode" to settings.themeMode,
-                "paymentChannels" to channels,
-                "expenseCategories" to categories,
-                "updatedAt" to System.currentTimeMillis()
-            )
-            offlineRepo?.applyLocalMutation(ownerUid, "settings", "preferences", localPayload, isUpdate = true)
-            opId = offlineRepo?.enqueueSyncOp(ownerUid, "settings", "preferences", "SETTINGS", localPayload)
-
-            if (!isOnline()) {
-                return Result.success(Unit)
+            if (kvUpdates.isNotEmpty()) {
+                offlineRepo?.setKvBatch(kvUpdates)
             }
-
-            val docRef = workspaceCol(ownerUid, "settings").document("preferences")
-            val synced = withTimeoutOrNull(1800L) {
-                val exists = docRef.get().await().exists()
-                if (exists) {
-                    docRef.update(
-                        mapOf(
-                            "memberUids" to members,
-                            "currencySymbol" to currency,
-                            "financialYearStartMonth" to fyMonth,
-                            "hideSensitiveMoney" to settings.hideSensitiveMoney,
-                            "biometricLockEnabled" to settings.biometricLockEnabled,
-                            "themeMode" to settings.themeMode,
-                            "paymentChannels" to channels,
-                            "expenseCategories" to categories,
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
-                } else {
-                    docRef.set(
-                        mapOf(
-                            "ownerUid" to ownerUid,
-                            "memberUids" to members,
-                            "currencySymbol" to currency,
-                            "financialYearStartMonth" to fyMonth,
-                            "hideSensitiveMoney" to settings.hideSensitiveMoney,
-                            "biometricLockEnabled" to settings.biometricLockEnabled,
-                            "themeMode" to settings.themeMode,
-                            "paymentChannels" to channels,
-                            "expenseCategories" to categories,
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
-                }
+            outboxId = offlineRepo?.enqueueOutbox(ownerUid, "SINGLETON", collection, docId, payload) ?: 0L
+            if (!isOnline()) return Result.success(Unit)
+            val synced = withTimeoutOrNull(2500L) {
+                workspaceCol(ownerUid, collection).document(docId).set(payload, SetOptions.merge()).await()
                 true
             }
-            if (synced == true && opId != null) {
-                offlineRepo?.markOpSynced(opId)
+            if (synced == true && outboxId > 0L) {
+                offlineRepo?.markOutboxSynced(outboxId)
             }
             Result.success(Unit)
         } catch (e: CancellationException) {
@@ -454,12 +562,12 @@ class AppRepository(
             ) {
                 Result.success(Unit)
             } else {
-                opId?.let { offlineRepo?.discardSyncOp(it) }
+                offlineRepo?.discardOutboxOp(outboxId)
                 handleFirestoreError(e, OperationType.WRITE, path)
                 Result.failure(e)
             }
         } catch (e: Exception) {
-            opId?.let { offlineRepo?.discardSyncOp(it) }
+            offlineRepo?.discardOutboxOp(outboxId)
             handleFirestoreError(e, OperationType.WRITE, path)
             Result.failure(e)
         }

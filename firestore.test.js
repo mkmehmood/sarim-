@@ -51,33 +51,28 @@ test("Unauthenticated user: denied across all root and workspace collections", a
   await assertFails(unauth.collection("users").doc(ALICE_UID).get());
   await assertFails(unauth.collection("workspace_invites").get());
   await assertFails(unauth.collection("users").doc(ALICE_UID).collection("stores").get());
+  await assertFails(unauth.collection("users").doc(ALICE_UID).collection("production").get());
   await assertFails(unauth.collection("users").doc(ALICE_UID).collection("sales").get());
+  await assertFails(unauth.collection("users").doc(ALICE_UID).collection("rep").get());
   await assertFails(
-    unauth.collection("users").doc(ALICE_UID).collection("stores").doc("store_1").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID],
-      storeKey: "STORE_1",
-      name: "STORE 1",
-      formulaId: "",
-      salePrice: 1200,
-      active: true,
-      createdAt: pastDate(),
-      updatedAt: pastDate(),
+    unauth.collection("users").doc(ALICE_UID).collection("stores").doc("list").set({
+      stores: [],
+      stores_timestamp: Date.now(),
     })
   );
 });
 
-test("User profile: owner bootstrap succeeds, privilege escalation and @DocumentId 'id' rejected", async () => {
+test("User profile: owner self-bootstrap succeeds, privilege escalation and unauthorized workspace join rejected", async () => {
   const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
+  const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
   const now = pastDate();
 
-  // Valid owner self-bootstrap
+  // Valid owner self-bootstrap (Google Sign-In new user)
   await assertSucceeds(
     alice.collection("users").doc(ALICE_UID).set({
       uid: ALICE_UID,
       email: ALICE_EMAIL,
       displayName: "Alice Admin",
-      workspaceOwnerUid: ALICE_UID,
       role: "admin",
       roles: ["admin"],
       approved: true,
@@ -86,39 +81,23 @@ test("User profile: owner bootstrap succeeds, privilege escalation and @Document
     })
   );
 
-  // Valid harmless displayName update
+  // Valid harmless update by owner
   await assertSucceeds(
     alice.collection("users").doc(ALICE_UID).update({
       displayName: "Alice Owner",
+      lastWrite: Date.now(),
       updatedAt: pastDate(500),
     })
   );
 
-  // Reject ghost field / @DocumentId `id`
-  const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
-  await assertFails(
-    bob.collection("users").doc(BOB_UID).set({
-      id: BOB_UID,
-      uid: BOB_UID,
-      email: BOB_EMAIL,
-      displayName: "Bob",
-      workspaceOwnerUid: BOB_UID,
-      role: "admin",
-      roles: ["admin"],
-      approved: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-  );
-
-  // Reject joining Alice's workspace without a valid invite
+  // Reject stranger joining Alice's workspace without an invite
   await assertFails(
     bob.collection("users").doc(BOB_UID).set({
       uid: BOB_UID,
       email: BOB_EMAIL,
       displayName: "Bob Intruder",
-      workspaceOwnerUid: ALICE_UID,
-      role: "member",
+      ownerUid: ALICE_UID,
+      role: "user",
       roles: ["sales"],
       approved: true,
       createdAt: now,
@@ -134,6 +113,19 @@ test("Workspace invites & verified-email member onboarding", async () => {
   const charlie = testEnv.authenticatedContext(CHARLIE_UID, { email: CHARLIE_EMAIL, email_verified: true }).firestore();
   const now = pastDate();
 
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("users").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      email: ALICE_EMAIL,
+      displayName: "Alice Admin",
+      role: "admin",
+      roles: ["admin"],
+      approved: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
   await assertSucceeds(
     alice.collection("workspace_invites").doc("inv_bob_1").set({
       ownerUid: ALICE_UID,
@@ -148,28 +140,25 @@ test("Workspace invites & verified-email member onboarding", async () => {
     })
   );
 
-  // Unverified email cannot list/read invite
   await assertFails(
     bobUnverified.collection("workspace_invites").where("memberEmail", "==", BOB_EMAIL).get()
   );
-
-  // Outsider Charlie cannot list/read Bob's invite
   await assertFails(
     charlie.collection("workspace_invites").where("memberEmail", "==", BOB_EMAIL).get()
   );
   await assertFails(charlie.collection("workspace_invites").get());
 
-  // Verified Bob can list his own invite and join workspace as member (not admin)
   await assertSucceeds(
     bobVerified.collection("workspace_invites").where("memberEmail", "==", BOB_EMAIL).get()
   );
+  // Escalation to admin rejected
   await assertFails(
     bobVerified.collection("users").doc(BOB_UID).set({
       uid: BOB_UID,
       email: BOB_EMAIL,
       displayName: "Bob Sales",
-      workspaceOwnerUid: ALICE_UID,
-      role: "admin", // Escalation rejected
+      ownerUid: ALICE_UID,
+      role: "admin",
       roles: ["admin"],
       approved: true,
       inviteId: "inv_bob_1",
@@ -177,13 +166,14 @@ test("Workspace invites & verified-email member onboarding", async () => {
       updatedAt: now,
     })
   );
+  // Valid member onboarding
   await assertSucceeds(
     bobVerified.collection("users").doc(BOB_UID).set({
       uid: BOB_UID,
       email: BOB_EMAIL,
       displayName: "Bob Sales",
-      workspaceOwnerUid: ALICE_UID,
-      role: "member",
+      ownerUid: ALICE_UID,
+      role: "user",
       roles: ["sales", "rep"],
       approved: true,
       inviteId: "inv_bob_1",
@@ -200,172 +190,108 @@ test("Workspace invites & verified-email member onboarding", async () => {
   );
 });
 
-test("Workspace business collections: Kotlin payloads, owner unfiltered list, member scoped query, outsider denied", async () => {
+test("Web-parity collections & singletons: admin writes, member reads (blocked on settings/accounts), outsider denied", async () => {
   const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
   const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
   const charlie = testEnv.authenticatedContext(CHARLIE_UID, { email: CHARLIE_EMAIL, email_verified: true }).firestore();
   const now = pastDate();
 
-  // Seed user profiles
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await db.collection("users").doc(ALICE_UID).set({
-      uid: ALICE_UID,
-      email: ALICE_EMAIL,
-      displayName: "Alice Admin",
-      workspaceOwnerUid: ALICE_UID,
-      role: "admin",
-      roles: ["admin"],
-      approved: true,
-      createdAt: now,
-      updatedAt: now,
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice Admin",
+      role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
     });
     await db.collection("users").doc(BOB_UID).set({
-      uid: BOB_UID,
-      email: BOB_EMAIL,
-      displayName: "Bob Member",
-      workspaceOwnerUid: ALICE_UID,
-      role: "member",
-      roles: ["sales"],
-      approved: true,
-      createdAt: now,
-      updatedAt: now,
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob Member",
+      ownerUid: ALICE_UID, role: "user", roles: ["sales", "rep"], approved: true, createdAt: now, updatedAt: now,
     });
   });
 
-  // Unfiltered empty list query succeeds for owner
-  await assertSucceeds(alice.collection("users").doc(ALICE_UID).collection("stores").get());
-  await assertSucceeds(alice.collection("users").doc(ALICE_UID).collection("production").get());
-
-  // Create StoreConfig (Kotlin-aligned payload, no id field)
+  // Admin writes web-parity singleton docs & sync collections
   await assertSucceeds(
-    alice.collection("users").doc(ALICE_UID).collection("stores").doc("store_main").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID, BOB_UID],
-      storeKey: "GULL_SPECIAL",
-      name: "GULL SPECIAL",
-      formulaId: "formula_1",
-      salePrice: 1600,
-      active: true,
-      createdAt: now,
-      updatedAt: now,
+    alice.collection("users").doc(ALICE_UID).collection("stores").doc("list").set({
+      stores: [{ key: "zubair", name: "Zubair", salePrice: 1200, formulaId: "f_1" }],
+      stores_timestamp: Date.now(),
     })
   );
-
-  // Create ProductionRecord + SalesRecord + LedgerEntry
+  await assertSucceeds(
+    alice.collection("users").doc(ALICE_UID).collection("settings").doc("accounts").set({
+      accounts: [{ uid: BOB_UID, email: BOB_EMAIL, roles: ["sales", "rep"], approved: true }],
+      updatedAt: Date.now(),
+    })
+  );
   await assertSucceeds(
     alice.collection("users").doc(ALICE_UID).collection("production").doc("prod_1").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID, BOB_UID],
+      id: "prod_1",
       date: "2026-11-24",
-      storeKey: "GULL_SPECIAL",
-      storeName: "GULL SPECIAL",
-      formulaId: "formula_1",
+      time: "10:15",
+      store: "Zubair",
+      grossWt: 52.5,
+      contWt: 2.5,
+      net: 50.0,
+      cp: 800,
+      sp: 1200,
+      totalCost: 40000,
+      totalSale: 60000,
+      profit: 20000,
       formulaUnits: 2,
-      grossWeight: 52.5,
-      containerWeight: 2.5,
-      netWeight: 50.0,
-      costPerKg: 1100.0,
-      salePrice: 1600.0,
-      totalCost: 55000.0,
-      totalRevenue: 80000.0,
-      profit: 25000.0,
-      transfer: false,
-      transferType: "none",
-      notes: "Morning batch",
-      recycled: false,
-      recycledAtEpoch: 0,
-      createdByUid: ALICE_UID,
-      createdAt: now,
+      formulaId: "f_1",
+      formulaName: "Special",
+      timestamp: Date.now(),
       updatedAt: now,
     })
   );
-
-  // Reject future timestamp
-  await assertFails(
-    alice.collection("users").doc(ALICE_UID).collection("sales").doc("sale_bad_ts").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID],
+  await assertSucceeds(
+    alice.collection("users").doc(ALICE_UID).collection("rep").doc("rep_1").set({
+      id: "rep_1",
       date: "2026-11-24",
-      mode: "sale",
       customerName: "Khan Traders",
-      storeKey: "GULL_SPECIAL",
-      repName: "NONE",
-      qtyKg: 10,
-      ratePerKg: 1600,
-      totalAmount: 16000,
-      cashReceived: 10000,
-      creditAmount: 6000,
-      expiredKg: 0,
-      choraValue: 0,
-      addToLedger: true,
-      recycled: false,
-      recycledAtEpoch: 0,
-      createdByUid: ALICE_UID,
-      createdAt: new Date(Date.now() + 60000),
+      quantity: 10,
+      supplyStore: "Zubair",
+      paymentType: "CREDIT",
+      salesRep: "Bob Member",
+      unitPrice: 1200,
+      totalValue: 12000,
+      totalCost: 8000,
+      profit: 4000,
+      creditReceived: false,
       updatedAt: now,
     })
   );
-
-  // Partial update on production preserving createdAt succeeds; mutating createdAt fails
   await assertSucceeds(
-    alice.collection("users").doc(ALICE_UID).collection("production").doc("prod_1").update({
-      notes: "Updated batch note",
-      updatedAt: pastDate(500),
-    })
-  );
-  await assertFails(
-    alice.collection("users").doc(ALICE_UID).collection("production").doc("prod_1").update({
-      createdAt: pastDate(100),
-      updatedAt: pastDate(100),
+    alice.collection("users").doc(ALICE_UID).collection("daily_ledger").doc("entries").set({
+      daily_ledger: [],
+      daily_ledger_timestamp: Date.now(),
     })
   );
 
-  // Member Bob can query with memberUids filter, cannot write directly to production
-  await assertSucceeds(
-    bob.collection("users").doc(ALICE_UID).collection("production")
-      .where("memberUids", "array-contains", BOB_UID)
-      .get()
-  );
+  // Member Bob can read shared collections & stores/list, CANNOT read settings/accounts, CANNOT write directly
+  await assertSucceeds(bob.collection("users").doc(ALICE_UID).collection("production").get());
+  await assertSucceeds(bob.collection("users").doc(ALICE_UID).collection("rep").get());
+  await assertSucceeds(bob.collection("users").doc(ALICE_UID).collection("stores").doc("list").get());
+  await assertFails(bob.collection("users").doc(ALICE_UID).collection("settings").doc("accounts").get());
   await assertFails(
     bob.collection("users").doc(ALICE_UID).collection("production").doc("prod_bob").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID, BOB_UID],
-      date: "2026-11-24",
-      storeKey: "GULL_SPECIAL",
-      storeName: "GULL SPECIAL",
-      formulaUnits: 1,
-      grossWeight: 20,
-      containerWeight: 0,
-      netWeight: 20,
-      costPerKg: 1000,
-      salePrice: 1500,
-      totalCost: 20000,
-      totalRevenue: 30000,
-      profit: 10000,
-      transfer: false,
-      transferType: "none",
-      recycled: false,
-      recycledAtEpoch: 0,
-      createdByUid: BOB_UID,
-      createdAt: now,
-      updatedAt: now,
+      id: "prod_bob", date: "2026-11-24", store: "Zubair", net: 20,
     })
   );
 
-  // Outsider Charlie cannot list unfiltered, query Bob's docs, or read Alice's doc
-  await assertFails(
-    charlie.collection("users").doc(ALICE_UID).collection("production").get()
+  // Member Bob CAN ping owner lastWrite field, CANNOT mutate other fields on owner doc
+  await assertSucceeds(
+    bob.collection("users").doc(ALICE_UID).update({ lastWrite: Date.now() })
   );
   await assertFails(
-    charlie.collection("users").doc(ALICE_UID).collection("production")
-      .where("memberUids", "array-contains", BOB_UID)
-      .get()
+    bob.collection("users").doc(ALICE_UID).update({ displayName: "Hacked" })
   );
-  await assertFails(charlie.collection("users").doc(ALICE_UID).collection("production").doc("prod_1").get());
+
+  // Outsider Charlie denied everywhere
+  await assertFails(charlie.collection("users").doc(ALICE_UID).collection("production").get());
+  await assertFails(charlie.collection("users").doc(ALICE_UID).collection("rep").get());
+  await assertFails(charlie.collection("users").doc(ALICE_UID).collection("stores").doc("list").get());
 });
 
-test("Pending approvals workflow: member submits pending, cannot self-approve; admin approves", async () => {
+test("Pending approvals (web parity): member submits col__docId, cannot self-approve; admin approves", async () => {
   const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
   const bob = testEnv.authenticatedContext(BOB_UID, { email: BOB_EMAIL, email_verified: true }).firestore();
   const now = pastDate();
@@ -373,75 +299,50 @@ test("Pending approvals workflow: member submits pending, cannot self-approve; a
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await db.collection("users").doc(ALICE_UID).set({
-      uid: ALICE_UID,
-      email: ALICE_EMAIL,
-      displayName: "Alice",
-      workspaceOwnerUid: ALICE_UID,
-      role: "admin",
-      roles: ["admin"],
-      approved: true,
-      createdAt: now,
-      updatedAt: now,
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice",
+      role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
     });
     await db.collection("users").doc(BOB_UID).set({
-      uid: BOB_UID,
-      email: BOB_EMAIL,
-      displayName: "Bob",
-      workspaceOwnerUid: ALICE_UID,
-      role: "member",
-      roles: ["sales"],
-      approved: true,
-      createdAt: now,
-      updatedAt: now,
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob",
+      ownerUid: ALICE_UID, role: "user", roles: ["sales", "rep"], approved: true, createdAt: now, updatedAt: now,
     });
   });
 
-  // Member submits pending approval
+  const pid = "rep__rep_bob_1";
   await assertSucceeds(
-    bob.collection("users").doc(ALICE_UID).collection("pending").doc("pend_1").set({
-      ownerUid: ALICE_UID,
-      memberUids: [ALICE_UID, BOB_UID],
-      submittedByUid: BOB_UID,
-      submittedByName: "Bob",
-      submittedByEmail: BOB_EMAIL,
+    bob.collection("users").doc(ALICE_UID).collection("pending").doc(pid).set({
+      id: pid,
+      collection: "rep",
+      docId: "rep_bob_1",
       action: "set",
-      targetCollection: "sales",
-      targetDocId: "sale_bob_1",
-      summaryTitle: "Sale: Khan Traders (10 kg)",
-      summaryDetail: "Cash Rs 16,000",
-      recordDate: "2026-11-24",
-      payloadData: {
-        customerName: "Khan Traders",
-        qtyKg: 10,
-        totalAmount: 16000,
-      },
+      data: { id: "rep_bob_1", customerName: "Khan Traders", quantity: 10, totalValue: 12000 },
+      isEdit: false,
       status: "pending",
-      createdAt: now,
-      updatedAt: now,
+      submittedBy: { uid: BOB_UID, name: "Bob", email: BOB_EMAIL },
+      submittedAt: Date.now(),
+      summary: { title: "New sale", body: "Khan Traders — 12,000" },
     })
   );
 
-  // Member lists own pending
   await assertSucceeds(
     bob.collection("users").doc(ALICE_UID).collection("pending")
-      .where("submittedByUid", "==", BOB_UID)
+      .where("submittedBy.uid", "==", BOB_UID)
       .get()
   );
 
   // Member cannot self-approve
   await assertFails(
-    bob.collection("users").doc(ALICE_UID).collection("pending").doc("pend_1").update({
+    bob.collection("users").doc(ALICE_UID).collection("pending").doc(pid).update({
       status: "approved",
-      updatedAt: pastDate(500),
     })
   );
 
   // Admin approves
   await assertSucceeds(
-    alice.collection("users").doc(ALICE_UID).collection("pending").doc("pend_1").update({
+    alice.collection("users").doc(ALICE_UID).collection("pending").doc(pid).update({
       status: "approved",
-      reviewedByUid: ALICE_UID,
-      updatedAt: pastDate(500),
+      decidedBy: { uid: ALICE_UID, name: "Alice" },
+      decidedAt: Date.now(),
     })
   );
 });
@@ -451,12 +352,12 @@ test("Photos (web parity): members read/write photo docs, outsiders and bad shap
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await db.collection("users").doc(ALICE_UID).set({
-      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice", workspaceOwnerUid: ALICE_UID,
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice",
       role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
     });
     await db.collection("users").doc(BOB_UID).set({
-      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob", workspaceOwnerUid: ALICE_UID,
-      role: "member", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob",
+      ownerUid: ALICE_UID, role: "user", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
     });
   });
   const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
@@ -464,18 +365,14 @@ test("Photos (web parity): members read/write photo docs, outsiders and bad shap
   const charlie = testEnv.authenticatedContext(CHARLIE_UID, { email: CHARLIE_EMAIL, email_verified: true }).firestore();
   const photos = (db) => db.collection("users").doc(ALICE_UID).collection("photos");
 
-  // A member can add a photo in the web app's document shape.
   await assertSucceeds(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").set({ key: "expense:exp_1", data: "data:image/jpeg;base64,AAAA", updatedAt: pastDate(500) }));
-  // Owner and member can read it; an outsider cannot.
   await assertSucceeds(photos(alice).doc("ZXhwZW5zZTpleHBfMQ").get());
   await assertSucceeds(photos(bob).get());
   await assertFails(photos(charlie).doc("ZXhwZW5zZTpleHBfMQ").get());
   await assertFails(photos(charlie).doc("b3V0c2lkZXI").set({ key: "x", data: "y", updatedAt: pastDate(500) }));
-  // A deletion tombstone is allowed; a photo with a stray field or no key is not.
   await assertSucceeds(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").set({ key: "expense:exp_1", data: null, deleted: true, updatedAt: pastDate(300) }));
   await assertFails(photos(bob).doc("c3RyYXk").set({ key: "stray", data: "y", extra: 1, updatedAt: pastDate(500) }));
   await assertFails(photos(bob).doc("bm9rZXk").set({ data: "y", updatedAt: pastDate(500) }));
-  // Only an admin may hard-delete.
   await assertFails(photos(bob).doc("ZXhwZW5zZTpleHBfMQ").delete());
   await assertSucceeds(photos(alice).doc("ZXhwZW5zZTpleHBfMQ").delete());
 });
@@ -485,12 +382,12 @@ test("FCM tokens (web parity): admin manages only their own, members and others 
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await db.collection("users").doc(ALICE_UID).set({
-      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice", workspaceOwnerUid: ALICE_UID,
+      uid: ALICE_UID, email: ALICE_EMAIL, displayName: "Alice",
       role: "admin", roles: ["admin"], approved: true, createdAt: now, updatedAt: now,
     });
     await db.collection("users").doc(BOB_UID).set({
-      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob", workspaceOwnerUid: ALICE_UID,
-      role: "member", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
+      uid: BOB_UID, email: BOB_EMAIL, displayName: "Bob",
+      ownerUid: ALICE_UID, role: "user", roles: ["sales"], approved: true, createdAt: now, updatedAt: now,
     });
   });
   const alice = testEnv.authenticatedContext(ALICE_UID, { email: ALICE_EMAIL, email_verified: true }).firestore();
@@ -500,11 +397,9 @@ test("FCM tokens (web parity): admin manages only their own, members and others 
 
   await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").set(mine));
   await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").get());
-  // Wrong id prefix, someone else's uid, or extra fields are rejected.
   await assertFails(tokens(alice).doc("other_device1").set(mine));
   await assertFails(tokens(alice).doc(ALICE_UID + "_device2").set({ ...mine, uid: BOB_UID }));
   await assertFails(tokens(alice).doc(ALICE_UID + "_device3").set({ ...mine, extra: true }));
-  // Members cannot read or write tokens.
   await assertFails(tokens(bob).doc(ALICE_UID + "_device1").get());
   await assertFails(tokens(bob).doc(BOB_UID + "_device1").set({ ...mine, uid: BOB_UID }));
   await assertSucceeds(tokens(alice).doc(ALICE_UID + "_device1").delete());

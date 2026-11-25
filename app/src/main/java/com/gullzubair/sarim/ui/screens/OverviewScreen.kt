@@ -2,11 +2,8 @@ package com.gullzubair.sarim.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -39,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -52,16 +47,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.FinanceEngine
+import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.OverviewEngine
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SectionHeader
 import com.gullzubair.sarim.ui.components.SimpleBarChart
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
@@ -73,7 +69,8 @@ fun OverviewScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
     var windowMonths by remember { mutableIntStateOf(6) }
     var activePanel by remember { mutableStateOf("Sales") }
 
@@ -82,27 +79,31 @@ fun OverviewScreen(
     }
     val health = remember(snapshot) { FinanceEngine.calculateEconomicHealth(snapshot) }
     val storeSnapshots = remember(snapshot) { FinanceEngine.computeStoreStockSnapshots(snapshot) }
-    val unitPools = remember(snapshot) { FinanceEngine.computeUnitPools(snapshot) }
-    val pendingCount = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.count { it.status == "pending" } }
-
-    val monthlyProdSeries = remember(snapshot.production, windowMonths) {
-        snapshot.production.filter { !it.recycled && !it.transfer }
-            .groupBy { it.date.take(7) }
-            .entries.sortedBy { it.key }
-            .takeLast(windowMonths)
-            .map { it.key to it.value.sumOf { rec -> rec.netWeight } }
+    val unitPools = remember(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production) {
+        FormulaEngine.buildUnitPools(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production)
+    }
+    val pendingCount = remember(snapshot.pendingApprovals) {
+        snapshot.pendingApprovals.count { it.status == "pending" }
     }
 
-    val revDeltaPct = remember(summary.monthlyRevenueSeries) {
-        val s = summary.monthlyRevenueSeries
-        if (s.size >= 2 && s.first().second > 0.01) (((s.last().second - s.first().second) / s.first().second) * 100.0).roundToInt() else 0
+    val monthlyRevSeries = remember(summary.months) { summary.months.map { it.salesValue } }
+    val monthlyExpSeries = remember(summary.months) { summary.months.map { it.expenses } }
+    val monthlyProdSeries = remember(summary.months) { summary.months.map { it.prodKg } }
+
+    val revDeltaPct = remember(monthlyRevSeries) {
+        if (monthlyRevSeries.size >= 2 && monthlyRevSeries.first() > 0.01) {
+            (((monthlyRevSeries.last() - monthlyRevSeries.first()) / monthlyRevSeries.first()) * 100.0).roundToInt()
+        } else 0
     }
-    val expDeltaPct = remember(summary.monthlyExpenseSeries) {
-        val s = summary.monthlyExpenseSeries
-        if (s.size >= 2 && s.first().second > 0.01) (((s.last().second - s.first().second) / s.first().second) * 100.0).roundToInt() else 0
+    val expDeltaPct = remember(monthlyExpSeries) {
+        if (monthlyExpSeries.size >= 2 && monthlyExpSeries.first() > 0.01) {
+            (((monthlyExpSeries.last() - monthlyExpSeries.first()) / monthlyExpSeries.first()) * 100.0).roundToInt()
+        } else 0
     }
     val prodDeltaPct = remember(monthlyProdSeries) {
-        if (monthlyProdSeries.size >= 2 && monthlyProdSeries.first().second > 0.01) (((monthlyProdSeries.last().second - monthlyProdSeries.first().second) / monthlyProdSeries.first().second) * 100.0).roundToInt() else 0
+        if (monthlyProdSeries.size >= 2 && monthlyProdSeries.first() > 0.01) {
+            (((monthlyProdSeries.last() - monthlyProdSeries.first()) / monthlyProdSeries.first()) * 100.0).roundToInt()
+        } else 0
     }
 
     LazyColumn(
@@ -115,9 +116,17 @@ fun OverviewScreen(
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    text = "Today: ${InputGuards.formatKg(summary.todayProdKg)} • ${InputGuards.formatMoney(summary.todaySalesValue, currency, masked)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accents.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 6, 12).forEach { m ->
                         val selected = windowMonths == m
@@ -166,56 +175,54 @@ fun OverviewScreen(
             }
         }
 
-        // Mirrored Sparkline KPI Cards (matching screenshot 115730)
+        // Mirrored Sparkline KPI Cards
         item {
             OverviewSparkCard(
                 label = "Sales Revenue",
-                value = InputGuards.formatMoney(summary.totalSalesRevenue, currency, masked),
-                subtitle = "Cash ${InputGuards.formatMoney(summary.totalCashCollected, currency, masked)}",
+                value = InputGuards.formatMoney(summary.salesValue, currency, masked),
+                subtitle = "Cash In ${InputGuards.formatMoney(summary.cashIn, currency, masked)}",
                 deltaPct = revDeltaPct,
-                series = summary.monthlyRevenueSeries.map { it.second },
+                series = monthlyRevSeries,
                 lineColor = accents.emerald
             )
         }
         item {
             OverviewSparkCard(
-                label = "Produced & Sold",
-                value = InputGuards.formatKg(summary.totalProducedKg),
+                label = "Produced & Stock",
+                value = InputGuards.formatKg(summary.prodKg),
                 subtitle = "Profit ${InputGuards.formatMoney(summary.netOperatingProfit, currency, masked)}",
                 deltaPct = prodDeltaPct,
-                series = monthlyProdSeries.map { it.second },
+                series = monthlyProdSeries,
                 lineColor = accents.cyan
             )
         }
         item {
             OverviewSparkCard(
                 label = "Operating Expenses",
-                value = InputGuards.formatMoney(summary.totalOperatingExpenses, currency, masked),
-                subtitle = "Open Credits ${InputGuards.formatMoney(summary.openCredits, currency, masked)}",
+                value = InputGuards.formatMoney(summary.expenses, currency, masked),
+                subtitle = "Open Owed ${InputGuards.formatMoney(summary.owedAging.total, currency, masked)}",
                 deltaPct = expDeltaPct,
-                series = summary.monthlyExpenseSeries.map { it.second },
+                series = monthlyExpSeries,
                 lineColor = accents.gold
             )
         }
 
-        // Mirrored Cash in / Out / Activity Multi-Curve Card
+        // Cash In / Out / Activity Multi-Curve Card
         item {
-            val cashInTotal = summary.totalCashCollected
-            val cashOutTotal = summary.totalOperatingExpenses
             SarimCard(contentPadding = PaddingValues(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OverviewMetricPill("Cash in", InputGuards.formatMoney(cashInTotal, currency, masked), accents.emerald, true)
-                    OverviewMetricPill("Out", InputGuards.formatMoney(cashOutTotal, currency, masked), accents.danger, false)
-                    OverviewMetricPill("Activity", "${snapshot.sales.count { !it.recycled }}", accents.purple, false)
+                    OverviewMetricPill("Cash in", InputGuards.formatMoney(summary.cashIn, currency, masked), accents.emerald, true)
+                    OverviewMetricPill("Out", InputGuards.formatMoney(summary.cashOut + summary.expenses, currency, masked), accents.danger, false)
+                    OverviewMetricPill("Sales", "${summary.salesCount}", accents.purple, false)
                 }
                 Spacer(Modifier.height(14.dp))
-                val revPts = summary.monthlyRevenueSeries.map { it.second }.ifEmpty { listOf(0.0, 0.0, 0.0) }
-                val expPts = summary.monthlyExpenseSeries.map { it.second }.ifEmpty { listOf(0.0, 0.0, 0.0) }
-                val actPts = monthlyProdSeries.map { it.second }.ifEmpty { listOf(0.0, 0.0, 0.0) }
+                val revPts = monthlyRevSeries.ifEmpty { listOf(0.0, 0.0, 0.0) }
+                val expPts = monthlyExpSeries.ifEmpty { listOf(0.0, 0.0, 0.0) }
+                val actPts = monthlyProdSeries.ifEmpty { listOf(0.0, 0.0, 0.0) }
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -250,8 +257,8 @@ fun OverviewScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    summary.monthlyRevenueSeries.forEach { (ym, _) ->
-                        Text(ym.takeLast(5), style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    summary.months.forEach { b ->
+                        Text(b.label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                     }
                 }
             }
@@ -296,10 +303,48 @@ fun OverviewScreen(
                         masked = masked
                     )
                 }
+                if (summary.owedAging.count > 0) {
+                    item {
+                        SarimCard {
+                            Text("Credit Aging (${summary.owedAging.count} open bills)", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("0–30d: ${InputGuards.formatMoney(summary.owedAging.d30, currency, masked)}", style = MaterialTheme.typography.bodySmall)
+                                Text("31–60d: ${InputGuards.formatMoney(summary.owedAging.d60, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.gold)
+                                Text("60d+: ${InputGuards.formatMoney(summary.owedAging.d90, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.danger)
+                            }
+                            if (summary.owedAging.topCustomers.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                summary.owedAging.topCustomers.take(5).forEach { (cust, amt, age) ->
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("$cust (${age}d)", style = MaterialTheme.typography.bodySmall)
+                                        Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.labelMedium, color = accents.danger)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (summary.profitAnalysis.losingCount > 0) {
+                    item {
+                        SarimCard(accentBorder = accents.danger.copy(alpha = 0.6f)) {
+                            Text(
+                                "Loss Sales Alert (${summary.profitAnalysis.losingCount})",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = accents.danger
+                            )
+                            Text(
+                                "Net loss ${InputGuards.formatMoney(summary.profitAnalysis.losingSum, currency, masked)} • Avg sale ${InputGuards.formatMoney(summary.profitAnalysis.avgPrice, currency, masked)} vs cost ${InputGuards.formatMoney(summary.profitAnalysis.avgCost, currency, masked)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = accents.textMuted
+                            )
+                        }
+                    }
+                }
             }
 
             "Production" -> {
-                item { SectionHeader("Store Inventory & Pricing", "Net produced + rep returns - sold") }
+                item { SectionHeader("Store Inventory & Pricing", "Produced + returned - sold") }
                 if (storeSnapshots.isEmpty()) {
                     item { EmptyStateCard("No stores yet", "Add stores from Store Manager in Settings.") }
                 } else {
@@ -323,14 +368,14 @@ fun OverviewScreen(
                     }
                 }
                 item { SectionHeader("Formula Unit Pools") }
-                items(unitPools, key = { it.formulaId }) { pool ->
+                items(unitPools, key = { it.key }) { pool ->
                     SarimCard {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(pool.formulaName, style = MaterialTheme.typography.titleMedium)
-                            Text("${InputGuards.formatNum(pool.availableUnits)} units free", color = accents.purple, style = MaterialTheme.typography.labelLarge)
+                            Text(pool.label, style = MaterialTheme.typography.titleMedium)
+                            Text("${InputGuards.fmtNum(pool.availableUnits)} units free", color = accents.purple, style = MaterialTheme.typography.labelLarge)
                         }
                         Text(
-                            "Produced ${InputGuards.formatNum(pool.producedUnits)} • Used ${InputGuards.formatNum(pool.usedUnits)} • Cost/unit ${InputGuards.formatMoney(pool.avgCostPerUnit, currency, masked)}",
+                            "Produced ${InputGuards.fmtNum(pool.producedUnits)} • Used ${InputGuards.fmtNum(pool.usedUnits)} • Cost/unit ${InputGuards.formatMoney(pool.avgUnitCost, currency, masked)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = accents.textMuted
                         )
@@ -343,14 +388,16 @@ fun OverviewScreen(
                     SarimCard {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Economic Health Balance Sheet", style = MaterialTheme.typography.titleMedium)
-                            Surface(
-                                onClick = onOpenDailyLedger,
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.softPillFill,
-                                border = BorderStroke(1.dp, accents.emerald),
-                                modifier = Modifier.testTag("overview_open_ledger_btn")
-                            ) {
-                                Text("Cashbook", style = MaterialTheme.typography.labelLarge, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                            if (snapshot.profile.isAdmin) {
+                                Surface(
+                                    onClick = onOpenDailyLedger,
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald),
+                                    modifier = Modifier.testTag("overview_open_ledger_btn")
+                                ) {
+                                    Text("Cashbook", style = MaterialTheme.typography.labelLarge, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                                }
                             }
                         }
                         Spacer(Modifier.height(10.dp))
@@ -360,6 +407,7 @@ fun OverviewScreen(
                             "Formula Unit Pools" to health.formulaUnitsValue,
                             "Finished Store Stock" to health.finishedStockValue,
                             "Customer Receivables" to health.customerReceivables,
+                            "Entity Receivables" to health.entityReceivables,
                             "Supplier & Entity Payables" to -health.totalLiabilities,
                             "Net Working Capital" to health.netWorkingCapital
                         )
@@ -389,24 +437,25 @@ fun OverviewScreen(
             }
 
             "Stock" -> {
-                val activeInv = snapshot.inventory.filter { !it.recycled }
-                if (activeInv.isEmpty()) {
+                val materials = FinanceEngine.materialRecords(snapshot.inventory).sortedBy { it.name.lowercase() }
+                if (materials.isEmpty()) {
                     item { EmptyStateCard("No raw materials tracked", "Record a Raw Material Purchase from Factory or Drawer.") }
                 } else {
-                    items(activeInv, key = { it.id }) { item ->
-                        val low = item.minThreshold > 0 && item.stockQty <= item.minThreshold
+                    items(materials, key = { it.id }) { item ->
+                        val low = item.quantity <= 0.0
                         SarimCard(accentBorder = if (low) accents.gold else null) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                     Icon(Icons.Default.Inventory2, contentDescription = null, tint = if (low) accents.gold else accents.emerald)
                                     Spacer(Modifier.width(8.dp))
                                     Column {
                                         Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("Avg ${InputGuards.formatMoney(item.avgCostPerKg, currency, masked)}/kg", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                        val unitDesc = if (item.purchaseUnitName.isNotBlank()) " (${item.purchaseUnitName} = ${InputGuards.fmtNum(item.conversionFactor)} kg)" else ""
+                                        Text("Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg$unitDesc", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                     }
                                 }
                                 Text(
-                                    InputGuards.formatKg(item.stockQty),
+                                    InputGuards.formatKg(item.quantity),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = if (low) accents.gold else accents.emerald
                                 )
@@ -423,47 +472,50 @@ fun OverviewScreen(
                             Column(Modifier.weight(1f)) {
                                 Text("Workspace Integrity Audit", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    if (summary.findings.isEmpty()) "All ledger mirrors & stock balances passed" else "${summary.findings.size} findings detected",
+                                    if (summary.audit.findings.isEmpty()) "Scanned ${summary.audit.scannedTotal} records — all checks passed"
+                                    else "${summary.audit.errors} errors • ${summary.audit.warnings} warnings across ${summary.audit.scannedTotal} records",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = accents.textMuted
                                 )
                             }
-                            Surface(
-                                onClick = { vm.repairLedgerMirrors() },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.softPillFill,
-                                border = BorderStroke(1.dp, accents.emerald),
-                                modifier = Modifier.testTag("overview_repair_links_btn")
-                            ) {
-                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Fix Links", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                            if (snapshot.profile.isAdmin) {
+                                Surface(
+                                    onClick = { vm.auditRepriceZeroCostSales() },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald),
+                                    modifier = Modifier.testTag("overview_reprice_sales_btn")
+                                ) {
+                                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Reprice Zero-Cost", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                if (summary.findings.isEmpty()) {
+                if (summary.audit.findings.isEmpty()) {
                     item {
                         SarimCard(accentBorder = accents.emerald) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accents.emerald)
                                 Spacer(Modifier.width(10.dp))
-                                Text("Zero discrepancies detected across stores, inventory, and cashbook.", style = MaterialTheme.typography.bodyMedium)
+                                Text("Zero discrepancies detected across stores, inventory, sales, and collections.", style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
                 } else {
-                    items(summary.findings, key = { it.id }) { finding ->
-                        val color = if (finding.severity == "critical") accents.danger else accents.gold
+                    items(summary.audit.findings, key = { it.id }) { finding ->
+                        val color = if (finding.severity == "error") accents.danger else accents.gold
                         SarimCard(accentBorder = color) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Warning, contentDescription = null, tint = color)
                                 Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(finding.title, style = MaterialTheme.typography.titleSmall, color = color)
-                                    Text(finding.detail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                Column(Modifier.weight(1f)) {
+                                    Text("${finding.title} (${finding.label}${if (finding.date.isNotBlank()) " • ${finding.date}" else ""})", style = MaterialTheme.typography.titleSmall, color = color)
+                                    Text(finding.reasons.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                 }
                             }
                         }
@@ -472,23 +524,27 @@ fun OverviewScreen(
             }
 
             else -> {
-                val recentSales = snapshot.sales.filter { !it.recycled }.take(5)
-                val recentProd = snapshot.production.filter { !it.recycled }.take(5)
-                item { SectionHeader("Recent Production") }
-                items(recentProd, key = { it.id }) { p ->
-                    SarimCard {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${p.storeName} (${p.date})", style = MaterialTheme.typography.titleSmall)
-                            Text(InputGuards.formatKg(p.netWeight), color = accents.emerald, style = MaterialTheme.typography.labelMedium)
+                if (summary.recentActivity.isEmpty()) {
+                    item { EmptyStateCard("No recent activity", "Log production, sales, payments, or expenses to see the feed.") }
+                } else {
+                    items(summary.recentActivity.size) { idx ->
+                        val act = summary.recentActivity[idx]
+                        val toneColor = when (act.tone) {
+                            "good" -> accents.emerald
+                            "bad" -> accents.danger
+                            "warn" -> accents.gold
+                            else -> accents.cyan
                         }
-                    }
-                }
-                item { SectionHeader("Recent Sales & Collections") }
-                items(recentSales, key = { it.id }) { s ->
-                    SarimCard {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${s.customerName} (${s.date})", style = MaterialTheme.typography.titleSmall)
-                            Text(InputGuards.formatMoney(s.cashReceived, currency, masked), color = accents.cyan, style = MaterialTheme.typography.labelMedium)
+                        SarimCard {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("${act.kind} • ${act.title}", style = MaterialTheme.typography.titleSmall)
+                                    if (act.sub.isNotBlank()) {
+                                        Text(act.sub, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                    }
+                                }
+                                Text(if (masked && act.kind != "Production") "$currency ••••" else act.amount, color = toneColor, style = MaterialTheme.typography.labelLarge)
+                            }
                         }
                     }
                 }
@@ -561,7 +617,7 @@ private fun OverviewSparkCard(
                     drawPath(path = path, color = lineColor, style = Stroke(width = 5f, cap = StrokeCap.Round))
                 }
                 Text(
-                    text = if (deltaPct >= 0) "▲ $deltaPct%" else "▼ ${kotlin.math.abs(deltaPct)}%",
+                    text = if (deltaPct >= 0) "▲ $deltaPct%" else "▼ ${abs(deltaPct)}%",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = if (deltaPct >= 0) accents.emerald else accents.textMuted
                 )

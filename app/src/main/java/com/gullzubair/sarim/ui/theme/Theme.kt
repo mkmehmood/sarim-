@@ -38,7 +38,7 @@ data class SarimAccents(
 
 val LocalSarimAccents = staticCompositionLocalOf {
     SarimAccents(
-        emerald = EmeraldLight,
+        emerald = EmeraldBright,
         cyan = CyanLight,
         gold = GoldLight,
         purple = PurpleLight,
@@ -81,7 +81,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = EmeraldLight,
+    primary = EmeraldBright,
     onPrimary = Color.White,
     primaryContainer = EmeraldLightContainer,
     onPrimaryContainer = Color(0xFF023D28),
@@ -141,16 +141,16 @@ fun SarimTheme(
             borderSubtle = DarkOutline,
             textMuted = DarkTextSecondary,
             isDark = true,
-            glassTop = Color(0xFF10221C),
+            glassTop = Color(0xFF0A1410),
             glassBottom = DarkSurface,
             inputFill = DarkSurfaceVariant,
             inputBorder = DarkOutline,
             headerFrosted = DarkSurface,
-            softPillFill = Color(0xFF113528)
+            softPillFill = Color(0xFF0D281D)
         )
     } else {
         SarimAccents(
-            emerald = EmeraldLight,
+            emerald = EmeraldBright,
             cyan = CyanLight,
             gold = GoldLight,
             purple = PurpleLight,

@@ -73,43 +73,49 @@ fun DailyLedgerScreen(
     val clipboard = LocalClipboardManager.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
-    val channels = snapshot.settings.paymentChannels.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
 
     var showComposer by remember { mutableStateOf(false) }
+    var editingId by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
-    var entryType by remember { mutableStateOf("IN") }
-    var expenseScope by remember { mutableStateOf("business") }
+    var entryType by remember { mutableStateOf("IN") } // IN | OUT | TRANSFER
+    var expenseScope by remember { mutableStateOf("BUSINESS") } // BUSINESS | HOME | ""
     var channel by remember(channels) { mutableStateOf(channels.first()) }
     var toChannel by remember(channels) { mutableStateOf(channels.getOrElse(1) { channels.first() }) }
     var category by remember { mutableStateOf("General") }
     var partyName by remember { mutableStateOf("") }
+    var refStr by remember { mutableStateOf("") }
     var amountStr by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var selectedVoucher by remember { mutableStateOf<DailyLedgerEntry?>(null) }
 
-    val channelBalances = remember(snapshot) { FinanceEngine.computeChannelBalances(snapshot) }
-    val allActive = remember(snapshot.ledgerEntries) {
-        snapshot.ledgerEntries.filter { !it.recycled }.sortedByDescending { it.date }
+    val allEntries = remember(snapshot.ledgerEntries) {
+        snapshot.ledgerEntries.sortedWith(compareByDescending<DailyLedgerEntry> { it.date }.thenByDescending { it.timestamp })
     }
-    val categoryTotals = remember(allActive) {
-        allActive.groupBy { it.category.ifBlank { "General" } }
-            .mapValues { (_, list) -> InputGuards.round2(list.sumOf { it.amount }) }
-            .entries.sortedByDescending { it.value }.take(8)
+    val summary = remember(snapshot.ledgerEntries, channels) {
+        FinanceEngine.summarizeDailyLedger(snapshot.ledgerEntries, channels)
     }
-    val filteredEntries = remember(allActive, searchQuery) {
+    val channelBalances = summary.byMode
+    val categoryTotals = remember(summary.byCategory) {
+        summary.byCategory.entries.sortedByDescending { it.value }.take(8)
+    }
+    val filteredEntries = remember(allEntries, searchQuery) {
         val q = searchQuery.trim()
-        if (q.isBlank()) allActive
-        else allActive.filter {
-            it.partyName.contains(q, true) ||
+        if (q.isBlank()) allEntries
+        else allEntries.filter {
+            it.party.contains(q, true) ||
                 it.category.contains(q, true) ||
-                it.channel.contains(q, true) ||
+                it.mode.contains(q, true) ||
+                it.toMode.contains(q, true) ||
+                it.note.contains(q, true) ||
+                it.ref.contains(q, true) ||
                 it.amount.toString().contains(q)
         }
     }
-    val totalIn = remember(filteredEntries) { filteredEntries.filter { it.entryType == "IN" }.sumOf { it.amount } }
-    val totalOut = remember(filteredEntries) { filteredEntries.filter { it.entryType == "OUT" }.sumOf { it.amount } }
+    val totalIn = remember(filteredEntries) { filteredEntries.filter { it.type.equals("IN", true) }.sumOf { it.amount } }
+    val totalOut = remember(filteredEntries) { filteredEntries.filter { it.type.equals("OUT", true) }.sumOf { it.amount } }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
@@ -118,7 +124,10 @@ fun DailyLedgerScreen(
             trailingContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(
-                        onClick = { showComposer = !showComposer },
+                        onClick = {
+                            if (showComposer) editingId = null
+                            showComposer = !showComposer
+                        },
                         shape = RoundedCornerShape(14.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
@@ -132,20 +141,16 @@ fun DailyLedgerScreen(
                     }
                     Surface(
                         onClick = {
-                            var running = 0.0
                             val rows = filteredEntries.reversed().map { e ->
-                                val delta = when (e.entryType) {
-                                    "IN" -> e.amount
-                                    "OUT" -> -e.amount
-                                    else -> 0.0
-                                }
-                                running += delta
+                                val afterBal = summary.statement[e.id]?.second ?: 0.0
+                                val isOut = e.type.equals("OUT", true)
+                                val isIn = e.type.equals("IN", true)
                                 StatementRow(
                                     date = e.date,
-                                    description = "${e.entryType} ${e.category} ${e.partyName}".trim(),
-                                    debit = if (e.entryType == "OUT") InputGuards.formatNum(e.amount) else "-",
-                                    credit = if (e.entryType == "IN") InputGuards.formatNum(e.amount) else "-",
-                                    balance = InputGuards.formatNum(running)
+                                    description = "${e.type} ${e.category} ${e.party}".trim(),
+                                    debit = if (isOut) InputGuards.fmtNum(e.amount) else "-",
+                                    credit = if (isIn) InputGuards.fmtNum(e.amount) else "-",
+                                    balance = InputGuards.fmtNum(afterBal)
                                 )
                             }
                             PdfExporter.exportAndShareStatement(
@@ -153,7 +158,7 @@ fun DailyLedgerScreen(
                                 title = "Daily Cashbook Statement",
                                 subtitle = "Gull & Zubair Naswar Dealers",
                                 rows = rows,
-                                summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, false)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, false)}"
+                                summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
                             )
                         },
                         shape = RoundedCornerShape(14.dp),
@@ -178,7 +183,7 @@ fun DailyLedgerScreen(
             item {
                 AnimatedVisibility(visible = showComposer) {
                     SarimCard {
-                        Text("New Cashbook Entry", style = MaterialTheme.typography.titleMedium)
+                        Text(if (editingId == null) "New Cashbook Entry" else "Edit Cashbook Entry", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("IN", "OUT", "TRANSFER").forEach { type ->
@@ -199,7 +204,7 @@ fun DailyLedgerScreen(
                         if (entryType == "OUT") {
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("business" to "Business", "home" to "Home", "none" to "Party").forEach { (k, lbl) ->
+                                listOf("BUSINESS" to "Business", "HOME" to "Home", "" to "General").forEach { (k, lbl) ->
                                     val sel = expenseScope == k
                                     Surface(
                                         onClick = { expenseScope = k },
@@ -219,9 +224,9 @@ fun DailyLedgerScreen(
                         DatePickerField("Entry Date", date, { date = it }, "ledger_date")
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PickerField(if (entryType == "TRANSFER") "From" else "Channel", channel, channels, { it }, { channel = it }, "ledger_channel_picker", Modifier.weight(1f))
+                            PickerField(if (entryType == "TRANSFER") "From" else "Mode", channel, channels, { it }, { channel = it }, "ledger_channel_picker", Modifier.weight(1f))
                             if (entryType == "TRANSFER") {
-                                PickerField("To Channel", toChannel, channels, { it }, { toChannel = it }, "ledger_to_channel_picker", Modifier.weight(1f))
+                                PickerField("To Mode", toChannel, channels, { it }, { toChannel = it }, "ledger_to_channel_picker", Modifier.weight(1f))
                             } else {
                                 DecimalField("Amount", amountStr, { amountStr = it }, "ledger_amount_input", Modifier.weight(1f))
                             }
@@ -240,21 +245,25 @@ fun DailyLedgerScreen(
                         Spacer(Modifier.height(12.dp))
                         val amt = amountStr.toDoubleOrNull() ?: 0.0
                         SarimGradientButton(
-                            text = "Record Cashbook Entry",
+                            text = if (editingId == null) "Record Cashbook Entry" else "Update Cashbook Entry",
                             onClick = {
                                 vm.submitLedgerEntry(
+                                    existingId = editingId,
                                     date = date,
-                                    entryType = entryType,
-                                    scope = if (entryType == "OUT") expenseScope else "none",
-                                    channel = channel,
-                                    toChannel = if (entryType == "TRANSFER") toChannel else "",
+                                    type = entryType,
+                                    scope = if (entryType == "OUT") expenseScope else "",
+                                    mode = channel,
+                                    toMode = if (entryType == "TRANSFER") toChannel else "",
                                     category = category,
                                     party = partyName,
                                     amount = amt,
-                                    notes = notes
+                                    ref = refStr,
+                                    note = notes
                                 )
+                                editingId = null
                                 amountStr = ""
                                 notes = ""
+                                refStr = ""
                                 showComposer = false
                             },
                             enabled = amt > 0.0 && (entryType != "TRANSFER" || !channel.equals(toChannel, true)),
@@ -264,7 +273,6 @@ fun DailyLedgerScreen(
                 }
             }
 
-            // Mirrored PAYMENT CHANNELS Card (matching screenshot 120057)
             item {
                 Text(
                     "PAYMENT CHANNELS",
@@ -278,7 +286,7 @@ fun DailyLedgerScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(ch, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                text = (if (bal >= 0) "+ " else "- ") + InputGuards.formatNum(kotlin.math.abs(bal)),
+                                text = (if (bal >= 0) "+ " else "- ") + InputGuards.formatMoney(kotlin.math.abs(bal), currency, masked).removePrefix("$currency "),
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = if (bal >= 0) accents.emerald else accents.danger
                             )
@@ -287,7 +295,6 @@ fun DailyLedgerScreen(
                 }
             }
 
-            // Mirrored CATEGORY SUMMARY Card (matching screenshot 120057)
             if (categoryTotals.isNotEmpty()) {
                 item {
                     Text(
@@ -302,7 +309,7 @@ fun DailyLedgerScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(cat, style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    InputGuards.formatNum(tot),
+                                    InputGuards.formatMoney(tot, currency, masked),
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
@@ -311,7 +318,6 @@ fun DailyLedgerScreen(
                 }
             }
 
-            // Mirrored CASHBOOK LOG & HISTORY + Search Pill
             item {
                 Text(
                     "CASHBOOK LOG & HISTORY",
@@ -338,12 +344,12 @@ fun DailyLedgerScreen(
                         items = filteredEntries,
                         dateOf = { it.date },
                         summaryLabel = { list ->
-                            val tIn = list.filter { it.entryType == "IN" }.sumOf { it.amount }
-                            val tOut = list.filter { it.entryType == "OUT" }.sumOf { it.amount }
-                            "+${InputGuards.formatNum(tIn)} / -${InputGuards.formatNum(tOut)}"
+                            val tIn = list.filter { it.type.equals("IN", true) }.sumOf { it.amount }
+                            val tOut = list.filter { it.type.equals("OUT", true) }.sumOf { it.amount }
+                            "+${InputGuards.formatMoney(tIn, currency, masked)} / -${InputGuards.formatMoney(tOut, currency, masked)}"
                         },
                         itemRow = { item ->
-                            val color = when (item.entryType) {
+                            val color = when (item.type.uppercase()) {
                                 "IN" -> accents.emerald
                                 "OUT" -> accents.danger
                                 else -> accents.cyan
@@ -358,15 +364,20 @@ fun DailyLedgerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(item.category.ifBlank { item.entryType }, style = MaterialTheme.typography.titleSmall)
+                                    Text(item.category.ifBlank { item.type }, style = MaterialTheme.typography.titleSmall)
                                     Text(
-                                        "${item.partyName.ifBlank { item.channel }} • ${item.channel}",
+                                        listOfNotNull(
+                                            item.party.ifBlank { item.mode },
+                                            item.mode,
+                                            if (item.scope.isNotBlank()) item.scope else null
+                                        ).joinToString(" • "),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = accents.textMuted
                                     )
                                 }
                                 Text(
-                                    (if (item.entryType == "IN") "+ " else if (item.entryType == "OUT") "- " else "") + InputGuards.formatNum(item.amount),
+                                    (if (item.type.equals("IN", true)) "+ " else if (item.type.equals("OUT", true)) "- " else "") +
+                                        InputGuards.formatMoney(item.amount, currency, masked),
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                     color = color
                                 )
@@ -379,54 +390,82 @@ fun DailyLedgerScreen(
         }
     }
 
-    // Mirrored Cashbook Voucher Bottom Sheet (matching screenshot 120057)
     selectedVoucher?.let { v ->
-        val chBal = channelBalances[v.channel] ?: 0.0
-        val delta = if (v.entryType == "IN") v.amount else if (v.entryType == "OUT") -v.amount else 0.0
-        val beforeBal = InputGuards.round2(chBal - delta)
-        val signPrefix = if (v.entryType == "IN") "+ " else if (v.entryType == "OUT") "- " else ""
+        val stmtPair = summary.statement[v.id]
+        val beforeBal = stmtPair?.first ?: 0.0
+        val afterBal = stmtPair?.second ?: beforeBal
+        val signPrefix = if (v.type.equals("IN", true)) "+ " else if (v.type.equals("OUT", true)) "- " else ""
 
         SarimDetailBottomSheet(
             title = v.category.ifBlank { "Cashbook Entry" },
-            rightTitle = "$signPrefix${InputGuards.formatNum(v.amount)}",
-            subtitle = "${DateUtils.formatPretty(v.date).uppercase()} • ${v.partyName.ifBlank { "General" }} • ${v.channel}",
+            rightTitle = "$signPrefix${InputGuards.formatMoney(v.amount, currency, masked)}",
+            subtitle = "${DateUtils.formatPretty(v.date).uppercase()} • ${v.party.ifBlank { "General" }} • ${v.mode}",
             onDismiss = { selectedVoucher = null },
             content = {
                 HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                VoucherDetailRow("Type", when (v.entryType) { "IN" -> "Cash In"; "OUT" -> "Cash Out"; else -> "Transfer" })
+                VoucherDetailRow("Type", when (v.type.uppercase()) { "IN" -> "Cash In"; "OUT" -> "Cash Out"; else -> "Transfer" })
                 VoucherDetailRow("Category", v.category.ifBlank { "General" })
-                VoucherDetailRow("Mode", v.channel + if (!v.toChannel.isNullOrBlank()) " -> ${v.toChannel}" else "")
-                VoucherDetailRow("Party / Name", v.partyName.ifBlank { "-" })
-                VoucherDetailRow("Posted to", if (v.sourceCollection == "sales") "Sales tab - ${v.partyName}" else v.sourceCollection ?: "Daily Ledger")
-                VoucherDetailRow("Balance", "${InputGuards.formatNum(beforeBal)} -> ${InputGuards.formatNum(chBal)}")
-                VoucherDetailRow("Statement effect", "$signPrefix${InputGuards.formatNum(v.amount)}")
+                VoucherDetailRow("Mode", v.mode + if (v.toMode.isNotBlank()) " -> ${v.toMode}" else "")
+                VoucherDetailRow("Party / Name", v.party.ifBlank { "-" })
+                VoucherDetailRow("Posted to", v.linkCollection ?: "Daily Ledger")
+                VoucherDetailRow("Balance", "${InputGuards.formatMoney(beforeBal, currency, masked)} -> ${InputGuards.formatMoney(afterBal, currency, masked)}")
+                VoucherDetailRow("Statement effect", "$signPrefix${InputGuards.formatMoney(v.amount, currency, masked)}")
+                if (v.note.isNotBlank()) {
+                    VoucherDetailRow("Notes", v.note)
+                }
             },
             footer = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (v.tabEntry) {
+                    if (v.isTabMirror) {
                         Text(
-                            "Managed in ${v.sourceCollection ?: "module"} tab",
+                            "Managed in ${v.linkCollection ?: "module"} tab",
                             style = MaterialTheme.typography.bodySmall,
                             color = accents.textMuted,
-                            modifier = Modifier.weight(0.38f)
+                            modifier = Modifier.weight(0.4f)
                         )
                     } else {
                         SarimDangerButton(
                             text = "Delete",
                             onClick = {
-                                vm.recycleRecord("ledger_entries", v.id, "${v.entryType} (${v.date})")
+                                vm.deleteLedgerEntry(v.id)
                                 selectedVoucher = null
                             },
-                            modifier = Modifier.weight(0.38f)
+                            modifier = Modifier.weight(0.32f),
+                            testTag = "ledger_delete_${v.id}"
                         )
+                        Surface(
+                            onClick = {
+                                editingId = v.id
+                                date = v.date
+                                entryType = v.type.uppercase()
+                                expenseScope = v.scope
+                                channel = v.mode.ifBlank { channels.first() }
+                                toChannel = v.toMode.ifBlank { channels.getOrElse(1) { channels.first() } }
+                                category = v.category
+                                partyName = v.party
+                                refStr = v.ref
+                                amountStr = v.amount.toString()
+                                notes = v.note
+                                selectedVoucher = null
+                                showComposer = true
+                            },
+                            shape = RoundedCornerShape(22.dp),
+                            color = accents.softPillFill,
+                            border = BorderStroke(1.dp, accents.emerald),
+                            modifier = Modifier.height(50.dp).weight(0.28f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                            }
+                        }
                     }
                     SarimGradientButton(
-                        text = "Copy Voucher",
+                        text = "Copy",
                         onClick = {
-                            clipboard.setText(AnnotatedString("${v.date} | ${v.entryType} | ${v.category} | ${v.partyName} | ${v.channel} | ${InputGuards.formatMoney(v.amount, currency, false)}"))
+                            clipboard.setText(AnnotatedString("${v.date} | ${v.type} | ${v.category} | ${v.party} | ${v.mode} | ${InputGuards.formatMoney(v.amount, currency, masked)}"))
                             selectedVoucher = null
                         },
-                        modifier = Modifier.weight(0.62f)
+                        modifier = Modifier.weight(if (v.isTabMirror) 0.6f else 0.4f)
                     )
                 }
             }

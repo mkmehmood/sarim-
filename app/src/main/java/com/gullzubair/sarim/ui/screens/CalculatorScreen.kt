@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,11 +21,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -49,10 +50,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gullzubair.sarim.data.model.CalculatorSettlement
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.CalculatorRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
+import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
@@ -75,20 +78,22 @@ import kotlin.math.abs
 fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewModel) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
-    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.active } }
+    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
 
     val repList = remember(snapshot) {
-        (snapshot.teamMembers.map { it.displayName } +
-            snapshot.sales.filter { !it.recycled && it.repName != "NONE" }.map { it.repName } +
-            snapshot.repRecords.filter { !it.recycled }.map { it.repName } +
-            snapshot.entities.filter { !it.recycled && it.entityType == "staff" }.map { it.name })
-            .map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        (snapshot.settings.reps +
+            snapshot.teamMembers.map { it.displayName } +
+            snapshot.sales.filter { it.deletedAt == null && it.salesRep != "NONE" }.map { it.salesRep } +
+            snapshot.repRecords.filter { it.deletedAt == null }.map { it.salesRep } +
+            snapshot.entities.filter { it.deletedAt == null && (it.type == "staff" || it.type == "employee") }.map { it.name })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
     }
 
     var subTab by remember { mutableIntStateOf(0) }
-    var dateFrom by remember(todayIso) { mutableStateOf(todayIso) }
-    var dateTo by remember(todayIso) { mutableStateOf(todayIso) }
+    var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedRep by remember(repList) { mutableStateOf(repList.firstOrNull() ?: "") }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
     var soldStr by remember { mutableStateOf("") }
@@ -98,44 +103,62 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
     var expiredStr by remember { mutableStateOf("0") }
     var sharedDeductionStr by remember { mutableStateOf("0") }
     var creditQtyStr by remember { mutableStateOf("0") }
-    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.toString() ?: "") }
+    var prevCollStr by remember { mutableStateOf("0") }
+    var rateStr by remember(selectedStore) { mutableStateOf(selectedStore?.salePrice?.takeIf { it > 0 }?.toString() ?: "") }
     var physicalCashStr by remember { mutableStateOf("") }
     var addToLedger by remember { mutableStateOf(true) }
     var notes by remember { mutableStateOf("") }
     var confirmVarianceDialog by remember { mutableStateOf(false) }
-    var selectedCalc by remember { mutableStateOf<CalculatorSettlement?>(null) }
+    var selectedCalc by remember { mutableStateOf<CalculatorRecord?>(null) }
 
     val commissions = remember { mutableStateListOf<Pair<String, String>>() }
     val expenses = remember { mutableStateListOf<Pair<String, String>>() }
 
-    LaunchedEffect(selectedRep, selectedStore, dateFrom, dateTo, snapshot.sales) {
+    LaunchedEffect(selectedRep, selectedStore, date, snapshot.sales) {
         if (selectedRep.isNotBlank() && selectedStore != null) {
             val autoKg = FinanceEngine.getUnreconciledRepDeliveriesKg(
-                selectedRep, selectedStore!!.storeKey, dateFrom, dateTo, snapshot.sales
+                repName = selectedRep,
+                storeKey = selectedStore!!.key,
+                dateFrom = date,
+                dateTo = date,
+                sales = snapshot.sales
             )
             if (autoKg > 0.0) soldStr = autoKg.toString()
         }
     }
 
-    val activeCalc = remember(snapshot.calculator) { snapshot.calculator.filter { !it.recycled }.sortedByDescending { it.dateTo } }
-    val todayCalcs = remember(activeCalc, todayIso) { activeCalc.filter { it.dateTo == todayIso } }
-    val dayRevenue = remember(todayCalcs) { todayCalcs.sumOf { it.netSoldKg * it.ratePerKg } }
-    val dayExpected = remember(todayCalcs) { todayCalcs.sumOf { it.expectedCash } }
-    val dayPhysical = remember(todayCalcs) { todayCalcs.sumOf { it.physicalCash } }
-    val dayCashKg = remember(todayCalcs) { todayCalcs.sumOf { it.cashQtyKg } }
-    val dayCreditKg = remember(todayCalcs) { todayCalcs.sumOf { it.creditQtyKg } }
-    val dayReturnedKg = remember(todayCalcs) { todayCalcs.sumOf { it.returnedKg } }
-    val dayTotalKg = remember(todayCalcs) { todayCalcs.sumOf { it.totalSoldKg } }
+    val activeCalc = remember(snapshot.calculator) {
+        snapshot.calculator.filter { it.deletedAt == null }
+            .sortedWith(compareByDescending<CalculatorRecord> { it.date }.thenByDescending { it.timestamp })
+    }
+    val todayCalcs = remember(activeCalc, todayIso) { activeCalc.filter { it.date == todayIso } }
+    val dayRevenue = remember(todayCalcs) { todayCalcs.sumOf { it.revenue } }
+    val dayProfit = remember(todayCalcs) { todayCalcs.sumOf { it.revenue - it.commissionPaid - it.fieldExpenses } }
+    val dayExpected = remember(todayCalcs) { todayCalcs.sumOf { it.totalExpected } }
+    val dayPhysical = remember(todayCalcs) { todayCalcs.sumOf { it.received } }
+    val dayCashKg = remember(todayCalcs) { todayCalcs.sumOf { it.cashQty } }
+    val dayCreditKg = remember(todayCalcs) { todayCalcs.sumOf { it.creditQty } }
+    val dayCreditValue = remember(todayCalcs) { todayCalcs.sumOf { it.creditValue } }
+    val dayReturnedKg = remember(todayCalcs) { todayCalcs.sumOf { it.returned } }
+    val dayTotalKg = remember(todayCalcs) { todayCalcs.sumOf { it.totalSold } }
     val dayVariance = remember(dayPhysical, dayExpected) { InputGuards.round2(dayPhysical - dayExpected) }
 
-    val byRep = remember(snapshot.repRecords, snapshot.calculator) {
-        val names = (snapshot.repRecords.filter { !it.recycled }.map { it.repName } +
-            snapshot.calculator.filter { !it.recycled }.map { it.repName }).distinct()
+    val byRep = remember(snapshot.repRecords, activeCalc) {
+        val names = (snapshot.repRecords.filter { it.deletedAt == null }.map { it.salesRep } +
+            activeCalc.map { it.seller })
+            .map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }
         names.map { rep ->
-            val credit = snapshot.repRecords.filter { !it.recycled && it.repName == rep && it.mode == "sale" }.sumOf { it.creditAmount } +
-                snapshot.calculator.filter { !it.recycled && it.repName == rep }.sumOf { it.creditQtyKg * it.ratePerKg }
-            val collected = snapshot.repRecords.filter { !it.recycled && it.repName == rep && it.mode == "collection" }.sumOf { it.cashReceived }
-            Triple(rep, InputGuards.round2(credit), InputGuards.round2(credit - collected))
+            val repCredits = snapshot.repRecords
+                .filter { it.deletedAt == null && it.salesRep.equals(rep, true) && it.paymentType == "CREDIT" && !it.creditReceived }
+                .sumOf { (it.totalValue - it.partialPaymentReceived).coerceAtLeast(0.0) }
+            val calcCredits = activeCalc.filter { it.seller.equals(rep, true) }.sumOf { it.creditValue }
+            val collections = snapshot.repRecords
+                .filter { it.deletedAt == null && it.salesRep.equals(rep, true) && FinanceEngine.isCollectionRow(it) }
+                .sumOf { it.collectedAmount } +
+                activeCalc.filter { it.seller.equals(rep, true) }.sumOf { it.prevColl }
+            val totalCr = InputGuards.round2(repCredits + calcCredits)
+            val balance = InputGuards.round2(totalCr - collections)
+            Triple(rep, totalCr, balance)
         }
     }
 
@@ -175,7 +198,6 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Mirrored DAILY VIEW card (matching screenshot 115955 top)
                     item {
                         SarimCard {
                             Text(
@@ -185,13 +207,13 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Spacer(Modifier.height(10.dp))
                             Text("REVENUE", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                             Text(
-                                InputGuards.formatNum(dayRevenue),
+                                text = InputGuards.formatMoney(dayRevenue, currency, masked),
                                 fontFamily = JakartaFont,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 26.sp
                             )
                             Text(
-                                "Profit ${InputGuards.formatNum(todayCalcs.sumOf { (it.netSoldKg * it.ratePerKg) - it.commissionTotal - it.expenseTotal })}",
+                                "Profit ${InputGuards.formatMoney(dayProfit, currency, masked)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = accents.textMuted
                             )
@@ -229,19 +251,9 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 SarimHalfRingKpiBox("RETURNED", InputGuards.formatKg(dayReturnedKg), accents.gold, Modifier.weight(1f))
                             }
                             Spacer(Modifier.height(12.dp))
-                            Text("CREDIT", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            Spacer(Modifier.height(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(accents.borderSubtle.copy(alpha = 0.5f))
-                            )
-                            Spacer(Modifier.height(8.dp))
                             SarimHalfRingKpiBox(
-                                label = "NET DEBT",
-                                value = InputGuards.formatNum(dayCreditKg * (todayCalcs.firstOrNull()?.ratePerKg ?: 0.0)),
+                                label = "NET CREDIT",
+                                value = InputGuards.formatMoney(dayCreditValue, currency, masked),
                                 ringColor = accents.emerald,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -250,25 +262,24 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 Text("CASH HANDOVER", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (abs(dayVariance) < 1.0) accents.softPillFill else accents.gold.copy(alpha = 0.16f)
+                                    color = if (abs(dayVariance) <= 1.0) accents.softPillFill else accents.gold.copy(alpha = 0.16f)
                                 ) {
                                     Text(
-                                        text = if (abs(dayVariance) < 1.0) "Perfect match" else "Variance ${InputGuards.formatNum(dayVariance)}",
+                                        text = if (abs(dayVariance) <= 1.0) "Perfect match" else "Variance ${InputGuards.formatMoney(dayVariance, currency, masked)}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (abs(dayVariance) < 1.0) accents.emerald else accents.gold,
+                                        color = if (abs(dayVariance) <= 1.0) accents.emerald else accents.gold,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("EXPECTED", InputGuards.formatNum(dayExpected), accents.cyan, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("RECEIVED", InputGuards.formatNum(dayPhysical), accents.emerald, Modifier.weight(1f))
+                                SarimHalfRingKpiBox("EXPECTED", InputGuards.formatMoney(dayExpected, currency, masked), accents.cyan, Modifier.weight(1f))
+                                SarimHalfRingKpiBox("RECEIVED", InputGuards.formatMoney(dayPhysical, currency, masked), accents.emerald, Modifier.weight(1f))
                             }
                         }
                     }
 
-                    // Mirrored MARKET DEBT TRACKER card
                     item {
                         SarimCard {
                             Text(
@@ -278,7 +289,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Spacer(Modifier.height(8.dp))
                             Text("CURRENT MARKET DEBT", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                             Text(
-                                InputGuards.formatNum(activeRepDebt),
+                                InputGuards.formatMoney(activeRepDebt, currency, masked),
                                 fontFamily = JakartaFont,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp,
@@ -287,7 +298,6 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         }
                     }
 
-                    // Year -> Month -> Day Settlement History
                     item {
                         Text(
                             "SETTLEMENT HISTORY",
@@ -301,9 +311,12 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         item {
                             SarimYearMonthDayTree(
                                 items = activeCalc,
-                                dateOf = { it.dateTo },
-                                summaryLabel = { list -> "${InputGuards.formatKg(list.sumOf { it.totalSoldKg })} • ${InputGuards.formatNum(list.sumOf { it.physicalCash })}" },
+                                dateOf = { it.date },
+                                summaryLabel = { list ->
+                                    "${InputGuards.formatKg(list.sumOf { it.totalSold })} • ${InputGuards.formatMoney(list.sumOf { it.received }, currency, masked)}"
+                                },
                                 itemRow = { c ->
+                                    val storeLabel = FormulaEngine.storeLabelFor(c.returnStore, snapshot.stores)
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -315,11 +328,15 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(c.repName.uppercase(), style = MaterialTheme.typography.titleSmall)
-                                            Text("${c.storeKey} • Sold ${InputGuards.formatKg(c.totalSoldKg)}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                            Text(c.seller.uppercase(), style = MaterialTheme.typography.titleSmall)
+                                            Text(
+                                                "${storeLabel.ifBlank { c.returnType.ifBlank { "Settlement" } }} • Sold ${InputGuards.formatKg(c.totalSold)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                         }
                                         Text(
-                                            InputGuards.formatNum(c.totalSoldKg * c.ratePerKg),
+                                            InputGuards.formatMoney(c.revenue, currency, masked),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = accents.emerald
                                         )
@@ -341,40 +358,53 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                 val cashQty = InputGuards.round3((netSold - creditQty).coerceAtLeast(0.0))
                 val rate = rateStr.toDoubleOrNull() ?: (selectedStore?.salePrice ?: 0.0)
                 val sharedDed = sharedDeductionStr.toDoubleOrNull() ?: 0.0
+                val prevColl = prevCollStr.toDoubleOrNull() ?: 0.0
                 val commTotal = InputGuards.round2(commissions.sumOf { it.second.toDoubleOrNull() ?: 0.0 })
                 val expTotal = InputGuards.round2(expenses.sumOf { it.second.toDoubleOrNull() ?: 0.0 })
-                val expectedCash = InputGuards.round2((cashQty * rate) - sharedDed - commTotal - expTotal)
+                val expectedCash = InputGuards.round2((cashQty * rate) + prevColl - sharedDed - commTotal - expTotal)
                 val physicalCash = physicalCashStr.toDoubleOrNull() ?: expectedCash
                 val variance = InputGuards.round2(physicalCash - expectedCash)
 
                 fun commitSettlement() {
                     val store = selectedStore ?: return
+                    val expItems = expenses.mapNotNull { (l, a) ->
+                        val v = a.toDoubleOrNull() ?: 0.0
+                        if (v > 0) mapOf("label" to l.ifBlank { "Field Expense" }, "amount" to v) else null
+                    }
+                    val commItems = commissions.mapNotNull { (l, a) ->
+                        val v = a.toDoubleOrNull() ?: 0.0
+                        if (v > 0) mapOf("label" to l.ifBlank { "Commission" }, "amount" to v) else null
+                    }
                     vm.submitCalculatorSettlement(
-                        dateFrom = dateFrom,
-                        dateTo = dateTo,
-                        repName = selectedRep,
+                        date = date,
+                        seller = selectedRep,
                         store = store,
                         totalSold = sold,
-                        returnedKg = returned,
-                        returnTarget = returnTarget,
-                        returnTargetName = if (returnTarget == "rep") returnTargetRep else store.name,
-                        expiredKg = expired,
-                        sharedDeduction = sharedDed,
+                        returned = returned,
+                        returnType = returnTarget,
+                        returnTargetRep = if (returnTarget == "rep") returnTargetRep else "",
+                        expired = expired,
+                        shared = sharedDed,
                         cashQty = cashQty,
                         creditQty = creditQty,
-                        rate = rate,
-                        commissions = commissions.mapNotNull { (l, a) ->
-                            val v = a.toDoubleOrNull() ?: 0.0
-                            if (v > 0) mapOf("label" to l.ifBlank { "Commission" }, "amount" to v) else null
-                        },
-                        expenses = expenses.mapNotNull { (l, a) ->
-                            val v = a.toDoubleOrNull() ?: 0.0
-                            if (v > 0) mapOf("label" to l.ifBlank { "Field Expense" }, "amount" to v) else null
-                        },
-                        physicalCash = physicalCash,
+                        unitPrice = rate,
+                        fieldExpenseItems = expItems,
+                        commissionItems = commItems,
+                        prevColl = prevColl,
+                        received = physicalCash,
                         addToLedger = addToLedger,
                         notes = notes
                     )
+                    soldStr = ""
+                    returnStr = "0"
+                    expiredStr = "0"
+                    creditQtyStr = "0"
+                    sharedDeductionStr = "0"
+                    prevCollStr = "0"
+                    physicalCashStr = ""
+                    commissions.clear()
+                    expenses.clear()
+                    notes = ""
                 }
 
                 LazyColumn(
@@ -385,12 +415,9 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         SarimCard {
                             Text("Rep Settlement Calculator", style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                DatePickerField("From", dateFrom, { dateFrom = it }, "calc_date_from", Modifier.weight(1f))
-                                DatePickerField("To", dateTo, { dateTo = it }, "calc_date_to", Modifier.weight(1f))
-                            }
+                            DatePickerField("Settlement Date", date, { date = it }, "calc_date")
                             Spacer(Modifier.height(10.dp))
-                            SarimPillInput(selectedRep, { selectedRep = it }, label = "SALES REP NAME", testTag = "calc_rep_input")
+                            SarimPillInput(selectedRep, { selectedRep = it }, label = "SALES REP / SELLER", testTag = "calc_rep_input")
                             if (repList.isNotEmpty()) {
                                 Spacer(Modifier.height(6.dp))
                                 PickerField("Or Pick Rep", selectedRep, repList, { it }, { selectedRep = it }, "calc_rep_picker")
@@ -404,7 +431,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("store" to "Return to Store", "rep" to "Transfer to Rep").forEach { (key, title) ->
+                                listOf("store" to "Return to Store", "rep" to "Transfer to Rep", "" to "None").forEach { (key, title) ->
                                     val sel = returnTarget == key
                                     Surface(
                                         onClick = { returnTarget = key },
@@ -414,7 +441,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                            Text(title, style = MaterialTheme.typography.labelMedium, color = if (sel) accents.emerald else accents.textMuted)
+                                            Text(title, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted, maxLines = 1)
                                         }
                                     }
                                 }
@@ -425,42 +452,86 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             }
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                DecimalField("Expired", expiredStr, { expiredStr = it }, "calc_expired_input", Modifier.weight(1f), "kg")
+                                DecimalField("Expired -> CHORA", expiredStr, { expiredStr = it }, "calc_expired_input", Modifier.weight(1f), "kg")
                                 DecimalField("Credit Qty", creditQtyStr, { creditQtyStr = it }, "calc_credit_qty_input", Modifier.weight(1f), "kg")
                             }
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 DecimalField("Rate / kg", rateStr, { rateStr = it }, "calc_rate_input", Modifier.weight(1f))
-                                DecimalField("Shared Deduction", sharedDeductionStr, { sharedDeductionStr = it }, "calc_shared_ded_input", Modifier.weight(1f))
+                                DecimalField("Prev Collection", prevCollStr, { prevCollStr = it }, "calc_prev_coll_input", Modifier.weight(1f))
                             }
+                            Spacer(Modifier.height(10.dp))
+                            DecimalField("Shared Deduction", sharedDeductionStr, { sharedDeductionStr = it }, "calc_shared_ded_input")
                             Spacer(Modifier.height(10.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("Commissions (${InputGuards.formatMoney(commTotal, currency, masked)})", style = MaterialTheme.typography.titleSmall)
-                                OutlinedButton(onClick = { commissions.add("" to "") }, modifier = Modifier.testTag("calc_add_comm_btn")) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val defCat = snapshot.settings.commissionCategories.firstOrNull() ?: "Sales Commission"
+                                        commissions.add(defCat to "")
+                                    },
+                                    modifier = Modifier.testTag("calc_add_comm_btn")
+                                ) {
                                     Icon(Icons.Default.Add, contentDescription = null)
                                     Spacer(Modifier.width(4.dp))
                                     Text("Commission")
                                 }
                             }
                             commissions.forEachIndexed { idx, pair ->
+                                Spacer(Modifier.height(6.dp))
+                                if (snapshot.settings.commissionCategories.isNotEmpty()) {
+                                    PickerField(
+                                        label = "Commission Category",
+                                        selectedLabel = pair.first.ifBlank { "Pick Category" },
+                                        items = snapshot.settings.commissionCategories,
+                                        itemLabel = { it },
+                                        onSelect = { commissions[idx] = it to pair.second },
+                                        testTag = "calc_comm_cat_$idx"
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     SarimPillInput(pair.first, { commissions[idx] = it to pair.second }, label = "LABEL", modifier = Modifier.weight(1f))
-                                    DecimalField("Amount", pair.second, { commissions[idx] = pair.first to it }, "calc_comm_amt_$idx", Modifier.weight(1f))
+                                    DecimalField("Amount", pair.second, { commissions[idx] = pair.first to it }, "calc_comm_amt_$idx", Modifier.weight(0.85f))
+                                    IconButton(onClick = { commissions.removeAt(idx) }, modifier = Modifier.size(48.dp)) {
+                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Remove commission", tint = accents.danger)
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("Field Expenses (${InputGuards.formatMoney(expTotal, currency, masked)})", style = MaterialTheme.typography.titleSmall)
-                                OutlinedButton(onClick = { expenses.add("" to "") }, modifier = Modifier.testTag("calc_add_exp_btn")) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val defCat = snapshot.settings.fieldExpenseCategories.firstOrNull() ?: "Fuel"
+                                        expenses.add(defCat to "")
+                                    },
+                                    modifier = Modifier.testTag("calc_add_exp_btn")
+                                ) {
                                     Icon(Icons.Default.Add, contentDescription = null)
                                     Spacer(Modifier.width(4.dp))
                                     Text("Expense")
                                 }
                             }
                             expenses.forEachIndexed { idx, pair ->
+                                Spacer(Modifier.height(6.dp))
+                                if (snapshot.settings.fieldExpenseCategories.isNotEmpty()) {
+                                    PickerField(
+                                        label = "Expense Category",
+                                        selectedLabel = pair.first.ifBlank { "Pick Category" },
+                                        items = snapshot.settings.fieldExpenseCategories,
+                                        itemLabel = { it },
+                                        onSelect = { expenses[idx] = it to pair.second },
+                                        testTag = "calc_exp_cat_$idx"
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     SarimPillInput(pair.first, { expenses[idx] = it to pair.second }, label = "ITEM", modifier = Modifier.weight(1f))
-                                    DecimalField("Amount", pair.second, { expenses[idx] = pair.first to it }, "calc_exp_amt_$idx", Modifier.weight(1f))
+                                    DecimalField("Amount", pair.second, { expenses[idx] = pair.first to it }, "calc_exp_amt_$idx", Modifier.weight(0.85f))
+                                    IconButton(onClick = { expenses.removeAt(idx) }, modifier = Modifier.size(48.dp)) {
+                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Remove expense", tint = accents.danger)
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
@@ -473,12 +544,12 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SarimHalfRingKpiBox("Expected Cash", InputGuards.formatMoney(expectedCash, currency, masked), accents.cyan, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Short / Over", InputGuards.formatMoney(variance, currency, masked), if (abs(variance) < 1.0) accents.emerald else accents.gold, Modifier.weight(1f))
+                                SarimHalfRingKpiBox("Short / Over", InputGuards.formatMoney(variance, currency, masked), if (abs(variance) <= 1.0) accents.emerald else accents.gold, Modifier.weight(1f))
                             }
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
                                 text = "Finalize Settlement",
-                                onClick = { if (abs(variance) >= 1.0) confirmVarianceDialog = true else commitSettlement() },
+                                onClick = { if (abs(variance) > 1.0) confirmVarianceDialog = true else commitSettlement() },
                                 enabled = selectedRep.isNotBlank() && selectedStore != null && sold > 0,
                                 testTag = "calc_save_btn"
                             )
@@ -519,9 +590,9 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         SarimCard {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(rep, style = MaterialTheme.typography.titleMedium)
-                                Text(InputGuards.formatMoney(balance, currency, masked), color = accents.gold, style = MaterialTheme.typography.titleMedium)
+                                Text(InputGuards.formatMoney(balance, currency, masked), color = if (balance > 0.01) accents.gold else accents.emerald, style = MaterialTheme.typography.titleMedium)
                             }
-                            Text("Lifetime Credit ${InputGuards.formatMoney(totalCr, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            Text("Gross Credit ${InputGuards.formatMoney(totalCr, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
                     }
                     item { Spacer(Modifier.height(24.dp)) }
@@ -530,36 +601,37 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
         }
     }
 
-    // Mirrored Settlement Bottom Sheet with QUANTITIES, CREDIT AND CASH, COMMISSION BREAKDOWN accordions (115955 & 120001)
     selectedCalc?.let { c ->
         var showQuantities by remember(c.id) { mutableStateOf(false) }
         var showCreditCash by remember(c.id) { mutableStateOf(false) }
         var showCommissions by remember(c.id) { mutableStateOf(false) }
+        val variance = InputGuards.round2(c.received - c.totalExpected)
+        val profit = InputGuards.round2(c.revenue - c.commissionPaid - c.fieldExpenses)
 
         SarimDetailBottomSheet(
-            title = DateUtils.formatPretty(c.dateTo).uppercase(),
-            rightTitle = InputGuards.formatNum(c.netSoldKg * c.ratePerKg),
-            subtitle = c.repName.uppercase(),
+            title = DateUtils.formatPretty(c.date).uppercase(),
+            rightTitle = InputGuards.formatMoney(c.revenue, currency, masked),
+            subtitle = c.seller.uppercase(),
             onDismiss = { selectedCalc = null },
             content = {
                 HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                 Spacer(Modifier.height(8.dp))
-                SheetKvRow("Total sold", InputGuards.formatNum(c.totalSoldKg))
-                SheetKvRow("Profit", InputGuards.formatNum((c.netSoldKg * c.ratePerKg) - c.commissionTotal - c.expenseTotal))
-                SheetKvRow("Expected cash", InputGuards.formatNum(c.expectedCash))
-                SheetKvRow("Received cash", InputGuards.formatNum(c.physicalCash))
-                SheetKvRow("Discrepancy", if (abs(c.variance) < 1.0) "Perfect match" else InputGuards.formatNum(c.variance))
+                SheetKvRow("Total sold", InputGuards.formatKg(c.totalSold))
+                SheetKvRow("Profit", InputGuards.formatMoney(profit, currency, masked))
+                SheetKvRow("Expected cash", InputGuards.formatMoney(c.totalExpected, currency, masked))
+                SheetKvRow("Received cash", InputGuards.formatMoney(c.received, currency, masked))
+                SheetKvRow("Status", c.statusText.ifBlank { if (abs(variance) <= 1.0) "Balanced" else InputGuards.formatMoney(variance, currency, masked) })
                 Spacer(Modifier.height(8.dp))
                 AccordionSection(
                     title = "QUANTITIES",
                     expanded = showQuantities,
                     onToggle = { showQuantities = !showQuantities }
                 ) {
-                    SheetKvRow("Returned", InputGuards.formatNum(c.returnedKg), accents.cyan)
-                    SheetKvRow("Expired (to CHORA)", InputGuards.formatNum(c.expiredKg), accents.danger)
-                    SheetKvRow("Shared (deduction)", InputGuards.formatNum(c.sharedDeduction), accents.danger)
-                    SheetKvRow("Cash qty", InputGuards.formatNum(c.cashQtyKg), accents.cyan)
-                    SheetKvRow("Credit qty", InputGuards.formatNum(c.creditQtyKg), accents.cyan)
+                    SheetKvRow("Returned", InputGuards.formatKg(c.returned), accents.cyan)
+                    SheetKvRow("Expired (to CHORA)", InputGuards.formatKg(c.expired), accents.danger)
+                    SheetKvRow("Shared (deduction)", InputGuards.formatMoney(c.shared, currency, masked), accents.danger)
+                    SheetKvRow("Cash qty", InputGuards.formatKg(c.cashQty), accents.cyan)
+                    SheetKvRow("Credit qty", InputGuards.formatKg(c.creditQty), accents.cyan)
                 }
                 Spacer(Modifier.height(6.dp))
                 AccordionSection(
@@ -567,10 +639,10 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     expanded = showCreditCash,
                     onToggle = { showCreditCash = !showCreditCash }
                 ) {
-                    SheetKvRow("Credit out", InputGuards.formatNum(c.creditQtyKg * c.ratePerKg), accents.danger)
-                    SheetKvRow("Credit in", "0", accents.emerald)
-                    SheetKvRow("Net debt", InputGuards.formatNum(c.creditQtyKg * c.ratePerKg), accents.danger)
-                    SheetKvRow("Commission paid", InputGuards.formatNum(c.commissionTotal), accents.emerald)
+                    SheetKvRow("Credit out", InputGuards.formatMoney(c.creditValue, currency, masked), accents.danger)
+                    SheetKvRow("Prev collection", InputGuards.formatMoney(c.prevColl, currency, masked), accents.emerald)
+                    SheetKvRow("Field expenses", InputGuards.formatMoney(c.fieldExpenses, currency, masked), accents.danger)
+                    SheetKvRow("Commission paid", InputGuards.formatMoney(c.commissionPaid, currency, masked), accents.emerald)
                 }
                 Spacer(Modifier.height(6.dp))
                 AccordionSection(
@@ -578,13 +650,13 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     expanded = showCommissions,
                     onToggle = { showCommissions = !showCommissions }
                 ) {
-                    if (c.commissions.isEmpty()) {
-                        SheetKvRow("Total Commission", InputGuards.formatNum(c.commissionTotal), accents.danger)
+                    if (c.commissionPaidItems.isEmpty()) {
+                        SheetKvRow("Total Commission", InputGuards.formatMoney(c.commissionPaid, currency, masked), accents.danger)
                     } else {
-                        c.commissions.forEach { m ->
+                        c.commissionPaidItems.forEach { m ->
                             val lbl = m["label"]?.toString() ?: "Commission"
                             val amt = (m["amount"] as? Number)?.toDouble() ?: 0.0
-                            SheetKvRow(lbl, InputGuards.formatNum(amt), accents.danger)
+                            SheetKvRow(lbl, InputGuards.formatMoney(amt, currency, masked), accents.danger)
                         }
                     }
                 }
@@ -594,7 +666,14 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.recycleRecord("calculator", c.id, "${c.repName} (${c.dateTo})")
+                            vm.softDeleteRecord(
+                                collection = "calculator",
+                                docId = c.id,
+                                displayName = c.seller,
+                                displayDetail = c.date,
+                                displayAmount = InputGuards.formatMoney(c.received, currency, masked),
+                                snapshotMap = WorkspaceJsonCodec.calculatorToMap(c)
+                            )
                             selectedCalc = null
                         },
                         modifier = Modifier.weight(0.38f),
@@ -603,18 +682,28 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     SarimGradientButton(
                         text = "Edit",
                         onClick = {
-                            dateFrom = c.dateFrom
-                            dateTo = c.dateTo
-                            selectedRep = c.repName
-                            selectedStore = activeStores.firstOrNull { it.storeKey == c.storeKey } ?: selectedStore
-                            soldStr = c.totalSoldKg.toString()
-                            returnStr = c.returnedKg.toString()
-                            expiredStr = c.expiredKg.toString()
-                            sharedDeductionStr = c.sharedDeduction.toString()
-                            creditQtyStr = c.creditQtyKg.toString()
-                            rateStr = c.ratePerKg.toString()
-                            physicalCashStr = c.physicalCash.toString()
-                            notes = c.notes ?: ""
+                            date = c.date
+                            selectedRep = c.seller
+                            selectedStore = activeStores.firstOrNull { it.key.equals(c.returnStore, true) } ?: selectedStore
+                            soldStr = c.totalSold.toString()
+                            returnStr = c.returned.toString()
+                            returnTarget = c.returnType.ifBlank { "store" }
+                            returnTargetRep = c.returnRep
+                            expiredStr = c.expired.toString()
+                            sharedDeductionStr = c.shared.toString()
+                            creditQtyStr = c.creditQty.toString()
+                            prevCollStr = c.prevColl.toString()
+                            rateStr = c.unitPrice.toString()
+                            physicalCashStr = c.received.toString()
+                            commissions.clear()
+                            c.commissionPaidItems.forEach { m ->
+                                commissions.add((m["label"]?.toString() ?: "Commission") to ((m["amount"] as? Number)?.toDouble()?.toString() ?: ""))
+                            }
+                            expenses.clear()
+                            c.fieldExpenseItems.forEach { m ->
+                                expenses.add((m["label"]?.toString() ?: "Expense") to ((m["amount"] as? Number)?.toDouble()?.toString() ?: ""))
+                            }
+                            notes = c.notes
                             selectedCalc = null
                             subTab = 1
                         },

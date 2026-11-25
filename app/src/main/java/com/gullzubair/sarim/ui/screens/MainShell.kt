@@ -232,10 +232,17 @@ private fun WorkspaceNavContainer(
     val isHome = currentRouteName.contains("WorkspaceHome") || currentRouteName.isEmpty()
 
     val visibleTabs = remember(snapshot.profile) { vm.visibleTabsFor(snapshot.profile) }
+    val effectiveTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.firstOrNull() ?: MainTab.OVERVIEW
     val pendingCount = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.count { it.status == "pending" } }
 
-    BackHandler(enabled = isHome && selectedTab != MainTab.OVERVIEW) {
-        vm.selectTab(MainTab.OVERVIEW)
+    LaunchedEffect(visibleTabs, selectedTab) {
+        if (visibleTabs.isNotEmpty() && selectedTab !in visibleTabs) {
+            vm.selectTab(visibleTabs.first())
+        }
+    }
+
+    BackHandler(enabled = isHome && visibleTabs.isNotEmpty() && effectiveTab != visibleTabs.first()) {
+        vm.selectTab(visibleTabs.first())
     }
 
     fun navigateTo(route: AppRoute) {
@@ -299,7 +306,7 @@ private fun WorkspaceNavContainer(
                         DrawerSectionLabel("NAVIGATION")
                         Spacer(Modifier.height(4.dp))
                         visibleTabs.forEach { tab ->
-                            val selected = isHome && selectedTab == tab
+                            val selected = isHome && effectiveTab == tab
                             DrawerRowItem(
                                 label = tab.label.uppercase(),
                                 icon = tabIcon(tab),
@@ -322,14 +329,16 @@ private fun WorkspaceNavContainer(
                             testTag = "drawer_approvals",
                             onClick = { navigateTo(AppRoute.Approvals) }
                         )
-                        DrawerRowItem(
-                            label = "DAILY LEDGER",
-                            icon = Icons.Outlined.MenuBook,
-                            iconTint = Color(0xFF0D9488),
-                            selected = currentRouteName.contains("DailyLedger"),
-                            testTag = "drawer_daily_ledger",
-                            onClick = { navigateTo(AppRoute.DailyLedger) }
-                        )
+                        if (snapshot.profile.isAdmin) {
+                            DrawerRowItem(
+                                label = "DAILY LEDGER",
+                                icon = Icons.Outlined.MenuBook,
+                                iconTint = Color(0xFF0D9488),
+                                selected = currentRouteName.contains("DailyLedger"),
+                                testTag = "drawer_daily_ledger",
+                                onClick = { navigateTo(AppRoute.DailyLedger) }
+                            )
+                        }
                         DrawerRowItem(
                             label = "STOCK TRANSFER",
                             icon = Icons.Outlined.SwapHoriz,
@@ -477,9 +486,9 @@ private fun WorkspaceNavContainer(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (selectedTab != MainTab.OVERVIEW) {
+                                if (effectiveTab != MainTab.OVERVIEW) {
                                     Text(
-                                        text = selectedTab.label.uppercase(),
+                                        text = effectiveTab.label.uppercase(),
                                         style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.9.sp),
                                         color = accents.textMuted,
                                         maxLines = 1
@@ -525,7 +534,7 @@ private fun WorkspaceNavContainer(
                         ) {
                             visibleTabs.forEach { tab ->
                                 NavigationRailItem(
-                                    selected = selectedTab == tab,
+                                    selected = effectiveTab == tab,
                                     onClick = { vm.selectTab(tab) },
                                     icon = { Icon(tabIcon(tab), contentDescription = tab.label) },
                                     label = { Text(tab.label) },
@@ -541,10 +550,16 @@ private fun WorkspaceNavContainer(
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     ) {
                         composable<AppRoute.WorkspaceHome> {
-                            when (selectedTab) {
+                            when (effectiveTab) {
                                 MainTab.OVERVIEW -> OverviewScreen(snapshot, vm, { navigateTo(AppRoute.Approvals) }, { navigateTo(AppRoute.DailyLedger) })
                                 MainTab.PRODUCTION -> ProductionScreen(snapshot, todayIso, vm) { navigateTo(AppRoute.StockTransfer) }
-                                MainTab.SALES -> SalesScreen(snapshot, todayIso, vm, { cust -> navigateTo(AppRoute.CustomerDetail(cust)) }, { cust -> navigateTo(AppRoute.EditCustomer(cust)) })
+                                MainTab.SALES -> SalesScreen(
+                                    snapshot = snapshot,
+                                    todayIso = todayIso,
+                                    vm = vm,
+                                    onOpenCustomerDetail = { cust -> navigateTo(AppRoute.CustomerDetail(cust, isRepClient = false)) },
+                                    onEditCustomer = { cust -> navigateTo(AppRoute.EditCustomer(cust, isRepClient = false)) }
+                                )
                                 MainTab.CALCULATOR -> CalculatorScreen(snapshot, todayIso, vm)
                                 MainTab.FACTORY -> FactoryScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.RawMaterialPurchase) }, { navigateTo(AppRoute.FormulaStore) })
                                 MainTab.PAYMENTS -> PaymentsScreen(snapshot, todayIso, vm, { navigateTo(AppRoute.AddEntity) }, { navigateTo(AppRoute.PaymentTransfer) }, { ent -> navigateTo(AppRoute.EntityDetail(ent)) }, { name -> navigateTo(AppRoute.ExpenseDetail(name)) })
@@ -585,7 +600,7 @@ private fun WorkspaceNavContainer(
                         }
                         composable<AppRoute.BatchFix> { entry ->
                             val arg = entry.toRoute<AppRoute.BatchFix>()
-                            BatchFixScreen(snapshot, arg.formulaId) { navController.popBackStack() }
+                            BatchFixScreen(snapshot, arg.formulaId, vm) { navController.popBackStack() }
                         }
                         composable<AppRoute.RawMaterialPurchase> {
                             RawMaterialScreen(snapshot, todayIso, vm) { navController.popBackStack() }
@@ -595,7 +610,7 @@ private fun WorkspaceNavContainer(
                         }
                         composable<AppRoute.EditCustomer> { entry ->
                             val arg = entry.toRoute<AppRoute.EditCustomer>()
-                            EditCustomerScreen(snapshot, arg.customerName, vm) { navController.popBackStack() }
+                            EditCustomerScreen(snapshot, arg.customerName, arg.isRepClient, vm) { navController.popBackStack() }
                         }
                         composable<AppRoute.AppAccounts> {
                             AppAccountsScreen(snapshot, vm) { navController.popBackStack() }
@@ -629,8 +644,9 @@ private fun WorkspaceNavContainer(
                             CustomerDetailScreen(
                                 snapshot = snapshot,
                                 customerName = arg.customerName,
+                                isRepClient = arg.isRepClient,
                                 onBack = { navController.popBackStack() },
-                                onEditCustomer = { navigateTo(AppRoute.EditCustomer(arg.customerName)) }
+                                onEditCustomer = { navigateTo(AppRoute.EditCustomer(arg.customerName, isRepClient = arg.isRepClient)) }
                             )
                         }
                         composable<AppRoute.EntityDetail> { entry ->
@@ -643,7 +659,7 @@ private fun WorkspaceNavContainer(
                                 snapshot = snapshot,
                                 customerName = arg.customerName,
                                 vm = vm,
-                                onEdit = { navigateTo(AppRoute.EditCustomer(arg.customerName)) },
+                                onEdit = { navigateTo(AppRoute.EditCustomer(arg.customerName, isRepClient = true)) },
                                 onBack = { navController.popBackStack() }
                             )
                         }

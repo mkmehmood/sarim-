@@ -1,37 +1,43 @@
 package com.gullzubair.sarim.data.local
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
-import com.gullzubair.sarim.data.model.CalculatorSettlement
+import com.gullzubair.sarim.data.model.CalculatorRecord
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.DailyLedgerEntry
+import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.EntityRecord
+import com.gullzubair.sarim.data.model.ExpenseRecord
 import com.gullzubair.sarim.data.model.FactoryRecord
 import com.gullzubair.sarim.data.model.FormulaConfig
-import com.gullzubair.sarim.data.model.InventoryItem
+import com.gullzubair.sarim.data.model.FormulaIngredient
+import com.gullzubair.sarim.data.model.InventoryRecord
 import com.gullzubair.sarim.data.model.PaymentTransaction
 import com.gullzubair.sarim.data.model.PendingApproval
+import com.gullzubair.sarim.data.model.PhotoBlob
 import com.gullzubair.sarim.data.model.ProductionRecord
-import com.gullzubair.sarim.data.model.RepRecord
+import com.gullzubair.sarim.data.model.ReturnRecord
 import com.gullzubair.sarim.data.model.SalesRecord
+import com.gullzubair.sarim.data.model.SavedCalcRecord
 import com.gullzubair.sarim.data.model.StoreConfig
 import com.gullzubair.sarim.data.model.UserProfile
+import com.gullzubair.sarim.data.model.WorkspaceAccountRecord
 import com.gullzubair.sarim.data.model.WorkspaceInvite
 import com.gullzubair.sarim.data.model.WorkspaceSettings
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 object WorkspaceJsonCodec {
 
-    fun stringListToJson(list: List<String>): String = JSONArray(list).toString()
-
-    fun jsonToStringList(json: String?): List<String> {
-        if (json.isNullOrBlank()) return emptyList()
-        return runCatching {
-            val arr = JSONArray(json)
-            List(arr.length()) { i -> arr.optString(i) }.filter { it.isNotEmpty() }
-        }.getOrDefault(emptyList())
-    }
+    // --- Primitive & Map/JSON Helpers ---
 
     fun anyToJsonValue(value: Any?): Any? = when (value) {
         null -> JSONObject.NULL
@@ -52,25 +58,23 @@ object WorkspaceJsonCodec {
         map.forEach { (k, v) -> put(k, anyToJsonValue(v) ?: JSONObject.NULL) }
     }.toString()
 
-    fun jsonToFirestoreMap(json: String): Map<String, Any> {
-        val obj = JSONObject(json)
-        val out = LinkedHashMap<String, Any>()
-        obj.keys().forEach { key ->
-            val raw = obj.get(key)
-            if (raw != JSONObject.NULL) {
-                jsonValToKotlin(raw)?.let { out[key] = it }
+    fun jsonToMap(json: String?): Map<String, Any> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(json)
+            val out = LinkedHashMap<String, Any>()
+            obj.keys().forEach { key ->
+                jsonValToKotlin(obj.get(key))?.let { out[key] = it }
             }
-        }
-        return out
+            out
+        }.getOrDefault(emptyMap())
     }
 
-    private fun jsonValToKotlin(raw: Any?): Any? = when (raw) {
+    fun jsonValToKotlin(raw: Any?): Any? = when (raw) {
         null, JSONObject.NULL -> null
         is JSONObject -> {
             val map = LinkedHashMap<String, Any>()
-            raw.keys().forEach { k ->
-                jsonValToKotlin(raw.get(k))?.let { map[k] = it }
-            }
+            raw.keys().forEach { k -> jsonValToKotlin(raw.get(k))?.let { map[k] = it } }
             map
         }
         is JSONArray -> List(raw.length()) { idx -> jsonValToKotlin(raw.get(idx)) }.filterNotNull()
@@ -78,42 +82,124 @@ object WorkspaceJsonCodec {
         else -> raw
     }
 
-    private fun jsonToMapList(arr: JSONArray?): List<Map<String, Any>> {
+    fun jsonToMapList(arr: JSONArray?): List<Map<String, Any>> {
         if (arr == null) return emptyList()
-        val out = ArrayList<Map<String, Any>>(arr.length())
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val m = LinkedHashMap<String, Any>()
-            obj.keys().forEach { k ->
-                jsonValToKotlin(obj.get(k))?.let { m[k] = it }
+        return buildList(arr.length()) {
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val m = LinkedHashMap<String, Any>()
+                obj.keys().forEach { k -> jsonValToKotlin(obj.get(k))?.let { m[k] = it } }
+                add(m)
             }
-            out.add(m)
+        }
+    }
+
+    fun jsonArrayToMapList(json: String?): List<Map<String, Any>> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching { jsonToMapList(JSONArray(json)) }.getOrDefault(emptyList())
+    }
+
+    fun stringListToJson(list: List<String>): String = JSONArray(list).toString()
+
+    fun jsonToStringList(json: String?): List<String> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = JSONArray(json)
+            List(arr.length()) { i -> arr.optString(i) }.filter { it.isNotEmpty() }
+        }.getOrDefault(emptyList())
+    }
+
+    fun mapListToJson(list: List<Map<String, Any?>>): String = JSONArray().apply {
+        list.forEach { put(anyToJsonValue(it)) }
+    }.toString()
+
+    private fun asStr(v: Any?, default: String = ""): String = when (v) {
+        null, JSONObject.NULL -> default
+        is String -> v
+        else -> v.toString()
+    }
+
+    private fun asNullableStr(v: Any?): String? = when (v) {
+        null, JSONObject.NULL -> null
+        is String -> v.takeIf { it != "null" && it.isNotBlank() }
+        else -> v.toString().takeIf { it != "null" && it.isNotBlank() }
+    }
+
+    private fun asDouble(v: Any?, default: Double = 0.0): Double = when (v) {
+        is Number -> v.toDouble().let { if (it.isFinite()) it else default }
+        is String -> v.trim().replace(",", "").toDoubleOrNull()?.let { if (it.isFinite()) it else default } ?: default
+        else -> default
+    }
+
+    private fun asNullableDouble(v: Any?): Double? = when (v) {
+        null, JSONObject.NULL -> null
+        is Number -> v.toDouble().takeIf { it.isFinite() }
+        is String -> v.trim().replace(",", "").toDoubleOrNull()?.takeIf { it.isFinite() }
+        else -> null
+    }
+
+    private fun asLong(v: Any?, default: Long = 0L): Long = when (v) {
+        is Timestamp -> v.seconds * 1000L + (v.nanoseconds / 1_000_000L)
+        is Number -> v.toLong()
+        is String -> v.trim().toLongOrNull() ?: v.trim().toDoubleOrNull()?.toLong() ?: default
+        else -> default
+    }
+
+    private fun asNullableLong(v: Any?): Long? = when (v) {
+        null, JSONObject.NULL -> null
+        is Timestamp -> v.seconds * 1000L + (v.nanoseconds / 1_000_000L)
+        is Number -> v.toLong()
+        is String -> v.trim().toLongOrNull() ?: v.trim().toDoubleOrNull()?.toLong()
+        else -> null
+    }
+
+    private fun asBool(v: Any?, default: Boolean = false): Boolean = when (v) {
+        is Boolean -> v
+        is Number -> v.toInt() != 0
+        is String -> when (v.trim().lowercase()) {
+            "true", "1", "yes" -> true
+            "false", "0", "no" -> false
+            else -> default
+        }
+        else -> default
+    }
+
+    private fun asStrList(v: Any?): List<String> = when (v) {
+        is Iterable<*> -> v.mapNotNull { asNullableStr(it) }
+        else -> emptyList()
+    }
+
+    private fun asDoubleMap(v: Any?): Map<String, Double> {
+        val raw = v as? Map<*, *> ?: return emptyMap()
+        val out = LinkedHashMap<String, Double>()
+        raw.forEach { (k, value) ->
+            val key = asNullableStr(k) ?: return@forEach
+            val d = asNullableDouble(value) ?: return@forEach
+            out[key] = d
         }
         return out
     }
 
-    private fun tsToMs(ts: Timestamp?): Long =
-        if (ts == null) 0L else ts.seconds * 1000L + (ts.nanoseconds / 1_000_000L)
-
-    private fun msToTs(ms: Long): Timestamp? =
-        if (ms <= 0L) null else Timestamp(ms / 1000L, ((ms % 1000L) * 1_000_000L).toInt())
-
-    private fun JSONObject.putTs(key: String, ts: Timestamp?) {
-        val ms = tsToMs(ts)
-        if (ms > 0L) put(key, ms)
+    private fun asMapList(v: Any?): List<Map<String, Any>> {
+        val raw = v as? Iterable<*> ?: return emptyList()
+        return raw.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val out = LinkedHashMap<String, Any>()
+            m.forEach { (k, valItem) ->
+                if (k != null && valItem != null && valItem != JSONObject.NULL) {
+                    out[k.toString()] = valItem
+                }
+            }
+            out
+        }
     }
 
-    private fun JSONObject.optTs(key: String): Timestamp? = msToTs(optLong(key, 0L))
-
-    private fun JSONObject.optNullableStr(key: String): String? =
-        if (!has(key) || isNull(key)) null else optString(key).takeIf { it != "null" }
-
-    private fun JSONObject.optNullableDouble(key: String): Double? =
-        if (!has(key) || isNull(key)) null else optDouble(key)
-
-    private fun JSONObject.optStrList(key: String): List<String> {
-        val arr = optJSONArray(key) ?: return emptyList()
-        return List(arr.length()) { i -> arr.optString(i) }.filter { it.isNotEmpty() }
+    fun snapshotToMap(snap: DocumentSnapshot): Map<String, Any> {
+        val data = snap.data ?: return emptyMap()
+        val out = LinkedHashMap<String, Any>(data.size + 1)
+        data.forEach { (k, v) -> if (v != null) out[k] = v }
+        if (!out.containsKey("id")) out["id"] = snap.id
+        return out
     }
 
     // --- Profile ---
@@ -122,756 +208,1032 @@ object WorkspaceJsonCodec {
         uid = p.uid,
         email = p.email,
         displayName = p.displayName,
-        workspaceOwnerUid = p.workspaceOwnerUid,
+        ownerUid = p.ownerUid?.takeIf { it.isNotBlank() },
         role = p.role,
         rolesJson = stringListToJson(p.roles),
         approved = p.approved,
+        createdBy = p.createdBy,
         inviteId = p.inviteId,
-        updatedAtEpochMs = tsToMs(p.updatedAt).takeIf { it > 0L } ?: System.currentTimeMillis()
+        updatedAtEpochMs = System.currentTimeMillis()
     )
 
     fun toProfile(e: CachedProfileEntity): UserProfile = UserProfile(
-        id = e.uid,
         uid = e.uid,
         email = e.email,
         displayName = e.displayName,
-        workspaceOwnerUid = e.workspaceOwnerUid,
+        ownerUid = e.ownerUid?.takeIf { it.isNotBlank() },
         role = e.role,
         roles = jsonToStringList(e.rolesJson).ifEmpty { listOf(e.role) },
         approved = e.approved,
-        inviteId = e.inviteId,
-        createdAt = msToTs(e.updatedAtEpochMs),
-        updatedAt = msToTs(e.updatedAtEpochMs)
+        createdBy = e.createdBy,
+        inviteId = e.inviteId
     )
 
-    // --- Models <-> JSON ---
-
-    fun encodeSettings(s: WorkspaceSettings): String = JSONObject().apply {
-        put("id", s.id.ifBlank { "preferences" })
-        put("ownerUid", s.ownerUid)
-        put("memberUids", JSONArray(s.memberUids))
-        put("currencySymbol", s.currencySymbol)
-        put("financialYearStartMonth", s.financialYearStartMonth)
-        put("hideSensitiveMoney", s.hideSensitiveMoney)
-        put("biometricLockEnabled", s.biometricLockEnabled)
-        put("themeMode", s.themeMode)
-        put("paymentChannels", JSONArray(s.paymentChannels))
-        put("expenseCategories", JSONArray(s.expenseCategories))
-        putTs("createdAt", s.createdAt)
-        putTs("updatedAt", s.updatedAt)
-    }.toString()
-
-    fun decodeSettings(docId: String, json: String): WorkspaceSettings {
-        val o = JSONObject(json)
-        return WorkspaceSettings(
-            id = o.optString("id", docId).ifBlank { docId },
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            currencySymbol = o.optString("currencySymbol", "Rs").ifBlank { "Rs" },
-            financialYearStartMonth = o.optLong("financialYearStartMonth", 7L),
-            hideSensitiveMoney = o.optBoolean("hideSensitiveMoney", false),
-            biometricLockEnabled = o.optBoolean("biometricLockEnabled", false),
-            themeMode = o.optString("themeMode", "light").ifBlank { "light" },
-            paymentChannels = o.optStrList("paymentChannels").ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") },
-            expenseCategories = o.optStrList("expenseCategories").ifEmpty {
-                listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other")
-            },
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeStore(s: StoreConfig): String = JSONObject().apply {
-        put("id", s.id)
-        put("ownerUid", s.ownerUid)
-        put("memberUids", JSONArray(s.memberUids))
-        put("storeKey", s.storeKey)
-        put("name", s.name)
-        put("formulaId", s.formulaId)
-        put("salePrice", s.salePrice)
-        put("active", s.active)
-        putTs("createdAt", s.createdAt)
-        putTs("updatedAt", s.updatedAt)
-    }.toString()
-
-    fun decodeStore(docId: String, json: String): StoreConfig {
-        val o = JSONObject(json)
-        return StoreConfig(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            storeKey = o.optString("storeKey"),
-            name = o.optString("name"),
-            formulaId = o.optString("formulaId"),
-            salePrice = o.optDouble("salePrice", 0.0),
-            active = o.optBoolean("active", true),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeFormula(f: FormulaConfig): String = JSONObject().apply {
-        put("id", f.id)
-        put("ownerUid", f.ownerUid)
-        put("memberUids", JSONArray(f.memberUids))
-        put("name", f.name)
-        put("unitsPerBatch", f.unitsPerBatch)
-        put("additionalCost", f.additionalCost)
-        put("costAdjustment", f.costAdjustment)
-        put("ingredients", anyToJsonValue(f.ingredients))
-        put("savedMixes", anyToJsonValue(f.savedMixes))
-        put("savedCorrections", anyToJsonValue(f.savedCorrections))
-        putTs("createdAt", f.createdAt)
-        putTs("updatedAt", f.updatedAt)
-    }.toString()
-
-    fun decodeFormula(docId: String, json: String): FormulaConfig {
-        val o = JSONObject(json)
-        return FormulaConfig(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            name = o.optString("name"),
-            unitsPerBatch = o.optDouble("unitsPerBatch", 1.0),
-            additionalCost = o.optDouble("additionalCost", 0.0),
-            costAdjustment = o.optDouble("costAdjustment", 0.0),
-            ingredients = jsonToMapList(o.optJSONArray("ingredients")),
-            savedMixes = jsonToMapList(o.optJSONArray("savedMixes")),
-            savedCorrections = jsonToMapList(o.optJSONArray("savedCorrections")),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeCustomer(c: CustomerRecord): String = JSONObject().apply {
-        put("id", c.id)
-        put("ownerUid", c.ownerUid)
-        put("memberUids", JSONArray(c.memberUids))
-        put("name", c.name)
-        put("phone", c.phone)
-        put("address", c.address)
-        c.routeLat?.let { put("routeLat", it) }
-        c.routeLng?.let { put("routeLng", it) }
-        put("visitCount", c.visitCount)
-        put("openingBalance", c.openingBalance)
-        c.notes?.let { put("notes", it) }
-        put("recycled", c.recycled)
-        put("recycledAtEpoch", c.recycledAtEpoch)
-        putTs("createdAt", c.createdAt)
-        putTs("updatedAt", c.updatedAt)
-    }.toString()
-
-    fun decodeCustomer(docId: String, json: String): CustomerRecord {
-        val o = JSONObject(json)
-        return CustomerRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            name = o.optString("name"),
-            phone = o.optString("phone"),
-            address = o.optString("address"),
-            routeLat = o.optNullableDouble("routeLat"),
-            routeLng = o.optNullableDouble("routeLng"),
-            visitCount = o.optLong("visitCount", 0L),
-            openingBalance = o.optDouble("openingBalance", 0.0),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeEntity(e: EntityRecord): String = JSONObject().apply {
-        put("id", e.id)
-        put("ownerUid", e.ownerUid)
-        put("memberUids", JSONArray(e.memberUids))
-        put("name", e.name)
-        put("entityType", e.entityType)
-        put("phone", e.phone)
-        e.notes?.let { put("notes", it) }
-        put("openingBalance", e.openingBalance)
-        put("recycled", e.recycled)
-        put("recycledAtEpoch", e.recycledAtEpoch)
-        putTs("createdAt", e.createdAt)
-        putTs("updatedAt", e.updatedAt)
-    }.toString()
-
-    fun decodeEntity(docId: String, json: String): EntityRecord {
-        val o = JSONObject(json)
-        return EntityRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            name = o.optString("name"),
-            entityType = o.optString("entityType", "party"),
-            phone = o.optString("phone"),
-            notes = o.optNullableStr("notes"),
-            openingBalance = o.optDouble("openingBalance", 0.0),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeInventory(i: InventoryItem): String = JSONObject().apply {
-        put("id", i.id)
-        put("ownerUid", i.ownerUid)
-        put("memberUids", JSONArray(i.memberUids))
-        put("name", i.name)
-        put("unitName", i.unitName)
-        put("conversionFactor", i.conversionFactor)
-        put("stockQty", i.stockQty)
-        put("avgCostPerKg", i.avgCostPerKg)
-        put("minThreshold", i.minThreshold)
-        i.supplierName?.let { put("supplierName", it) }
-        put("recycled", i.recycled)
-        put("recycledAtEpoch", i.recycledAtEpoch)
-        putTs("createdAt", i.createdAt)
-        putTs("updatedAt", i.updatedAt)
-    }.toString()
-
-    fun decodeInventory(docId: String, json: String): InventoryItem {
-        val o = JSONObject(json)
-        return InventoryItem(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            name = o.optString("name"),
-            unitName = o.optString("unitName", "kg"),
-            conversionFactor = o.optDouble("conversionFactor", 1.0),
-            stockQty = o.optDouble("stockQty", 0.0),
-            avgCostPerKg = o.optDouble("avgCostPerKg", 0.0),
-            minThreshold = o.optDouble("minThreshold", 0.0),
-            supplierName = o.optNullableStr("supplierName"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeProduction(p: ProductionRecord): String = JSONObject().apply {
-        put("id", p.id)
-        put("ownerUid", p.ownerUid)
-        put("memberUids", JSONArray(p.memberUids))
-        put("date", p.date)
-        put("storeKey", p.storeKey)
-        put("storeName", p.storeName)
-        p.formulaId?.let { put("formulaId", it) }
-        put("formulaUnits", p.formulaUnits)
-        put("grossWeight", p.grossWeight)
-        put("containerWeight", p.containerWeight)
-        put("netWeight", p.netWeight)
-        put("costPerKg", p.costPerKg)
-        put("salePrice", p.salePrice)
-        put("totalCost", p.totalCost)
-        put("totalRevenue", p.totalRevenue)
-        put("profit", p.profit)
-        put("transfer", p.transfer)
-        put("transferType", p.transferType)
-        p.transferPairId?.let { put("transferPairId", it) }
-        p.transferPeerStore?.let { put("transferPeerStore", it) }
-        p.notes?.let { put("notes", it) }
-        put("recycled", p.recycled)
-        put("recycledAtEpoch", p.recycledAtEpoch)
-        put("createdByUid", p.createdByUid)
-        putTs("createdAt", p.createdAt)
-        putTs("updatedAt", p.updatedAt)
-    }.toString()
-
-    fun decodeProduction(docId: String, json: String): ProductionRecord {
-        val o = JSONObject(json)
-        return ProductionRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            storeKey = o.optString("storeKey"),
-            storeName = o.optString("storeName"),
-            formulaId = o.optNullableStr("formulaId"),
-            formulaUnits = o.optDouble("formulaUnits", 0.0),
-            grossWeight = o.optDouble("grossWeight", 0.0),
-            containerWeight = o.optDouble("containerWeight", 0.0),
-            netWeight = o.optDouble("netWeight", 0.0),
-            costPerKg = o.optDouble("costPerKg", 0.0),
-            salePrice = o.optDouble("salePrice", 0.0),
-            totalCost = o.optDouble("totalCost", 0.0),
-            totalRevenue = o.optDouble("totalRevenue", 0.0),
-            profit = o.optDouble("profit", 0.0),
-            transfer = o.optBoolean("transfer", false),
-            transferType = o.optString("transferType", "none"),
-            transferPairId = o.optNullableStr("transferPairId"),
-            transferPeerStore = o.optNullableStr("transferPeerStore"),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeSale(s: SalesRecord): String = JSONObject().apply {
-        put("id", s.id)
-        put("ownerUid", s.ownerUid)
-        put("memberUids", JSONArray(s.memberUids))
-        put("date", s.date)
-        put("mode", s.mode)
-        s.customerId?.let { put("customerId", it) }
-        put("customerName", s.customerName)
-        put("storeKey", s.storeKey)
-        s.storeName?.let { put("storeName", it) }
-        put("repName", s.repName)
-        put("qtyKg", s.qtyKg)
-        put("ratePerKg", s.ratePerKg)
-        put("totalAmount", s.totalAmount)
-        put("cashReceived", s.cashReceived)
-        put("creditAmount", s.creditAmount)
-        put("expiredKg", s.expiredKg)
-        put("choraValue", s.choraValue)
-        put("addToLedger", s.addToLedger)
-        s.ledgerEntryId?.let { put("ledgerEntryId", it) }
-        s.notes?.let { put("notes", it) }
-        put("recycled", s.recycled)
-        put("recycledAtEpoch", s.recycledAtEpoch)
-        put("createdByUid", s.createdByUid)
-        putTs("createdAt", s.createdAt)
-        putTs("updatedAt", s.updatedAt)
-    }.toString()
-
-    fun decodeSale(docId: String, json: String): SalesRecord {
-        val o = JSONObject(json)
-        return SalesRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            mode = o.optString("mode", "sale"),
-            customerId = o.optNullableStr("customerId"),
-            customerName = o.optString("customerName"),
-            storeKey = o.optString("storeKey"),
-            storeName = o.optNullableStr("storeName"),
-            repName = o.optString("repName", "NONE"),
-            qtyKg = o.optDouble("qtyKg", 0.0),
-            ratePerKg = o.optDouble("ratePerKg", 0.0),
-            totalAmount = o.optDouble("totalAmount", 0.0),
-            cashReceived = o.optDouble("cashReceived", 0.0),
-            creditAmount = o.optDouble("creditAmount", 0.0),
-            expiredKg = o.optDouble("expiredKg", 0.0),
-            choraValue = o.optDouble("choraValue", 0.0),
-            addToLedger = o.optBoolean("addToLedger", true),
-            ledgerEntryId = o.optNullableStr("ledgerEntryId"),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeRep(r: RepRecord): String = JSONObject().apply {
-        put("id", r.id)
-        put("ownerUid", r.ownerUid)
-        put("memberUids", JSONArray(r.memberUids))
-        put("date", r.date)
-        put("repName", r.repName)
-        put("mode", r.mode)
-        r.customerId?.let { put("customerId", it) }
-        put("customerName", r.customerName)
-        put("storeKey", r.storeKey)
-        put("qtyKg", r.qtyKg)
-        put("ratePerKg", r.ratePerKg)
-        put("totalAmount", r.totalAmount)
-        put("cashReceived", r.cashReceived)
-        put("creditAmount", r.creditAmount)
-        r.routeLat?.let { put("routeLat", it) }
-        r.routeLng?.let { put("routeLng", it) }
-        put("addressConfirmed", r.addressConfirmed)
-        r.notes?.let { put("notes", it) }
-        put("recycled", r.recycled)
-        put("recycledAtEpoch", r.recycledAtEpoch)
-        put("createdByUid", r.createdByUid)
-        putTs("createdAt", r.createdAt)
-        putTs("updatedAt", r.updatedAt)
-    }.toString()
-
-    fun decodeRep(docId: String, json: String): RepRecord {
-        val o = JSONObject(json)
-        return RepRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            repName = o.optString("repName"),
-            mode = o.optString("mode", "sale"),
-            customerId = o.optNullableStr("customerId"),
-            customerName = o.optString("customerName"),
-            storeKey = o.optString("storeKey"),
-            qtyKg = o.optDouble("qtyKg", 0.0),
-            ratePerKg = o.optDouble("ratePerKg", 0.0),
-            totalAmount = o.optDouble("totalAmount", 0.0),
-            cashReceived = o.optDouble("cashReceived", 0.0),
-            creditAmount = o.optDouble("creditAmount", 0.0),
-            routeLat = o.optNullableDouble("routeLat"),
-            routeLng = o.optNullableDouble("routeLng"),
-            addressConfirmed = o.optBoolean("addressConfirmed", false),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeCalculator(c: CalculatorSettlement): String = JSONObject().apply {
-        put("id", c.id)
-        put("ownerUid", c.ownerUid)
-        put("memberUids", JSONArray(c.memberUids))
-        put("dateFrom", c.dateFrom)
-        put("dateTo", c.dateTo)
-        put("repName", c.repName)
-        put("storeKey", c.storeKey)
-        put("totalSoldKg", c.totalSoldKg)
-        put("returnedKg", c.returnedKg)
-        put("returnTarget", c.returnTarget)
-        c.returnTargetName?.let { put("returnTargetName", it) }
-        put("expiredKg", c.expiredKg)
-        put("sharedDeduction", c.sharedDeduction)
-        put("netSoldKg", c.netSoldKg)
-        put("cashQtyKg", c.cashQtyKg)
-        put("creditQtyKg", c.creditQtyKg)
-        put("ratePerKg", c.ratePerKg)
-        put("commissionTotal", c.commissionTotal)
-        put("commissions", anyToJsonValue(c.commissions))
-        put("expenseTotal", c.expenseTotal)
-        put("expenses", anyToJsonValue(c.expenses))
-        put("expectedCash", c.expectedCash)
-        put("physicalCash", c.physicalCash)
-        put("variance", c.variance)
-        put("addToLedger", c.addToLedger)
-        c.ledgerEntryId?.let { put("ledgerEntryId", it) }
-        c.notes?.let { put("notes", it) }
-        put("recycled", c.recycled)
-        put("recycledAtEpoch", c.recycledAtEpoch)
-        put("createdByUid", c.createdByUid)
-        putTs("createdAt", c.createdAt)
-        putTs("updatedAt", c.updatedAt)
-    }.toString()
-
-    fun decodeCalculator(docId: String, json: String): CalculatorSettlement {
-        val o = JSONObject(json)
-        return CalculatorSettlement(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            dateFrom = o.optString("dateFrom"),
-            dateTo = o.optString("dateTo"),
-            repName = o.optString("repName"),
-            storeKey = o.optString("storeKey"),
-            totalSoldKg = o.optDouble("totalSoldKg", 0.0),
-            returnedKg = o.optDouble("returnedKg", 0.0),
-            returnTarget = o.optString("returnTarget", "store"),
-            returnTargetName = o.optNullableStr("returnTargetName"),
-            expiredKg = o.optDouble("expiredKg", 0.0),
-            sharedDeduction = o.optDouble("sharedDeduction", 0.0),
-            netSoldKg = o.optDouble("netSoldKg", 0.0),
-            cashQtyKg = o.optDouble("cashQtyKg", 0.0),
-            creditQtyKg = o.optDouble("creditQtyKg", 0.0),
-            ratePerKg = o.optDouble("ratePerKg", 0.0),
-            commissionTotal = o.optDouble("commissionTotal", 0.0),
-            commissions = jsonToMapList(o.optJSONArray("commissions")),
-            expenseTotal = o.optDouble("expenseTotal", 0.0),
-            expenses = jsonToMapList(o.optJSONArray("expenses")),
-            expectedCash = o.optDouble("expectedCash", 0.0),
-            physicalCash = o.optDouble("physicalCash", 0.0),
-            variance = o.optDouble("variance", 0.0),
-            addToLedger = o.optBoolean("addToLedger", true),
-            ledgerEntryId = o.optNullableStr("ledgerEntryId"),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeFactory(f: FactoryRecord): String = JSONObject().apply {
-        put("id", f.id)
-        put("ownerUid", f.ownerUid)
-        put("memberUids", JSONArray(f.memberUids))
-        put("date", f.date)
-        put("recordType", f.recordType)
-        f.formulaId?.let { put("formulaId", it) }
-        f.formulaName?.let { put("formulaName", it) }
-        f.storeKey?.let { put("storeKey", it) }
-        put("unitsProduced", f.unitsProduced)
-        f.rawItemId?.let { put("rawItemId", it) }
-        f.rawItemName?.let { put("rawItemName", it) }
-        f.supplierName?.let { put("supplierName", it) }
-        put("qtyRawUnit", f.qtyRawUnit)
-        put("conversionFactor", f.conversionFactor)
-        put("qtyKg", f.qtyKg)
-        put("unitCost", f.unitCost)
-        put("totalCost", f.totalCost)
-        put("paidAmount", f.paidAmount)
-        put("payableBalance", f.payableBalance)
-        put("allocatedPaid", f.allocatedPaid)
-        put("settled", f.settled)
-        put("ingredientsUsed", anyToJsonValue(f.ingredientsUsed))
-        f.notes?.let { put("notes", it) }
-        put("recycled", f.recycled)
-        put("recycledAtEpoch", f.recycledAtEpoch)
-        put("createdByUid", f.createdByUid)
-        putTs("createdAt", f.createdAt)
-        putTs("updatedAt", f.updatedAt)
-    }.toString()
-
-    fun decodeFactory(docId: String, json: String): FactoryRecord {
-        val o = JSONObject(json)
-        return FactoryRecord(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            recordType = o.optString("recordType", "batch"),
-            formulaId = o.optNullableStr("formulaId"),
-            formulaName = o.optNullableStr("formulaName"),
-            storeKey = o.optNullableStr("storeKey"),
-            unitsProduced = o.optLong("unitsProduced", 0L),
-            rawItemId = o.optNullableStr("rawItemId"),
-            rawItemName = o.optNullableStr("rawItemName"),
-            supplierName = o.optNullableStr("supplierName"),
-            qtyRawUnit = o.optDouble("qtyRawUnit", 0.0),
-            conversionFactor = o.optDouble("conversionFactor", 1.0),
-            qtyKg = o.optDouble("qtyKg", 0.0),
-            unitCost = o.optDouble("unitCost", 0.0),
-            totalCost = o.optDouble("totalCost", 0.0),
-            paidAmount = o.optDouble("paidAmount", 0.0),
-            payableBalance = o.optDouble("payableBalance", 0.0),
-            allocatedPaid = o.optDouble("allocatedPaid", 0.0),
-            settled = o.optBoolean("settled", false),
-            ingredientsUsed = jsonToMapList(o.optJSONArray("ingredientsUsed")),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeTransaction(t: PaymentTransaction): String = JSONObject().apply {
-        put("id", t.id)
-        put("ownerUid", t.ownerUid)
-        put("memberUids", JSONArray(t.memberUids))
-        put("date", t.date)
-        put("txType", t.txType)
-        t.entityId?.let { put("entityId", it) }
-        put("entityName", t.entityName)
-        put("entityCategory", t.entityCategory)
-        put("paymentChannel", t.paymentChannel)
-        put("amount", t.amount)
-        t.transferPairId?.let { put("transferPairId", it) }
-        t.peerEntityName?.let { put("peerEntityName", it) }
-        put("addToLedger", t.addToLedger)
-        t.ledgerEntryId?.let { put("ledgerEntryId", it) }
-        t.notes?.let { put("notes", it) }
-        put("recycled", t.recycled)
-        put("recycledAtEpoch", t.recycledAtEpoch)
-        put("createdByUid", t.createdByUid)
-        putTs("createdAt", t.createdAt)
-        putTs("updatedAt", t.updatedAt)
-    }.toString()
-
-    fun decodeTransaction(docId: String, json: String): PaymentTransaction {
-        val o = JSONObject(json)
-        return PaymentTransaction(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            txType = o.optString("txType", "out"),
-            entityId = o.optNullableStr("entityId"),
-            entityName = o.optString("entityName"),
-            entityCategory = o.optString("entityCategory", "party"),
-            paymentChannel = o.optString("paymentChannel", "Cash"),
-            amount = o.optDouble("amount", 0.0),
-            transferPairId = o.optNullableStr("transferPairId"),
-            peerEntityName = o.optNullableStr("peerEntityName"),
-            addToLedger = o.optBoolean("addToLedger", true),
-            ledgerEntryId = o.optNullableStr("ledgerEntryId"),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeLedger(l: DailyLedgerEntry): String = JSONObject().apply {
-        put("id", l.id)
-        put("ownerUid", l.ownerUid)
-        put("memberUids", JSONArray(l.memberUids))
-        put("date", l.date)
-        put("entryType", l.entryType)
-        put("expenseScope", l.expenseScope)
-        put("channel", l.channel)
-        l.toChannel?.let { put("toChannel", it) }
-        put("category", l.category)
-        put("partyName", l.partyName)
-        put("amount", l.amount)
-        put("tabEntry", l.tabEntry)
-        l.sourceCollection?.let { put("sourceCollection", it) }
-        l.sourceDocId?.let { put("sourceDocId", it) }
-        l.notes?.let { put("notes", it) }
-        put("recycled", l.recycled)
-        put("recycledAtEpoch", l.recycledAtEpoch)
-        put("createdByUid", l.createdByUid)
-        putTs("createdAt", l.createdAt)
-        putTs("updatedAt", l.updatedAt)
-    }.toString()
-
-    fun decodeLedger(docId: String, json: String): DailyLedgerEntry {
-        val o = JSONObject(json)
-        return DailyLedgerEntry(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            date = o.optString("date"),
-            entryType = o.optString("entryType", "IN"),
-            expenseScope = o.optString("expenseScope", "none"),
-            channel = o.optString("channel", "Cash"),
-            toChannel = o.optNullableStr("toChannel"),
-            category = o.optString("category", "General"),
-            partyName = o.optString("partyName"),
-            amount = o.optDouble("amount", 0.0),
-            tabEntry = o.optBoolean("tabEntry", false),
-            sourceCollection = o.optNullableStr("sourceCollection"),
-            sourceDocId = o.optNullableStr("sourceDocId"),
-            notes = o.optNullableStr("notes"),
-            recycled = o.optBoolean("recycled", false),
-            recycledAtEpoch = o.optLong("recycledAtEpoch", 0L),
-            createdByUid = o.optString("createdByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodePending(p: PendingApproval): String = JSONObject().apply {
-        put("id", p.id)
-        put("ownerUid", p.ownerUid)
-        put("memberUids", JSONArray(p.memberUids))
-        put("submittedByUid", p.submittedByUid)
-        put("submittedByName", p.submittedByName)
-        put("submittedByEmail", p.submittedByEmail)
-        put("action", p.action)
-        put("targetCollection", p.targetCollection)
-        put("targetDocId", p.targetDocId)
-        put("summaryTitle", p.summaryTitle)
-        put("summaryDetail", p.summaryDetail)
-        put("recordDate", p.recordDate)
-        put("payloadData", anyToJsonValue(p.payloadData))
-        put("status", p.status)
-        p.reviewedByUid?.let { put("reviewedByUid", it) }
-        putTs("createdAt", p.createdAt)
-        putTs("updatedAt", p.updatedAt)
-    }.toString()
-
-    fun decodePending(docId: String, json: String): PendingApproval {
-        val o = JSONObject(json)
-        val payloadObj = o.optJSONObject("payloadData")
-        val payloadMap = LinkedHashMap<String, Any>()
-        payloadObj?.keys()?.forEach { k ->
-            jsonValToKotlin(payloadObj.get(k))?.let { payloadMap[k] = it }
-        }
-        return PendingApproval(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            memberUids = o.optStrList("memberUids"),
-            submittedByUid = o.optString("submittedByUid"),
-            submittedByName = o.optString("submittedByName"),
-            submittedByEmail = o.optString("submittedByEmail"),
-            action = o.optString("action", "set"),
-            targetCollection = o.optString("targetCollection", "sales"),
-            targetDocId = o.optString("targetDocId"),
-            summaryTitle = o.optString("summaryTitle"),
-            summaryDetail = o.optString("summaryDetail"),
-            recordDate = o.optString("recordDate"),
-            payloadData = payloadMap,
-            status = o.optString("status", "pending"),
-            reviewedByUid = o.optNullableStr("reviewedByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeInvite(i: WorkspaceInvite): String = JSONObject().apply {
-        put("id", i.id)
-        put("ownerUid", i.ownerUid)
-        put("ownerName", i.ownerName)
-        put("memberEmail", i.memberEmail)
-        put("displayName", i.displayName)
-        put("roles", JSONArray(i.roles))
-        put("approved", i.approved)
-        put("status", i.status)
-        i.acceptedByUid?.let { put("acceptedByUid", it) }
-        putTs("createdAt", i.createdAt)
-        putTs("updatedAt", i.updatedAt)
-    }.toString()
-
-    fun decodeInvite(docId: String, json: String): WorkspaceInvite {
-        val o = JSONObject(json)
-        return WorkspaceInvite(
-            id = docId,
-            ownerUid = o.optString("ownerUid"),
-            ownerName = o.optString("ownerName"),
-            memberEmail = o.optString("memberEmail"),
-            displayName = o.optString("displayName"),
-            roles = o.optStrList("roles"),
-            approved = o.optBoolean("approved", true),
-            status = o.optString("status", "pending"),
-            acceptedByUid = o.optNullableStr("acceptedByUid"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
-        )
-    }
-
-    fun encodeUserProfile(p: UserProfile): String = JSONObject().apply {
-        put("id", p.id.ifBlank { p.uid })
-        put("uid", p.uid)
-        put("email", p.email)
-        put("displayName", p.displayName)
-        put("workspaceOwnerUid", p.workspaceOwnerUid)
-        put("role", p.role)
-        put("roles", JSONArray(p.roles))
-        put("approved", p.approved)
-        p.inviteId?.let { put("inviteId", it) }
-        putTs("createdAt", p.createdAt)
-        putTs("updatedAt", p.updatedAt)
-    }.toString()
-
-    fun decodeUserProfile(docId: String, json: String): UserProfile {
-        val o = JSONObject(json)
-        val uid = o.optString("uid", docId).ifBlank { docId }
-        val role = o.optString("role", "admin")
+    fun mapToUserProfile(uid: String, data: Map<String, Any>): UserProfile {
+        val rawOwner = asNullableStr(data["ownerUid"])
+            ?: asNullableStr(data["workspaceOwnerUid"])?.takeIf { it != uid }
+        val rolesRaw = asStrList(data["roles"])
+        val roleRaw = asStr(data["role"], if ("admin" in rolesRaw) "admin" else "user")
+        val roles = if (rolesRaw.isNotEmpty()) rolesRaw else listOf(if (roleRaw == "admin") "admin" else "rep")
         return UserProfile(
-            id = uid,
-            uid = uid,
-            email = o.optString("email"),
-            displayName = o.optString("displayName"),
-            workspaceOwnerUid = o.optString("workspaceOwnerUid", uid),
-            role = role,
-            roles = o.optStrList("roles").ifEmpty { listOf(role) },
-            approved = o.optBoolean("approved", true),
-            inviteId = o.optNullableStr("inviteId"),
-            createdAt = o.optTs("createdAt"),
-            updatedAt = o.optTs("updatedAt")
+            uid = asStr(data["uid"], uid).ifBlank { uid },
+            email = asStr(data["email"]).lowercase(),
+            displayName = asStr(data["displayName"], asStr(data["name"])),
+            ownerUid = rawOwner,
+            role = if ("admin" in roles || roleRaw == "admin") "admin" else "user",
+            roles = roles,
+            approved = data["approved"] as? Boolean ?: (asStr(data["approved"], "true") != "false"),
+            createdBy = asStr(data["createdBy"]),
+            inviteId = asNullableStr(data["inviteId"]),
+            lastWrite = asLong(data["lastWrite"], 0L)
         )
+    }
+
+    fun mapToInvite(docId: String, data: Map<String, Any>): WorkspaceInvite = WorkspaceInvite(
+        id = docId,
+        ownerUid = asStr(data["ownerUid"]),
+        ownerName = asStr(data["ownerName"]),
+        memberEmail = asStr(data["memberEmail"]).lowercase(),
+        displayName = asStr(data["displayName"]),
+        roles = asStrList(data["roles"]),
+        approved = asBool(data["approved"], true),
+        status = asStr(data["status"], "pending"),
+        acceptedByUid = asNullableStr(data["acceptedByUid"])
+    )
+
+    fun mapToAccountRecord(data: Map<String, Any>): WorkspaceAccountRecord = WorkspaceAccountRecord(
+        uid = asStr(data["uid"]),
+        email = asStr(data["email"]).lowercase(),
+        displayName = asStr(data["displayName"]),
+        roles = asStrList(data["roles"]).ifEmpty { listOf("rep") },
+        approved = asBool(data["approved"], true),
+        ownerUid = asStr(data["ownerUid"]),
+        createdBy = asStr(data["createdBy"])
+    )
+
+    fun accountRecordToMap(a: WorkspaceAccountRecord): Map<String, Any> = buildMap {
+        put("uid", a.uid)
+        put("email", a.email.lowercase())
+        put("displayName", a.displayName)
+        put("roles", a.roles)
+        put("approved", a.approved)
+        if (a.ownerUid.isNotBlank()) put("ownerUid", a.ownerUid)
+        if (a.createdBy.isNotBlank()) put("createdBy", a.createdBy)
+    }
+
+    // --- Stores ---
+
+    fun mapToStore(data: Map<String, Any>): StoreConfig {
+        val key = asStr(data["key"], asStr(data["storeKey"], asStr(data["id"])))
+        return StoreConfig(
+            key = key,
+            name = asStr(data["name"], key),
+            salePrice = asDouble(data["salePrice"], 0.0),
+            formulaId = asNullableStr(data["formulaId"]),
+            active = asBool(data["active"], true),
+            updatedAt = asLong(data["updatedAt"], 0L),
+            deletedAt = asNullableLong(data["deletedAt"])
+        )
+    }
+
+    fun storeToMap(s: StoreConfig): Map<String, Any> = buildMap {
+        put("key", s.key)
+        put("name", s.name)
+        put("salePrice", s.salePrice)
+        s.formulaId?.takeIf { it.isNotBlank() }?.let { put("formulaId", it) }
+        put("active", s.active)
+        put("updatedAt", if (s.updatedAt > 0L) s.updatedAt else System.currentTimeMillis())
+        s.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    // --- Formulas ---
+
+    fun mapToIngredient(data: Map<String, Any>): FormulaIngredient = FormulaIngredient(
+        id = asStr(data["id"]),
+        kind = asNullableStr(data["kind"]),
+        formulaId = asNullableStr(data["formulaId"]),
+        name = asStr(data["name"], "Untitled"),
+        cost = asDouble(data["cost"], 0.0),
+        quantity = asDouble(data["quantity"], 0.0),
+        custom = asBool(data["custom"], false)
+    )
+
+    fun ingredientToMap(i: FormulaIngredient): Map<String, Any> = buildMap {
+        put("id", i.id)
+        i.kind?.let { put("kind", it) }
+        i.formulaId?.let { put("formulaId", it) }
+        put("name", i.name)
+        put("cost", i.cost)
+        put("quantity", i.quantity)
+        if (i.custom) put("custom", true)
+    }
+
+    fun mapToSavedCalc(data: Map<String, Any>): SavedCalcRecord {
+        val manual = data["manual"] as? Map<*, *>
+        return SavedCalcRecord(
+            id = asStr(data["id"]),
+            kind = asStr(data["kind"], "mix"),
+            name = asStr(data["name"]),
+            mode = asStr(data["mode"], "units"),
+            value = asDouble(data["value"], 0.0),
+            ingredientId = asNullableStr(data["ingredientId"]),
+            original = asDouble(data["original"], 0.0),
+            used = asDouble(data["used"], 0.0),
+            actual = asDoubleMap(data["actual"]),
+            manualId = asNullableStr(manual?.get("id")),
+            manualAdd = asNullableDouble(manual?.get("add")),
+            manualTotal = asNullableDouble(manual?.get("total")),
+            createdAt = asLong(data["createdAt"], 0L),
+            updatedAt = asLong(data["updatedAt"], 0L)
+        )
+    }
+
+    fun savedCalcToMap(c: SavedCalcRecord): Map<String, Any> = buildMap {
+        put("id", c.id)
+        put("kind", c.kind)
+        put("name", c.name)
+        put("createdAt", if (c.createdAt > 0L) c.createdAt else System.currentTimeMillis())
+        put("updatedAt", if (c.updatedAt > 0L) c.updatedAt else System.currentTimeMillis())
+        if (c.kind == "mix") {
+            put("mode", c.mode)
+            put("value", c.value)
+            c.ingredientId?.let { put("ingredientId", it) }
+        } else {
+            put("original", c.original)
+            put("used", c.used)
+            put("actual", c.actual)
+            if (c.manualId != null || c.manualTotal != null) {
+                put("manual", buildMap<String, Any> {
+                    c.manualId?.let { put("id", it) }
+                    c.manualAdd?.let { put("add", it) }
+                    c.manualTotal?.let { put("total", it) }
+                })
+            }
+        }
+    }
+
+    fun mapToFormula(data: Map<String, Any>): FormulaConfig {
+        val factor = asDouble(data["costAdjustmentFactor"], 0.0)
+            .let { if (it > 0.0) it else asDouble(data["unitsPerBatch"], 1.0) }
+            .let { if (it > 0.0) it else 1.0 }
+        val rawCalcs = asMapList(data["savedCalcs"])
+        val legacyMixes = asMapList(data["savedMixes"]).map { it + ("kind" to "mix") }
+        val legacyFix = asMapList(data["savedCorrections"]).map { it + ("kind" to "fix") }
+        val calcs = (if (rawCalcs.isNotEmpty()) rawCalcs else legacyMixes + legacyFix).map(::mapToSavedCalc)
+        return FormulaConfig(
+            id = asStr(data["id"]),
+            name = asStr(data["name"]),
+            ingredients = asMapList(data["ingredients"]).map(::mapToIngredient),
+            additionalCost = asDouble(data["additionalCost"], 0.0),
+            costAdjustmentFactor = factor,
+            unitsPerBatch = asDouble(data["unitsPerBatch"], factor),
+            savedCalcs = calcs,
+            updatedAt = asLong(data["updatedAt"], 0L)
+        )
+    }
+
+    fun formulaToMap(f: FormulaConfig): Map<String, Any> = buildMap {
+        put("id", f.id)
+        put("name", f.name)
+        put("ingredients", f.ingredients.map(::ingredientToMap))
+        put("additionalCost", f.additionalCost)
+        put("costAdjustmentFactor", f.costAdjustmentFactor)
+        put("unitsPerBatch", f.unitsPerBatch)
+        put("savedCalcs", f.savedCalcs.map(::savedCalcToMap))
+        put("updatedAt", if (f.updatedAt > 0L) f.updatedAt else System.currentTimeMillis())
+    }
+
+    // --- 12 Sync Collections ---
+
+    fun mapToProduction(docId: String, data: Map<String, Any>): ProductionRecord = ProductionRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        date = asStr(data["date"]),
+        time = asStr(data["time"]),
+        store = asStr(data["store"], asStr(data["storeName"], asStr(data["storeKey"]))),
+        grossWt = asDouble(data["grossWt"], asDouble(data["grossWeight"], 0.0)),
+        contWt = asDouble(data["contWt"], asDouble(data["containerWeight"], 0.0)),
+        net = asDouble(data["net"], asDouble(data["netWeight"], 0.0)),
+        cp = asDouble(data["cp"], asDouble(data["costPerKg"], 0.0)),
+        sp = asDouble(data["sp"], asDouble(data["salePrice"], 0.0)),
+        totalCost = asDouble(data["totalCost"], 0.0),
+        totalSale = asDouble(data["totalSale"], asDouble(data["totalRevenue"], 0.0)),
+        profit = asDouble(data["profit"], 0.0),
+        formulaUnits = asDouble(data["formulaUnits"], 0.0),
+        formulaId = asStr(data["formulaId"]),
+        formulaName = asStr(data["formulaName"]),
+        formulaMaterials = asMapList(data["formulaMaterials"]),
+        formulaCost = asDouble(data["formulaCost"], 0.0),
+        paymentStatus = asStr(data["paymentStatus"]),
+        photoKeys = asStrList(data["photoKeys"]),
+        isReturn = asBool(data["isReturn"], false),
+        returnedBy = asStr(data["returnedBy"]),
+        returnNote = asStr(data["returnNote"], asStr(data["notes"])),
+        isTransfer = asBool(data["isTransfer"], asBool(data["transfer"], false)),
+        transferDirection = asStr(data["transferDirection"], asStr(data["transferType"]).let { if (it == "none") "" else it }),
+        transferPairId = asStr(data["transferPairId"]),
+        transferPeerStore = asStr(data["transferPeerStore"]),
+        transferNote = asStr(data["transferNote"]),
+        isMerged = asBool(data["isMerged"], false),
+        managedBy = asStr(data["managedBy"]),
+        createdBy = asStr(data["createdBy"], asStr(data["createdByUid"])),
+        recordDate = asStr(data["recordDate"], asStr(data["date"])),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        createdAt = asLong(data["createdAt"], 0L),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun productionToMap(p: ProductionRecord): Map<String, Any> = buildMap {
+        put("id", p.id)
+        put("date", p.date)
+        if (p.time.isNotBlank()) put("time", p.time)
+        put("store", p.store)
+        put("grossWt", p.grossWt)
+        put("contWt", p.contWt)
+        put("net", p.net)
+        put("cp", p.cp)
+        put("sp", p.sp)
+        put("totalCost", p.totalCost)
+        put("totalSale", p.totalSale)
+        put("profit", p.profit)
+        if (p.formulaUnits != 0.0) put("formulaUnits", p.formulaUnits)
+        if (p.formulaId.isNotBlank()) put("formulaId", p.formulaId)
+        if (p.formulaName.isNotBlank()) put("formulaName", p.formulaName)
+        if (p.formulaMaterials.isNotEmpty()) put("formulaMaterials", p.formulaMaterials)
+        if (p.formulaCost != 0.0) put("formulaCost", p.formulaCost)
+        if (p.paymentStatus.isNotBlank()) put("paymentStatus", p.paymentStatus)
+        if (p.photoKeys.isNotEmpty()) put("photoKeys", p.photoKeys)
+        if (p.isReturn) {
+            put("isReturn", true)
+            if (p.returnedBy.isNotBlank()) put("returnedBy", p.returnedBy)
+            if (p.returnNote.isNotBlank()) put("returnNote", p.returnNote)
+        }
+        if (p.isTransfer) {
+            put("isTransfer", true)
+            put("transferDirection", p.transferDirection)
+            if (p.transferPairId.isNotBlank()) put("transferPairId", p.transferPairId)
+            if (p.transferPeerStore.isNotBlank()) put("transferPeerStore", p.transferPeerStore)
+            if (p.transferNote.isNotBlank()) put("transferNote", p.transferNote)
+        }
+        if (p.isMerged) put("isMerged", true)
+        if (p.managedBy.isNotBlank()) put("managedBy", p.managedBy)
+        if (p.createdBy.isNotBlank()) put("createdBy", p.createdBy)
+        if (p.recordDate.isNotBlank()) put("recordDate", p.recordDate)
+        put("timestamp", if (p.timestamp > 0L) p.timestamp else System.currentTimeMillis())
+        put("createdAt", if (p.createdAt > 0L) p.createdAt else System.currentTimeMillis())
+        p.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToSale(docId: String, data: Map<String, Any>): SalesRecord {
+        val gps = data["gps"] as? Map<*, *>
+        val isColl = asBool(data["isCollection"], false) || asStr(data["mode"]) == "collection" ||
+            asStr(data["paymentType"]).equals("COLLECTION", ignoreCase = true)
+        val rawPayType = asStr(data["paymentType"]).uppercase().ifBlank {
+            when (asStr(data["mode"]).lowercase()) {
+                "collection" -> "COLLECTION"
+                "return" -> "REP_RETURN"
+                else -> if (asDouble(data["creditAmount"], 0.0) > 0.0) "CREDIT" else "CASH"
+            }
+        }
+        return SalesRecord(
+            id = asStr(data["id"], docId).ifBlank { docId },
+            date = asStr(data["date"]),
+            supplyDate = asStr(data["supplyDate"], asStr(data["date"])),
+            time = asStr(data["time"]),
+            customerName = asStr(data["customerName"]),
+            customerPhone = asStr(data["customerPhone"]),
+            quantity = asDouble(data["quantity"], asDouble(data["qtyKg"], 0.0)),
+            supplyStore = asStr(data["supplyStore"], asStr(data["storeName"], asStr(data["storeKey"]))),
+            paymentType = rawPayType,
+            salesRep = asStr(data["salesRep"], asStr(data["repName"])),
+            currentRepProfile = asStr(data["currentRepProfile"]),
+            unitPrice = asDouble(data["unitPrice"], asDouble(data["ratePerKg"], 0.0)),
+            totalValue = asDouble(data["totalValue"], asDouble(data["totalAmount"], 0.0)),
+            totalCost = asDouble(data["totalCost"], 0.0),
+            profit = asDouble(data["profit"], 0.0),
+            costSource = asStr(data["costSource"]),
+            creditReceived = asBool(data["creditReceived"], rawPayType == "CASH"),
+            partialPaymentReceived = asDouble(data["partialPaymentReceived"], 0.0),
+            collectionAllocs = asDoubleMap(data["collectionAllocs"]),
+            isCollection = isColl,
+            collectedAmount = asDouble(data["collectedAmount"], asDouble(data["cashReceived"], 0.0)),
+            allocations = asDoubleMap(data["allocations"]),
+            expiredQty = asDouble(data["expiredQty"], asDouble(data["expiredKg"], 0.0)),
+            expiredValue = asDouble(data["expiredValue"], asDouble(data["choraValue"], 0.0)),
+            expiredUnitPrice = asDouble(data["expiredUnitPrice"], 0.0),
+            expiredApplied = asDouble(data["expiredApplied"], 0.0),
+            expiredAllocated = asDouble(data["expiredAllocated"], 0.0),
+            transactionType = asStr(data["transactionType"]),
+            isRepTransfer = asBool(data["isRepTransfer"], false),
+            repTransferFrom = asStr(data["repTransferFrom"]),
+            isTransfer = asBool(data["isTransfer"], false),
+            transferFrom = asStr(data["transferFrom"]),
+            transferPairId = asStr(data["transferPairId"]),
+            relatedSaleId = asStr(data["relatedSaleId"]),
+            affectsInventory = asBool(data["affectsInventory"], true),
+            usedInCalcId = asStr(data["usedInCalcId"]),
+            isRepReturn = asBool(data["isRepReturn"], rawPayType == "REP_RETURN"),
+            returnedQty = asDouble(data["returnedQty"], 0.0),
+            returnValue = asDouble(data["returnValue"], 0.0),
+            gpsLat = asNullableDouble(gps?.get("lat")) ?: asNullableDouble(data["routeLat"]),
+            gpsLng = asNullableDouble(gps?.get("lng")) ?: asNullableDouble(data["routeLng"]),
+            gpsAccuracy = asNullableDouble(gps?.get("accuracy")),
+            gpsConfirmed = asBool(gps?.get("confirmed"), asBool(data["addressConfirmed"], false)),
+            notes = asStr(data["notes"]),
+            isMerged = asBool(data["isMerged"], false),
+            timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+            createdAt = asLong(data["createdAt"], 0L),
+            updatedAtEpoch = asLong(data["updatedAt"], 0L),
+            deletedAt = asNullableLong(data["deletedAt"])
+        )
+    }
+
+    fun saleToMap(s: SalesRecord): Map<String, Any> = buildMap {
+        put("id", s.id)
+        put("date", s.date)
+        if (s.supplyDate.isNotBlank()) put("supplyDate", s.supplyDate)
+        if (s.time.isNotBlank()) put("time", s.time)
+        put("customerName", s.customerName)
+        if (s.customerPhone.isNotBlank()) put("customerPhone", s.customerPhone)
+        put("quantity", s.quantity)
+        put("supplyStore", s.supplyStore)
+        put("paymentType", s.paymentType)
+        if (s.salesRep.isNotBlank()) put("salesRep", s.salesRep)
+        if (s.currentRepProfile.isNotBlank()) put("currentRepProfile", s.currentRepProfile)
+        put("unitPrice", s.unitPrice)
+        put("totalValue", s.totalValue)
+        put("totalCost", s.totalCost)
+        put("profit", s.profit)
+        if (s.costSource.isNotBlank()) put("costSource", s.costSource)
+        put("creditReceived", s.creditReceived)
+        if (s.partialPaymentReceived != 0.0) put("partialPaymentReceived", s.partialPaymentReceived)
+        if (s.collectionAllocs.isNotEmpty()) put("collectionAllocs", s.collectionAllocs)
+        if (s.isCollection) put("isCollection", true)
+        if (s.collectedAmount != 0.0) put("collectedAmount", s.collectedAmount)
+        if (s.allocations.isNotEmpty()) put("allocations", s.allocations)
+        if (s.expiredQty != 0.0) put("expiredQty", s.expiredQty)
+        if (s.expiredValue != 0.0) put("expiredValue", s.expiredValue)
+        if (s.expiredUnitPrice != 0.0) put("expiredUnitPrice", s.expiredUnitPrice)
+        if (s.expiredApplied != 0.0) put("expiredApplied", s.expiredApplied)
+        if (s.expiredAllocated != 0.0) put("expiredAllocated", s.expiredAllocated)
+        if (s.transactionType.isNotBlank()) put("transactionType", s.transactionType)
+        if (s.isRepTransfer) put("isRepTransfer", true)
+        if (s.repTransferFrom.isNotBlank()) put("repTransferFrom", s.repTransferFrom)
+        if (s.isTransfer) put("isTransfer", true)
+        if (s.transferFrom.isNotBlank()) put("transferFrom", s.transferFrom)
+        if (s.transferPairId.isNotBlank()) put("transferPairId", s.transferPairId)
+        if (s.relatedSaleId.isNotBlank()) put("relatedSaleId", s.relatedSaleId)
+        if (!s.affectsInventory) put("affectsInventory", false)
+        if (s.usedInCalcId.isNotBlank()) put("usedInCalcId", s.usedInCalcId)
+        if (s.isRepReturn) put("isRepReturn", true)
+        if (s.returnedQty != 0.0) put("returnedQty", s.returnedQty)
+        if (s.returnValue != 0.0) put("returnValue", s.returnValue)
+        if (s.gpsLat != null && s.gpsLng != null) {
+            put("gps", buildMap<String, Any> {
+                put("lat", s.gpsLat)
+                put("lng", s.gpsLng)
+                s.gpsAccuracy?.let { put("accuracy", it) }
+                if (s.gpsConfirmed) put("confirmed", true)
+            })
+        }
+        if (s.notes.isNotBlank()) put("notes", s.notes)
+        if (s.isMerged) put("isMerged", true)
+        put("timestamp", if (s.timestamp > 0L) s.timestamp else System.currentTimeMillis())
+        put("createdAt", if (s.createdAt > 0L) s.createdAt else System.currentTimeMillis())
+        s.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToCustomer(docId: String, data: Map<String, Any>): CustomerRecord {
+        val gps = data["gps"] as? Map<*, *>
+        return CustomerRecord(
+            id = asStr(data["id"], docId).ifBlank { docId },
+            name = asStr(data["name"]),
+            phone = asStr(data["phone"]),
+            address = asStr(data["address"]),
+            oldDebit = asDouble(data["oldDebit"], asDouble(data["openingBalance"], 0.0)),
+            customSalePrice = asDouble(data["customSalePrice"], 0.0),
+            salesRep = asStr(data["salesRep"]),
+            gpsLat = asNullableDouble(gps?.get("lat")) ?: asNullableDouble(data["routeLat"]),
+            gpsLng = asNullableDouble(gps?.get("lng")) ?: asNullableDouble(data["routeLng"]),
+            visitCount = asLong(data["visitCount"], 0L),
+            notes = asStr(data["notes"]),
+            createdAt = asLong(data["createdAt"], 0L),
+            updatedAt = asLong(data["updatedAt"], 0L),
+            timestamp = asLong(data["timestamp"], 0L),
+            deletedAt = asNullableLong(data["deletedAt"])
+        )
+    }
+
+    fun customerToMap(c: CustomerRecord): Map<String, Any> = buildMap {
+        put("id", c.id)
+        put("name", c.name)
+        if (c.phone.isNotBlank()) put("phone", c.phone)
+        if (c.address.isNotBlank()) put("address", c.address)
+        if (c.oldDebit != 0.0) put("oldDebit", c.oldDebit)
+        if (c.customSalePrice > 0.0) put("customSalePrice", c.customSalePrice)
+        if (c.salesRep.isNotBlank()) put("salesRep", c.salesRep)
+        if (c.gpsLat != null && c.gpsLng != null) {
+            put("gps", mapOf("lat" to c.gpsLat, "lng" to c.gpsLng))
+        }
+        if (c.visitCount > 0L) put("visitCount", c.visitCount)
+        if (c.notes.isNotBlank()) put("notes", c.notes)
+        put("createdAt", if (c.createdAt > 0L) c.createdAt else System.currentTimeMillis())
+        put("timestamp", if (c.timestamp > 0L) c.timestamp else System.currentTimeMillis())
+        c.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToCalculator(docId: String, data: Map<String, Any>): CalculatorRecord = CalculatorRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        seller = asStr(data["seller"], asStr(data["repName"])),
+        date = asStr(data["date"], asStr(data["dateTo"])),
+        unitPrice = asDouble(data["unitPrice"], asDouble(data["ratePerKg"], 0.0)),
+        costPrice = asDouble(data["costPrice"], 0.0),
+        revenue = asDouble(data["revenue"], 0.0),
+        profit = asDouble(data["profit"], 0.0),
+        totalCost = asDouble(data["totalCost"], 0.0),
+        totalSold = asDouble(data["totalSold"], asDouble(data["totalSoldKg"], 0.0)),
+        returned = asDouble(data["returned"], asDouble(data["returnedKg"], 0.0)),
+        returnStore = asStr(data["returnStore"]),
+        returnEntryId = asStr(data["returnEntryId"]),
+        returnLogId = asStr(data["returnLogId"]),
+        expiredApplied = asDouble(data["expiredApplied"], 0.0),
+        returnRep = asStr(data["returnRep"]),
+        returnType = asStr(data["returnType"], asStr(data["returnTarget"])),
+        transferSaleId = asStr(data["transferSaleId"]),
+        expired = asDouble(data["expired"], asDouble(data["expiredKg"], 0.0)),
+        shared = asDouble(data["shared"], asDouble(data["sharedDeduction"], 0.0)),
+        creditQty = asDouble(data["creditQty"], asDouble(data["creditQtyKg"], 0.0)),
+        cashQty = asDouble(data["cashQty"], asDouble(data["cashQtyKg"], 0.0)),
+        creditValue = asDouble(data["creditValue"], 0.0),
+        prevColl = asDouble(data["prevColl"], 0.0),
+        fieldExpenses = asDouble(data["fieldExpenses"], asDouble(data["expenseTotal"], 0.0)),
+        fieldExpenseItems = asMapList(data["fieldExpenseItems"]).ifEmpty { asMapList(data["expenses"]) },
+        commissionPaidItems = asMapList(data["commissionPaidItems"]).ifEmpty { asMapList(data["commissions"]) },
+        totalExpected = asDouble(data["totalExpected"], asDouble(data["expectedCash"], 0.0)),
+        received = asDouble(data["received"], asDouble(data["physicalCash"], 0.0)),
+        commissionPerUnit = asDouble(data["commissionPerUnit"], 0.0),
+        commissionPaid = asDouble(data["commissionPaid"], asDouble(data["commissionTotal"], 0.0)),
+        grossCommission = asDouble(data["grossCommission"], 0.0),
+        commissionPayable = asDouble(data["commissionPayable"], 0.0),
+        statusText = asStr(data["statusText"]),
+        statusClass = asStr(data["statusClass"]),
+        linkedSalesIds = asStrList(data["linkedSalesIds"]),
+        linkedRepSalesIds = asStrList(data["linkedRepSalesIds"]),
+        linkedRepReturnIds = asStrList(data["linkedRepReturnIds"]),
+        notes = asStr(data["notes"]),
+        isMerged = asBool(data["isMerged"], false),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun calculatorToMap(c: CalculatorRecord): Map<String, Any> = buildMap {
+        put("id", c.id)
+        put("seller", c.seller)
+        put("date", c.date)
+        put("unitPrice", c.unitPrice)
+        put("costPrice", c.costPrice)
+        put("revenue", c.revenue)
+        put("profit", c.profit)
+        put("totalCost", c.totalCost)
+        put("totalSold", c.totalSold)
+        put("returned", c.returned)
+        if (c.returnStore.isNotBlank()) put("returnStore", c.returnStore)
+        if (c.returnEntryId.isNotBlank()) put("returnEntryId", c.returnEntryId)
+        if (c.returnLogId.isNotBlank()) put("returnLogId", c.returnLogId)
+        if (c.expiredApplied != 0.0) put("expiredApplied", c.expiredApplied)
+        if (c.returnRep.isNotBlank()) put("returnRep", c.returnRep)
+        if (c.returnType.isNotBlank()) put("returnType", c.returnType)
+        if (c.transferSaleId.isNotBlank()) put("transferSaleId", c.transferSaleId)
+        put("expired", c.expired)
+        put("shared", c.shared)
+        put("creditQty", c.creditQty)
+        put("cashQty", c.cashQty)
+        put("creditValue", c.creditValue)
+        put("prevColl", c.prevColl)
+        put("fieldExpenses", c.fieldExpenses)
+        if (c.fieldExpenseItems.isNotEmpty()) put("fieldExpenseItems", c.fieldExpenseItems)
+        if (c.commissionPaidItems.isNotEmpty()) put("commissionPaidItems", c.commissionPaidItems)
+        put("totalExpected", c.totalExpected)
+        put("received", c.received)
+        put("commissionPerUnit", c.commissionPerUnit)
+        put("commissionPaid", c.commissionPaid)
+        put("grossCommission", c.grossCommission)
+        put("commissionPayable", c.commissionPayable)
+        if (c.statusText.isNotBlank()) put("statusText", c.statusText)
+        if (c.statusClass.isNotBlank()) put("statusClass", c.statusClass)
+        if (c.linkedSalesIds.isNotEmpty()) put("linkedSalesIds", c.linkedSalesIds)
+        if (c.linkedRepSalesIds.isNotEmpty()) put("linkedRepSalesIds", c.linkedRepSalesIds)
+        if (c.linkedRepReturnIds.isNotEmpty()) put("linkedRepReturnIds", c.linkedRepReturnIds)
+        if (c.notes.isNotBlank()) put("notes", c.notes)
+        if (c.isMerged) put("isMerged", true)
+        put("timestamp", if (c.timestamp > 0L) c.timestamp else System.currentTimeMillis())
+        c.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToInventory(docId: String, data: Map<String, Any>): InventoryRecord = InventoryRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        name = asStr(data["name"]),
+        quantity = asDouble(data["quantity"], asDouble(data["stockQty"], 0.0)),
+        unit = asStr(data["unit"], asStr(data["unitName"], "kg")).ifBlank { "kg" },
+        cost = asDouble(data["cost"], asDouble(data["avgCostPerKg"], 0.0)),
+        totalValue = asDouble(data["totalValue"], 0.0),
+        collectedKg = asDouble(data["collectedKg"], 0.0),
+        conversionFactor = asDouble(data["conversionFactor"], 1.0).let { if (it <= 0.0) 1.0 else it },
+        purchaseUnitName = asStr(data["purchaseUnitName"]),
+        purchaseCost = asDouble(data["purchaseCost"], 0.0),
+        purchaseQuantity = asDouble(data["purchaseQuantity"], 0.0),
+        purchasesTracked = asBool(data["purchasesTracked"], false),
+        isPurchaseLot = asBool(data["isPurchaseLot"], false),
+        materialRefId = asStr(data["materialRefId"]),
+        materialName = asStr(data["materialName"]),
+        purchaseKg = asDouble(data["purchaseKg"], 0.0),
+        purchaseDate = asStr(data["purchaseDate"]),
+        paymentStatus = asStr(data["paymentStatus"]),
+        supplierId = asStr(data["supplierId"]),
+        supplierName = asStr(data["supplierName"]),
+        supplierContact = asStr(data["supplierContact"]),
+        supplierType = asStr(data["supplierType"]),
+        totalPayable = asDouble(data["totalPayable"], 0.0),
+        paidDate = asStr(data["paidDate"]),
+        notes = asStr(data["notes"]),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun inventoryToMap(i: InventoryRecord): Map<String, Any> = buildMap {
+        put("id", i.id)
+        put("name", i.name)
+        put("quantity", i.quantity)
+        put("unit", i.unit)
+        put("cost", i.cost)
+        put("totalValue", i.totalValue)
+        if (i.collectedKg != 0.0) put("collectedKg", i.collectedKg)
+        if (i.conversionFactor != 1.0) put("conversionFactor", i.conversionFactor)
+        if (i.purchaseUnitName.isNotBlank()) put("purchaseUnitName", i.purchaseUnitName)
+        if (i.purchaseCost != 0.0) put("purchaseCost", i.purchaseCost)
+        if (i.purchaseQuantity != 0.0) put("purchaseQuantity", i.purchaseQuantity)
+        if (i.purchasesTracked) put("purchasesTracked", true)
+        if (i.isPurchaseLot) put("isPurchaseLot", true)
+        if (i.materialRefId.isNotBlank()) put("materialRefId", i.materialRefId)
+        if (i.materialName.isNotBlank()) put("materialName", i.materialName)
+        if (i.purchaseKg != 0.0) put("purchaseKg", i.purchaseKg)
+        if (i.purchaseDate.isNotBlank()) put("purchaseDate", i.purchaseDate)
+        if (i.paymentStatus.isNotBlank()) put("paymentStatus", i.paymentStatus)
+        if (i.supplierId.isNotBlank()) put("supplierId", i.supplierId)
+        if (i.supplierName.isNotBlank()) put("supplierName", i.supplierName)
+        if (i.supplierContact.isNotBlank()) put("supplierContact", i.supplierContact)
+        if (i.supplierType.isNotBlank()) put("supplierType", i.supplierType)
+        if (i.totalPayable != 0.0) put("totalPayable", i.totalPayable)
+        if (i.paidDate.isNotBlank()) put("paidDate", i.paidDate)
+        if (i.notes.isNotBlank()) put("notes", i.notes)
+        put("timestamp", if (i.timestamp > 0L) i.timestamp else System.currentTimeMillis())
+        i.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToFactory(docId: String, data: Map<String, Any>): FactoryRecord = FactoryRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        date = asStr(data["date"]),
+        time = asStr(data["time"]),
+        store = asStr(data["store"], asStr(data["storeKey"])),
+        formulaId = asStr(data["formulaId"]),
+        formulaName = asStr(data["formulaName"]),
+        units = asDouble(data["units"], asDouble(data["unitsProduced"], 0.0)),
+        totalCost = asDouble(data["totalCost"], 0.0),
+        materialsCost = asDouble(data["materialsCost"], 0.0),
+        additionalCost = asDouble(data["additionalCost"], 0.0),
+        rawMaterialsUsed = asMapList(data["rawMaterialsUsed"]),
+        materialsUsed = asMapList(data["materialsUsed"]).ifEmpty { asMapList(data["ingredientsUsed"]) },
+        notes = asStr(data["notes"]),
+        isMerged = asBool(data["isMerged"], false),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun factoryToMap(f: FactoryRecord): Map<String, Any> = buildMap {
+        put("id", f.id)
+        put("date", f.date)
+        if (f.time.isNotBlank()) put("time", f.time)
+        put("store", f.store)
+        put("formulaId", f.formulaId)
+        put("formulaName", f.formulaName)
+        put("units", f.units)
+        put("totalCost", f.totalCost)
+        put("materialsCost", f.materialsCost)
+        put("additionalCost", f.additionalCost)
+        if (f.rawMaterialsUsed.isNotEmpty()) put("rawMaterialsUsed", f.rawMaterialsUsed)
+        if (f.materialsUsed.isNotEmpty()) put("materialsUsed", f.materialsUsed)
+        if (f.notes.isNotBlank()) put("notes", f.notes)
+        if (f.isMerged) put("isMerged", true)
+        put("timestamp", if (f.timestamp > 0L) f.timestamp else System.currentTimeMillis())
+        f.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToEntity(docId: String, data: Map<String, Any>): EntityRecord = EntityRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        name = asStr(data["name"]),
+        type = asStr(data["type"], asStr(data["entityType"], "party")),
+        contact = asStr(data["contact"], asStr(data["phone"])),
+        phone = asStr(data["phone"], asStr(data["contact"])),
+        isSupplier = asBool(data["isSupplier"], false),
+        isExpenseEntity = asBool(data["isExpenseEntity"], false),
+        openingBalance = asDouble(data["openingBalance"], 0.0),
+        notes = asStr(data["notes"]),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun entityToMap(e: EntityRecord): Map<String, Any> = buildMap {
+        put("id", e.id)
+        put("name", e.name)
+        put("type", e.type)
+        if (e.contact.isNotBlank()) put("contact", e.contact)
+        if (e.phone.isNotBlank()) put("phone", e.phone)
+        if (e.isSupplier) put("isSupplier", true)
+        if (e.isExpenseEntity) put("isExpenseEntity", true)
+        if (e.openingBalance != 0.0) put("openingBalance", e.openingBalance)
+        if (e.notes.isNotBlank()) put("notes", e.notes)
+        put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
+        e.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToTransaction(docId: String, data: Map<String, Any>): PaymentTransaction {
+        val rawType = asStr(data["type"], asStr(data["txType"], "OUT")).uppercase()
+        val normType = if (rawType == "IN" || rawType == "TRANSFER_IN") "IN" else "OUT"
+        return PaymentTransaction(
+            id = asStr(data["id"], docId).ifBlank { docId },
+            date = asStr(data["date"]),
+            time = asStr(data["time"]),
+            entityId = asStr(data["entityId"]),
+            entityName = asStr(data["entityName"]),
+            entityType = asStr(data["entityType"], asStr(data["entityCategory"])),
+            type = normType,
+            amount = asDouble(data["amount"], 0.0),
+            description = asStr(data["description"], asStr(data["notes"])),
+            paymentMethod = asStr(data["paymentMethod"], asStr(data["paymentChannel"], "Cash")),
+            isPayable = asBool(data["isPayable"], false),
+            isTransfer = asBool(data["isTransfer"], rawType.startsWith("TRANSFER")),
+            transferPairId = asStr(data["transferPairId"]),
+            transferDirection = asStr(data["transferDirection"]),
+            peerEntityName = asStr(data["peerEntityName"]),
+            isOpeningBalance = asBool(data["isOpeningBalance"], false),
+            isMerged = asBool(data["isMerged"], false),
+            timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+            updatedAtEpoch = asLong(data["updatedAt"], 0L),
+            deletedAt = asNullableLong(data["deletedAt"])
+        )
+    }
+
+    fun transactionToMap(t: PaymentTransaction): Map<String, Any> = buildMap {
+        put("id", t.id)
+        put("date", t.date)
+        if (t.time.isNotBlank()) put("time", t.time)
+        if (t.entityId.isNotBlank()) put("entityId", t.entityId)
+        put("entityName", t.entityName)
+        if (t.entityType.isNotBlank()) put("entityType", t.entityType)
+        put("type", t.type)
+        put("amount", t.amount)
+        if (t.description.isNotBlank()) put("description", t.description)
+        put("paymentMethod", t.paymentMethod)
+        if (t.isPayable) put("isPayable", true)
+        if (t.isTransfer) {
+            put("isTransfer", true)
+            if (t.transferPairId.isNotBlank()) put("transferPairId", t.transferPairId)
+            if (t.transferDirection.isNotBlank()) put("transferDirection", t.transferDirection)
+            if (t.peerEntityName.isNotBlank()) put("peerEntityName", t.peerEntityName)
+        }
+        if (t.isOpeningBalance) put("isOpeningBalance", true)
+        if (t.isMerged) put("isMerged", true)
+        put("timestamp", if (t.timestamp > 0L) t.timestamp else System.currentTimeMillis())
+        t.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToExpense(docId: String, data: Map<String, Any>): ExpenseRecord = ExpenseRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        date = asStr(data["date"]),
+        name = asStr(data["name"], asStr(data["category"], "Expense")),
+        category = asStr(data["category"], "Other"),
+        amount = asDouble(data["amount"], 0.0),
+        description = asStr(data["description"]),
+        notes = asStr(data["notes"]),
+        entityId = asStr(data["entityId"]),
+        entityName = asStr(data["entityName"]),
+        paymentMethod = asStr(data["paymentMethod"], "Cash"),
+        isMerged = asBool(data["isMerged"], false),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun expenseToMap(e: ExpenseRecord): Map<String, Any> = buildMap {
+        put("id", e.id)
+        put("date", e.date)
+        put("name", e.name)
+        put("category", e.category)
+        put("amount", e.amount)
+        if (e.description.isNotBlank()) put("description", e.description)
+        if (e.notes.isNotBlank()) put("notes", e.notes)
+        if (e.entityId.isNotBlank()) put("entityId", e.entityId)
+        if (e.entityName.isNotBlank()) put("entityName", e.entityName)
+        if (e.paymentMethod.isNotBlank()) put("paymentMethod", e.paymentMethod)
+        if (e.isMerged) put("isMerged", true)
+        put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
+        e.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToReturn(docId: String, data: Map<String, Any>): ReturnRecord = ReturnRecord(
+        id = asStr(data["id"], docId).ifBlank { docId },
+        date = asStr(data["date"]),
+        store = asStr(data["store"], asStr(data["returnStore"])),
+        returnStore = asStr(data["returnStore"], asStr(data["store"])),
+        seller = asStr(data["seller"]),
+        customerName = asStr(data["customerName"]),
+        quantity = asDouble(data["quantity"], 0.0),
+        expiredQty = asDouble(data["expiredQty"], 0.0),
+        recoveredQty = asDouble(data["recoveredQty"], 0.0),
+        recovered = asBool(data["recovered"], false),
+        recoveredDate = asStr(data["recoveredDate"]),
+        returnType = asStr(data["returnType"]),
+        notes = asStr(data["notes"]),
+        isMerged = asBool(data["isMerged"], false),
+        timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
+        updatedAtEpoch = asLong(data["updatedAt"], 0L),
+        deletedAt = asNullableLong(data["deletedAt"])
+    )
+
+    fun returnToMap(r: ReturnRecord): Map<String, Any> = buildMap {
+        put("id", r.id)
+        put("date", r.date)
+        if (r.store.isNotBlank()) put("store", r.store)
+        if (r.returnStore.isNotBlank()) put("returnStore", r.returnStore)
+        if (r.seller.isNotBlank()) put("seller", r.seller)
+        if (r.customerName.isNotBlank()) put("customerName", r.customerName)
+        put("quantity", r.quantity)
+        if (r.expiredQty != 0.0) put("expiredQty", r.expiredQty)
+        if (r.recoveredQty != 0.0) put("recoveredQty", r.recoveredQty)
+        if (r.recovered) put("recovered", true)
+        if (r.recoveredDate.isNotBlank()) put("recoveredDate", r.recoveredDate)
+        if (r.returnType.isNotBlank()) put("returnType", r.returnType)
+        if (r.notes.isNotBlank()) put("notes", r.notes)
+        if (r.isMerged) put("isMerged", true)
+        put("timestamp", if (r.timestamp > 0L) r.timestamp else System.currentTimeMillis())
+        r.deletedAt?.let { put("deletedAt", it) }
+    }
+
+    fun mapToDailyLedgerEntry(data: Map<String, Any>): DailyLedgerEntry {
+        val link = data["link"] as? Map<*, *>
+        return DailyLedgerEntry(
+            id = asStr(data["id"]),
+            type = asStr(data["type"], asStr(data["entryType"], "IN")).uppercase(),
+            amount = asDouble(data["amount"], 0.0),
+            category = asStr(data["category"], "General"),
+            scope = asStr(data["scope"], asStr(data["expenseScope"])).uppercase().let {
+                if (it == "NONE") "" else it
+            },
+            mode = asStr(data["mode"], asStr(data["channel"], "Cash")),
+            toMode = asStr(data["toMode"], asStr(data["toChannel"])),
+            party = asStr(data["party"], asStr(data["partyName"])),
+            note = asStr(data["note"], asStr(data["notes"])),
+            ref = asStr(data["ref"]),
+            date = asStr(data["date"]),
+            timestamp = asLong(data["timestamp"], 0L),
+            updatedAt = asLong(data["updatedAt"], 0L),
+            linkCollection = asNullableStr(link?.get("col")) ?: asNullableStr(data["sourceCollection"]),
+            linkDocId = asNullableStr(link?.get("id")) ?: asNullableStr(data["sourceDocId"])
+        )
+    }
+
+    fun dailyLedgerEntryToMap(e: DailyLedgerEntry): Map<String, Any> = buildMap {
+        put("id", e.id)
+        put("type", e.type)
+        put("amount", e.amount)
+        put("category", e.category)
+        put("scope", e.scope)
+        put("mode", e.mode)
+        put("toMode", e.toMode)
+        put("party", e.party)
+        put("note", e.note)
+        put("ref", e.ref)
+        put("date", e.date)
+        put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
+        put("updatedAt", if (e.updatedAt > 0L) e.updatedAt else System.currentTimeMillis())
+        if (!e.linkCollection.isNullOrBlank() && !e.linkDocId.isNullOrBlank()) {
+            put("link", mapOf("col" to e.linkCollection, "id" to e.linkDocId))
+        }
+    }
+
+    fun mapToDeletion(docId: String, data: Map<String, Any>): DeletionTombstone {
+        val snapMap = data["snapshot"] as? Map<*, *>
+        val snapJson = if (snapMap != null) {
+            mapToJson(snapMap.entries.associate { (k, v) -> k.toString() to v })
+        } else {
+            asStr(data["snapshotJson"])
+        }
+        return DeletionTombstone(
+            id = asStr(data["id"], docId).ifBlank { docId },
+            recordId = asStr(data["recordId"], asStr(data["id"], docId)),
+            collection = asStr(data["collection"], asStr(data["recordType"])),
+            recordType = asStr(data["recordType"], asStr(data["collection"])),
+            deletedAt = asLong(data["deletedAt"], 0L),
+            expiresAt = asLong(data["expiresAt"], 0L),
+            displayName = asStr(data["displayName"]),
+            displayDetail = asStr(data["displayDetail"]),
+            displayAmount = asStr(data["displayAmount"]),
+            snapshotJson = snapJson,
+            deletedBy = asStr(data["deleted_by"], asStr(data["deletedBy"])),
+            syncedToCloud = asBool(data["syncedToCloud"], true)
+        )
+    }
+
+    fun deletionToLocalMap(d: DeletionTombstone): Map<String, Any> = buildMap {
+        put("id", d.id)
+        put("recordId", d.recordId)
+        put("collection", d.collection)
+        put("recordType", d.recordType)
+        put("deletedAt", d.deletedAt)
+        put("expiresAt", d.expiresAt)
+        put("displayName", d.displayName)
+        put("displayDetail", d.displayDetail)
+        put("displayAmount", d.displayAmount)
+        if (d.snapshotJson.isNotBlank()) put("snapshot", jsonToMap(d.snapshotJson))
+        if (d.deletedBy.isNotBlank()) put("deleted_by", d.deletedBy)
+        put("syncedToCloud", d.syncedToCloud)
+    }
+
+    fun mapToPending(docId: String, data: Map<String, Any>): PendingApproval {
+        val sub = data["submittedBy"] as? Map<*, *>
+        val sum = data["summary"] as? Map<*, *>
+        val dec = data["decidedBy"] as? Map<*, *>
+        val rawDataMap = (data["data"] as? Map<*, *> ?: data["payloadData"] as? Map<*, *>)
+            ?.entries?.mapNotNull { (k, v) -> if (k != null && v != null) k.toString() to v else null }
+            ?.toMap() ?: emptyMap()
+        return PendingApproval(
+            id = asStr(data["id"], docId).ifBlank { docId },
+            collection = asStr(data["collection"], asStr(data["targetCollection"])),
+            docId = asStr(data["docId"], asStr(data["targetDocId"])),
+            action = asStr(data["action"], "set"),
+            dataMap = rawDataMap,
+            isEdit = asBool(data["isEdit"], false),
+            status = asStr(data["status"], "pending"),
+            submittedByUid = asStr(sub?.get("uid"), asStr(data["submittedByUid"])),
+            submittedByName = asStr(sub?.get("name"), asStr(data["submittedByName"])),
+            submittedByEmail = asStr(sub?.get("email"), asStr(data["submittedByEmail"])),
+            submittedAt = asLong(data["submittedAt"], asLong(data["createdAt"], 0L)),
+            summaryTitle = asStr(sum?.get("title"), asStr(data["summaryTitle"])),
+            summaryBody = asStr(sum?.get("body"), asStr(data["summaryDetail"])),
+            decidedByUid = asNullableStr(dec?.get("uid")) ?: asNullableStr(data["reviewedByUid"]),
+            decidedByName = asNullableStr(dec?.get("name")),
+            decidedAt = asNullableLong(data["decidedAt"])
+        )
+    }
+
+    fun pendingToMap(p: PendingApproval): Map<String, Any> = buildMap {
+        put("id", p.id)
+        put("collection", p.collection)
+        put("docId", p.docId)
+        put("action", p.action)
+        if (p.action != "delete") put("data", p.dataMap) else put("data", emptyMap<String, Any>())
+        put("isEdit", p.isEdit)
+        put("status", p.status)
+        put("submittedBy", mapOf(
+            "uid" to p.submittedByUid,
+            "name" to p.submittedByName,
+            "email" to p.submittedByEmail
+        ))
+        put("submittedAt", p.submittedAt)
+        put("summary", mapOf("title" to p.summaryTitle, "body" to p.summaryBody))
+        if (p.decidedByUid != null) {
+            put("decidedBy", mapOf("uid" to p.decidedByUid, "name" to (p.decidedByName ?: "")))
+        }
+        p.decidedAt?.let { put("decidedAt", it) }
+    }
+
+    fun mapToPhoto(docId: String, data: Map<String, Any>): PhotoBlob = PhotoBlob(
+        key = asStr(data["key"], docId),
+        dataUri = asStr(data["data"]),
+        deleted = asBool(data["deleted"], false),
+        updatedAt = asLong(data["updatedAt"], 0L)
+    )
+
+    // --- Settings Merger ---
+
+    fun mergeSettings(
+        settingsConfigMap: Map<String, Any>,
+        formulasConfigMap: Map<String, Any>,
+        teamReps: List<String>,
+        expenseCats: List<String>,
+        fieldExpenseCats: List<String>,
+        commissionCats: List<String>,
+        yearCloseMap: Map<String, Any>,
+        localTheme: String?,
+        localAppSettings: Map<String, Any>
+    ): WorkspaceSettings {
+        val innerSettings = (settingsConfigMap["settings"] as? Map<*, *>)?.entries
+            ?.associate { (k, v) -> k.toString() to v } ?: settingsConfigMap
+        val repsFromConfig = asStrList(settingsConfigMap["reps"])
+        val mergedReps = (teamReps + repsFromConfig).distinct().filter { it.isNotBlank() }
+        val modes = asStrList(innerSettings["paymentModes"]).ifEmpty {
+            asStrList(localAppSettings["paymentModes"]).ifEmpty {
+                listOf("Cash", "Bank", "Easypaisa", "JazzCash")
+            }
+        }
+        val mergedExpenseCats = expenseCats.ifEmpty {
+            listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other")
+        }
+        val mergedFieldCats = fieldExpenseCats.ifEmpty {
+            listOf("Fuel", "Food", "Toll", "Repair", "Other")
+        }
+        val mergedCommCats = commissionCats.ifEmpty {
+            listOf("Sales Commission", "Recovery Bonus", "Target Bonus", "Other")
+        }
+        val trackingRaw = formulasConfigMap["tracking"] as? Map<*, *> ?: emptyMap<String, Any>()
+        val trackingMap = trackingRaw.entries.mapNotNull { (k, v) ->
+            k?.let { it.toString() to asBool(v, true) }
+        }.toMap()
+
+        return WorkspaceSettings(
+            currencySymbol = asStr(innerSettings["currencySymbol"], asStr(localAppSettings["currencySymbol"], "Rs")).ifBlank { "Rs" },
+            financialYearStartMonth = asLong(innerSettings["financialYearStartMonth"], asLong(localAppSettings["financialYearStartMonth"], 7L)).toInt().coerceIn(1, 12),
+            hideSensitiveMoney = asBool(innerSettings["hideSensitiveMoney"], asBool(localAppSettings["hideSensitiveMoney"], false)),
+            biometricLockEnabled = asBool(localAppSettings["biometricLockEnabled"], false),
+            soundEnabled = asBool(localAppSettings["soundEnabled"], true),
+            hapticsEnabled = asBool(localAppSettings["hapticsEnabled"], true),
+            themeMode = localTheme?.takeIf { it.isNotBlank() } ?: asStr(innerSettings["themeMode"], "light"),
+            repProfile = asStr(settingsConfigMap["repProfile"], asStr(localAppSettings["repProfile"])),
+            reps = mergedReps,
+            paymentModes = modes,
+            expenseCategories = mergedExpenseCats,
+            fieldExpenseCategories = mergedFieldCats,
+            commissionCategories = mergedCommCats,
+            defaultStorePrices = asDoubleMap(formulasConfigMap["defaults"]),
+            storeCosts = asDoubleMap(formulasConfigMap["costs"]),
+            costAdjustments = asDoubleMap(formulasConfigMap["adjustment"]),
+            storeTracking = trackingMap,
+            fyCloseCount = asLong(yearCloseMap["fyCloseCount"], asLong(localAppSettings["fyCloseCount"], 0L)).toInt(),
+            lastYearCloseAt = asLong(yearCloseMap["triggeredAt"], asLong(localAppSettings["lastYearCloseAt"], 0L))
+        )
+    }
+
+    // --- Web-Exact .gznd Encrypted Backup V4 (CryptoEngine 1:1 Parity) ---
+    // Format: "GZND_ENC_V4" (11 bytes) + SHA-256(uid) (32 bytes) + salt (32 bytes) + iv (12 bytes) + AES-GCM ciphertext
+
+    private val MAGIC_V4 = "GZND_ENC_V4".toByteArray(Charsets.US_ASCII)
+    private const val SALT_LEN = 32
+    private const val IV_LEN = 12
+    private const val UID_HASH_LEN = 32
+    private const val PBKDF2_ITERS_V4 = 210_000
+
+    private fun sha256(input: String): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+
+    private fun deriveKeyV4(email: String, password: String, uid: String, salt: ByteArray): SecretKeySpec {
+        val ikm = "${email.lowercase().trim()}:$password:$uid".toCharArray()
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
+        val spec = PBEKeySpec(ikm, salt, PBKDF2_ITERS_V4, 256)
+        val raw = factory.generateSecret(spec).encoded
+        return SecretKeySpec(raw, "AES")
+    }
+
+    fun encryptGzndV4(jsonText: String, email: String, password: String, uid: String): ByteArray {
+        val rng = SecureRandom()
+        val salt = ByteArray(SALT_LEN).also { rng.nextBytes(it) }
+        val iv = ByteArray(IV_LEN).also { rng.nextBytes(it) }
+        val uidHash = sha256(uid)
+        val key = deriveKeyV4(email, password, uid, salt)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+        val ct = cipher.doFinal(jsonText.toByteArray(Charsets.UTF_8))
+        return ByteArray(MAGIC_V4.size + UID_HASH_LEN + SALT_LEN + IV_LEN + ct.size).apply {
+            var pos = 0
+            System.arraycopy(MAGIC_V4, 0, this, pos, MAGIC_V4.size); pos += MAGIC_V4.size
+            System.arraycopy(uidHash, 0, this, pos, UID_HASH_LEN); pos += UID_HASH_LEN
+            System.arraycopy(salt, 0, this, pos, SALT_LEN); pos += SALT_LEN
+            System.arraycopy(iv, 0, this, pos, IV_LEN); pos += IV_LEN
+            System.arraycopy(ct, 0, this, pos, ct.size)
+        }
+    }
+
+    fun decryptGzndV4(bytes: ByteArray, email: String, password: String, uid: String): String {
+        val minLen = MAGIC_V4.size + UID_HASH_LEN + SALT_LEN + IV_LEN + 16
+        require(bytes.size >= minLen) { "Invalid .gznd backup file" }
+        for (i in MAGIC_V4.indices) {
+            require(bytes[i] == MAGIC_V4[i]) { "Unsupported backup format (expected GZND_ENC_V4)" }
+        }
+        var pos = MAGIC_V4.size
+        val storedUidHash = bytes.copyOfRange(pos, pos + UID_HASH_LEN); pos += UID_HASH_LEN
+        val actualUidHash = sha256(uid)
+        require(storedUidHash.contentEquals(actualUidHash)) {
+            "This backup belongs to a different workspace account"
+        }
+        val salt = bytes.copyOfRange(pos, pos + SALT_LEN); pos += SALT_LEN
+        val iv = bytes.copyOfRange(pos, pos + IV_LEN); pos += IV_LEN
+        val ct = bytes.copyOfRange(pos, bytes.size)
+        val key = deriveKeyV4(email, password, uid, salt)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(ct), Charsets.UTF_8)
     }
 }

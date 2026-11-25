@@ -18,63 +18,50 @@ interface OfflineDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProfile(entity: CachedProfileEntity)
 
-    @Query("SELECT * FROM workspace_records WHERE ownerUid = :ownerUid")
-    fun observeWorkspaceRecords(ownerUid: String): Flow<List<WorkspaceRecordEntity>>
+    @Query("SELECT * FROM kv_store")
+    fun observeAllKv(): Flow<List<KvStoreEntity>>
 
-    @Query("SELECT * FROM workspace_records WHERE ownerUid = :ownerUid")
-    suspend fun getWorkspaceRecordsOnce(ownerUid: String): List<WorkspaceRecordEntity>
+    @Query("SELECT * FROM kv_store")
+    suspend fun getAllKvOnce(): List<KvStoreEntity>
 
-    @Query("SELECT * FROM workspace_records WHERE ownerUid = :ownerUid AND collection = :collection AND docId = :docId LIMIT 1")
-    suspend fun getRecordOnce(ownerUid: String, collection: String, docId: String): WorkspaceRecordEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertRecord(entity: WorkspaceRecordEntity)
+    @Query("SELECT * FROM kv_store WHERE `key` = :key LIMIT 1")
+    suspend fun getKv(key: String): KvStoreEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertRecords(entities: List<WorkspaceRecordEntity>)
+    suspend fun putKv(entity: KvStoreEntity)
 
-    @Query("DELETE FROM workspace_records WHERE ownerUid = :ownerUid AND collection = :collection AND docId = :docId")
-    suspend fun deleteRecord(ownerUid: String, collection: String, docId: String)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putKvBatch(entities: List<KvStoreEntity>)
 
-    @Query(
-        "DELETE FROM workspace_records WHERE ownerUid = :ownerUid " +
-            "AND NOT EXISTS (" +
-            "SELECT 1 FROM pending_sync_ops p " +
-            "WHERE p.ownerUid = workspace_records.ownerUid " +
-            "AND p.collection = workspace_records.collection " +
-            "AND p.docId = workspace_records.docId" +
-            ")"
-    )
-    suspend fun deleteCleanRecordsForOwner(ownerUid: String)
+    @Query("DELETE FROM kv_store WHERE `key` = :key")
+    suspend fun deleteKv(key: String)
 
-    @Query("SELECT collection || ':' || docId FROM pending_sync_ops WHERE ownerUid = :ownerUid")
-    suspend fun getPendingDocKeys(ownerUid: String): List<String>
+    @Query("DELETE FROM kv_store")
+    suspend fun clearKv()
+
+    @Query("SELECT COUNT(*) FROM ndapp_outbox WHERE ownerUid = :ownerUid")
+    fun observeOutboxCount(ownerUid: String): Flow<Int>
+
+    @Query("SELECT * FROM ndapp_outbox WHERE ownerUid = :ownerUid ORDER BY createdAt ASC, id ASC")
+    suspend fun getOutboxOnce(ownerUid: String): List<NdappOutboxEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun enqueueOutbox(op: NdappOutboxEntity): Long
+
+    @Query("DELETE FROM ndapp_outbox WHERE id = :id")
+    suspend fun deleteOutboxById(id: Long)
+
+    @Query("DELETE FROM ndapp_outbox WHERE ownerUid = :ownerUid AND col = :col AND docId = :docId")
+    suspend fun deleteOutboxForDoc(ownerUid: String, col: String, docId: String)
+
+    @Query("DELETE FROM ndapp_outbox WHERE ownerUid = :ownerUid")
+    suspend fun clearOutboxForOwner(ownerUid: String)
+
+    @Query("UPDATE ndapp_outbox SET attempts = attempts + 1, lastError = :error WHERE id = :id")
+    suspend fun markOutboxFailed(id: Long, error: String?)
 
     @Transaction
-    suspend fun replaceCleanWorkspaceRecords(ownerUid: String, incoming: List<WorkspaceRecordEntity>) {
-        val dirtyKeys = getPendingDocKeys(ownerUid).toHashSet()
-        deleteCleanRecordsForOwner(ownerUid)
-        val filtered = if (dirtyKeys.isEmpty()) incoming else incoming.filter { "${it.collection}:${it.docId}" !in dirtyKeys }
-        if (filtered.isNotEmpty()) {
-            upsertRecords(filtered)
-        }
+    suspend fun replaceKvKeys(updates: List<KvStoreEntity>) {
+        if (updates.isNotEmpty()) putKvBatch(updates)
     }
-
-    @Query("SELECT COUNT(*) FROM pending_sync_ops WHERE ownerUid = :ownerUid")
-    fun observePendingSyncCount(ownerUid: String): Flow<Int>
-
-    @Query("SELECT * FROM pending_sync_ops WHERE ownerUid = :ownerUid ORDER BY createdAtEpochMs ASC")
-    suspend fun getPendingSyncOps(ownerUid: String): List<PendingSyncOpEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun enqueueSyncOp(op: PendingSyncOpEntity)
-
-    @Query("DELETE FROM pending_sync_ops WHERE opId = :opId")
-    suspend fun deleteSyncOp(opId: String)
-
-    @Query("DELETE FROM pending_sync_ops WHERE ownerUid = :ownerUid AND collection = :collection AND docId = :docId")
-    suspend fun deleteSyncOpsForDoc(ownerUid: String, collection: String, docId: String)
-
-    @Query("UPDATE pending_sync_ops SET attempts = attempts + 1, lastError = :error WHERE opId = :opId")
-    suspend fun markSyncOpFailed(opId: String, error: String?)
 }

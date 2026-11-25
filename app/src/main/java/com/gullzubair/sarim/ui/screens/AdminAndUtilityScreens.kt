@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,7 +31,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.outlined.EventBusy
 import androidx.compose.material.icons.outlined.Factory
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Storage
@@ -49,14 +54,17 @@ import androidx.compose.material.icons.outlined.Store
 import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -71,10 +79,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.gullzubair.sarim.data.model.AppRoute
+import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
+import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.MetricKpiCard
@@ -88,8 +99,10 @@ import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.FeedbackHelper
 import com.gullzubair.sarim.util.HapticLevel
 import com.gullzubair.sarim.util.SoundLevel
-import org.json.JSONArray
-import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.max
 
 @Composable
 fun SettingsScreen(
@@ -102,9 +115,18 @@ fun SettingsScreen(
     val accents = LocalSarimAccents.current
     var currency by remember(snapshot.settings) { mutableStateOf(snapshot.settings.currencySymbol) }
     var fyMonth by remember(snapshot.settings) { mutableStateOf(snapshot.settings.financialYearStartMonth.toString()) }
+    var repProfile by remember(snapshot.settings) { mutableStateOf(snapshot.settings.repProfile) }
     var theme by remember(snapshot.settings) { mutableStateOf(snapshot.settings.themeMode) }
     var bio by remember(snapshot.settings) { mutableStateOf(snapshot.settings.biometricLockEnabled) }
     var hideMoney by remember(snapshot.settings) { mutableStateOf(snapshot.settings.hideSensitiveMoney) }
+
+    val reps = remember(snapshot.settings.reps) { mutableStateListOf<String>().apply { addAll(snapshot.settings.reps) } }
+    val paymentModes = remember(snapshot.settings.paymentModes) { mutableStateListOf<String>().apply { addAll(snapshot.settings.paymentModes) } }
+    val expCats = remember(snapshot.settings.expenseCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.expenseCategories) } }
+    val fieldExpCats = remember(snapshot.settings.fieldExpenseCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.fieldExpenseCategories) } }
+    val commCats = remember(snapshot.settings.commissionCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.commissionCategories) } }
+
+    var listsExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "SETTINGS", onBack = onBack)
@@ -118,13 +140,32 @@ fun SettingsScreen(
                 Text("WORKSPACE TOOLS", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
                 Spacer(Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) { onNavigateRoute(AppRoute.StoreManager) }
-                    SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) { onNavigateRoute(AppRoute.AppAccounts) }
-                    SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Outlined.VolumeUp, accents.emerald) { onNavigateRoute(AppRoute.SoundHaptics) }
-                    SettingsNavTile("Backup & Restore", "Save or restore JSON workspace snapshot", Icons.Outlined.Backup, accents.gold) { onNavigateRoute(AppRoute.BackupRestore) }
-                    SettingsNavTile("Recycle Bin", "Restore deleted records or empty permanently", Icons.Outlined.DeleteOutline, accents.danger) { onNavigateRoute(AppRoute.RecycleBin) }
-                    SettingsNavTile("DB Structure", "Inspect synced workspace collections", Icons.Outlined.Storage, accents.purple) { onNavigateRoute(AppRoute.DbStructure) }
-                    SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Outlined.EventBusy, accents.danger) { onNavigateRoute(AppRoute.CloseFinancialYear) }
+                    SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) {
+                        onNavigateRoute(AppRoute.StoreManager)
+                    }
+                    SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) {
+                        onNavigateRoute(AppRoute.AppAccounts)
+                    }
+                    SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Outlined.VolumeUp, accents.emerald) {
+                        onNavigateRoute(AppRoute.SoundHaptics)
+                    }
+                    SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Outlined.Backup, accents.gold) {
+                        onNavigateRoute(AppRoute.BackupRestore)
+                    }
+                    SettingsNavTile(
+                        title = "Recycle Bin",
+                        subtitle = if (snapshot.deletions.isEmpty()) "Restore deleted records or empty permanently" else "${snapshot.deletions.size} deleted item(s)",
+                        icon = Icons.Outlined.DeleteOutline,
+                        tint = accents.danger
+                    ) { onNavigateRoute(AppRoute.RecycleBin) }
+                    SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Outlined.Storage, accents.purple) {
+                        onNavigateRoute(AppRoute.DbStructure)
+                    }
+                    if (snapshot.profile.isAdmin) {
+                        SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Outlined.EventBusy, accents.danger) {
+                            onNavigateRoute(AppRoute.CloseFinancialYear)
+                        }
+                    }
                 }
             }
 
@@ -132,15 +173,35 @@ fun SettingsScreen(
                 SarimCard {
                     Text("Workspace Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.height(10.dp))
-                    SarimPillInput(value = currency, onValueChange = { currency = it.take(12) }, label = "Currency Symbol", testTag = "settings_currency_input")
+                    SarimPillInput(
+                        value = currency,
+                        onValueChange = { currency = it.take(12) },
+                        label = "Currency Symbol",
+                        testTag = "settings_currency_input"
+                    )
                     Spacer(Modifier.height(10.dp))
-                    SarimPillInput(value = fyMonth, onValueChange = { fyMonth = it.filter(Char::isDigit).take(2) }, label = "Financial Year Start Month (1-12)")
+                    SarimPillInput(
+                        value = fyMonth,
+                        onValueChange = { fyMonth = it.filter(Char::isDigit).take(2) },
+                        label = "Financial Year Start Month (1-12)"
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SarimPillInput(
+                        value = repProfile,
+                        onValueChange = { repProfile = it.take(60) },
+                        label = "Default Rep Profile",
+                        placeholder = "Optional active rep name"
+                    )
                     Spacer(Modifier.height(10.dp))
                     Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("light", "dark", "system").forEach { m ->
-                            FilterChip(selected = theme == m, onClick = { theme = m }, label = { Text(m.replaceFirstChar { it.uppercase() }) })
+                            FilterChip(
+                                selected = theme == m,
+                                onClick = { theme = m },
+                                label = { Text(m.replaceFirstChar { it.uppercase() }) }
+                            )
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -151,9 +212,44 @@ fun SettingsScreen(
                         Text("Privacy Mask Monetary Totals", style = MaterialTheme.typography.bodyMedium)
                         Switch(checked = hideMoney, onCheckedChange = { hideMoney = it }, modifier = Modifier.testTag("settings_privacy_switch"))
                     }
+
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = { vm.repairLedgerMirrors() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Repair Ledger Mirrors")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .clickable { listsExpanded = !listsExpanded }
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Reps, Payment Modes & Categories",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = accents.emerald
+                        )
+                        Icon(
+                            if (listsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle category lists",
+                            tint = accents.emerald
+                        )
+                    }
+
+                    AnimatedVisibility(visible = listsExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
+                            EditableTagList("Sales Reps", reps, "Add rep name")
+                            EditableTagList("Payment Modes", paymentModes, "Add payment mode")
+                            EditableTagList("Expense Categories", expCats, "Add expense category")
+                            EditableTagList("Field Expense Categories", fieldExpCats, "Add field expense category")
+                            EditableTagList("Commission Categories", commCats, "Add commission category")
+                        }
+                    }
+
+                    if (snapshot.profile.isAdmin) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = { vm.auditRepriceZeroCostSales() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Audit & Reprice Zero-Cost Sales")
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     SarimGradientButton(
@@ -162,10 +258,16 @@ fun SettingsScreen(
                             vm.updateSettings(
                                 snapshot.settings.copy(
                                     currencySymbol = currency.ifBlank { "Rs" },
-                                    financialYearStartMonth = (fyMonth.toLongOrNull() ?: 7L).coerceIn(1L, 12L),
+                                    financialYearStartMonth = (fyMonth.toIntOrNull() ?: 7).coerceIn(1, 12),
+                                    repProfile = repProfile.trim(),
                                     themeMode = theme,
                                     biometricLockEnabled = bio,
-                                    hideSensitiveMoney = hideMoney
+                                    hideSensitiveMoney = hideMoney,
+                                    reps = reps.toList(),
+                                    paymentModes = paymentModes.toList().ifEmpty { listOf("Cash", "Bank") },
+                                    expenseCategories = expCats.toList().ifEmpty { listOf("Other") },
+                                    fieldExpenseCategories = fieldExpCats.toList().ifEmpty { listOf("Other") },
+                                    commissionCategories = commCats.toList().ifEmpty { listOf("Sales Commission") }
                                 )
                             )
                         },
@@ -176,9 +278,70 @@ fun SettingsScreen(
 
             item {
                 SarimCard {
-                    Text("${snapshot.profile.displayName} • ${snapshot.profile.email}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    Text(
+                        text = "${snapshot.profile.displayName} • ${snapshot.profile.email}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accents.textMuted
+                    )
                     Spacer(Modifier.height(10.dp))
-                    SarimDangerButton(text = "Sign Out", onClick = onSignOut, modifier = Modifier.fillMaxWidth(), testTag = "settings_sign_out_btn")
+                    SarimDangerButton(
+                        text = "Sign Out",
+                        onClick = onSignOut,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "settings_sign_out_btn"
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EditableTagList(
+    title: String,
+    items: MutableList<String>,
+    placeholder: String
+) {
+    val accents = LocalSarimAccents.current
+    var draft by remember { mutableStateOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items.forEach { tag ->
+                InputChip(
+                    selected = false,
+                    onClick = { items.remove(tag) },
+                    label = { Text(tag) },
+                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove $tag", modifier = Modifier.size(16.dp)) }
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SarimPillInput(
+                value = draft,
+                onValueChange = { draft = it.take(40) },
+                placeholder = placeholder,
+                modifier = Modifier.weight(1f)
+            )
+            Surface(
+                onClick = {
+                    val clean = draft.trim()
+                    if (clean.isNotBlank() && items.none { it.equals(clean, ignoreCase = true) }) {
+                        items.add(clean)
+                        draft = ""
+                    }
+                },
+                shape = CircleShape,
+                color = accents.softPillFill,
+                border = BorderStroke(1.dp, accents.emerald),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Add, contentDescription = "Add $title", tint = accents.emerald)
                 }
             }
         }
@@ -191,7 +354,10 @@ private fun SettingsNavTile(title: String, subtitle: String, icon: ImageVector, 
     SarimCard(modifier = Modifier.clickable(onClick = onClick), contentPadding = PaddingValues(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.14f)),
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tint.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(12.dp))
@@ -207,10 +373,10 @@ private fun SettingsNavTile(title: String, subtitle: String, icon: ImageVector, 
 @Composable
 fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
-    val isOwner = snapshot.profile.uid == snapshot.profile.workspaceOwnerUid
+    val isOwner = snapshot.profile.isAdmin || snapshot.profile.uid == snapshot.profile.effectiveOwnerUid
     var inviteEmail by remember { mutableStateOf("") }
     var inviteName by remember { mutableStateOf("") }
-    val allRoles = listOf("admin", "rep", "production", "factory", "payments", "sales")
+    val allRoles = FinanceEngine.ROLE_KEYS
     val selectedRoles = remember { mutableStateListOf("rep", "sales") }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -224,11 +390,23 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
             if (isOwner) {
                 item {
                     SarimCard {
-                        Text("ADD ACCOUNT", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                        Text("ADD ACCOUNT / INVITE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                         Spacer(Modifier.height(10.dp))
-                        SarimPillInput(value = inviteEmail, onValueChange = { inviteEmail = it.take(160) }, label = "EMAIL", placeholder = "user@example.com", testTag = "acc_email_input")
+                        SarimPillInput(
+                            value = inviteEmail,
+                            onValueChange = { inviteEmail = it.take(160) },
+                            label = "EMAIL",
+                            placeholder = "user@example.com",
+                            testTag = "acc_email_input"
+                        )
                         Spacer(Modifier.height(10.dp))
-                        SarimPillInput(value = inviteName, onValueChange = { inviteName = it.take(80) }, label = "NAME", placeholder = "full name", testTag = "acc_name_input")
+                        SarimPillInput(
+                            value = inviteName,
+                            onValueChange = { inviteName = it.take(80) },
+                            label = "NAME",
+                            placeholder = "Full name",
+                            testTag = "acc_name_input"
+                        )
                         Spacer(Modifier.height(10.dp))
                         Text("ROLES", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                         Spacer(Modifier.height(6.dp))
@@ -257,7 +435,7 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                         shape = RoundedCornerShape(14.dp),
                         color = accents.headerFrosted,
                         border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.defaultMinSize(minHeight = 36.dp)
+                        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                             Text("↻ Refresh", style = MaterialTheme.typography.labelMedium)
@@ -300,7 +478,7 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                                     if (m.approved) "Suspend" else "Activate",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = accents.gold,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                 )
                             }
                         }
@@ -322,7 +500,30 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                                 color = accents.danger.copy(alpha = 0.12f),
                                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f))
                             ) {
-                                Text("Remove", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                                Text("Remove", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (snapshot.accounts.isNotEmpty()) {
+                item {
+                    Text("SYNCED WORKSPACE DIRECTORY", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
+                }
+                items(snapshot.accounts, key = { "${it.uid}_${it.email}" }) { acc ->
+                    SarimCard(contentPadding = PaddingValues(12.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(acc.displayName.ifBlank { acc.email }, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                Text("${acc.email} • ${acc.roles.joinToString()}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            }
+                            if (isOwner && acc.uid != snapshot.profile.uid) {
+                                TextButton(onClick = {
+                                    vm.saveAccountsDirectory(snapshot.accounts.filterNot { it.uid == acc.uid && it.email == acc.email })
+                                }) {
+                                    Text("Remove", color = accents.danger)
+                                }
                             }
                         }
                     }
@@ -345,7 +546,9 @@ private fun RoleGridSelector(allRoles: List<String>, activeRoles: List<String>, 
                         shape = RoundedCornerShape(16.dp),
                         color = if (sel) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 36.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .defaultMinSize(minHeight = 40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
                             Text(
@@ -390,9 +593,11 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                         shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("sh_test_btn")
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("sh_test_btn")
                     ) {
-                        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.Vibration, contentDescription = null, modifier = Modifier.size(16.dp))
                             Text("Test", style = MaterialTheme.typography.labelLarge)
                         }
@@ -414,7 +619,9 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                             HapticLevel.entries.forEach { level ->
                                 val active = level == selectedHaptic
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedHaptic = level
@@ -437,7 +644,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                 if (!systemVibrationOn) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Touch vibration is turned off in the phone settings (Sound & vibration, Touch feedback). Turn it on and try again.",
+                        "Touch vibration is turned off in phone settings (Sound & vibration -> Touch feedback). Turn it on and try again.",
                         style = MaterialTheme.typography.bodySmall,
                         color = accents.textMuted
                     )
@@ -448,16 +655,18 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Sound Feedback Intensity", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                        Text("Audible acoustic key click volume (Extreme Boost clears freely & loudly)", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Text("Audible acoustic key click volume", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     }
                     Surface(
                         onClick = { FeedbackHelper.triggerSound(context, selectedSound) },
                         shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("sh_play_btn")
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("sh_play_btn")
                     ) {
-                        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
                             Text("Play", style = MaterialTheme.typography.labelLarge)
                         }
@@ -479,7 +688,9 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                             SoundLevel.entries.forEach { level ->
                                 val active = level == selectedSound
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedSound = level
@@ -518,72 +729,204 @@ fun BackupRestoreScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack:
     val accents = LocalSarimAccents.current
     var statusText by remember { mutableStateOf("") }
 
-    val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    var showEncryptDialog by remember { mutableStateOf(false) }
+    var encryptPassword by remember { mutableStateOf("") }
+    var pendingEncryptedBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+    var showDecryptDialog by remember { mutableStateOf(false) }
+    var decryptPassword by remember { mutableStateOf("") }
+    var pendingRestoreBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+    val createJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
             runCatching {
-                val root = JSONObject().apply {
-                    put("exportedAt", DateUtils.todayIso())
-                    put("workspaceOwnerUid", snapshot.profile.workspaceOwnerUid)
-                    put("stores", JSONArray(snapshot.stores.map { mapOf("id" to it.id, "storeKey" to it.storeKey, "name" to it.name, "formulaId" to it.formulaId, "salePrice" to it.salePrice) }))
-                    put("customers", JSONArray(snapshot.customers.map { mapOf("id" to it.id, "name" to it.name, "phone" to it.phone, "address" to it.address, "openingBalance" to it.openingBalance) }))
-                }
-                context.contentResolver.openOutputStream(uri)?.use { it.write(root.toString(2).toByteArray()) }
-            }.onSuccess { statusText = "Backup exported to device." }.onFailure { statusText = "Export failed: ${it.localizedMessage}" }
+                val json = vm.buildPlainBackupJson() ?: error("Workspace not loaded")
+                context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            }.onSuccess { statusText = "Plain JSON backup exported to device." }
+                .onFailure { statusText = "Export failed: ${it.localizedMessage}" }
         }
     }
+
+    val createGzndLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val bytes = pendingEncryptedBytes
+        pendingEncryptedBytes = null
+        if (uri != null && bytes != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            }.onSuccess { statusText = "Encrypted .gznd (GZND_ENC_V4) backup exported." }
+                .onFailure { statusText = "Encrypted export failed: ${it.localizedMessage}" }
+        }
+    }
+
     val openDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-            }.onSuccess { json ->
-                vm.restoreBackupJson(json)
-                statusText = "Backup loaded."
-            }.onFailure { statusText = "Restore failed: ${it.localizedMessage}" }
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read file")
+            }.onSuccess { bytes ->
+                val isEnc = bytes.size >= 11 && String(bytes.copyOfRange(0, 11), Charsets.US_ASCII) == "GZND_ENC_V4"
+                if (isEnc) {
+                    pendingRestoreBytes = bytes
+                    decryptPassword = ""
+                    showDecryptDialog = true
+                } else {
+                    vm.restoreBackupBytesOrJson(rawText = null, rawBytes = bytes, password = "")
+                    statusText = "Backup loaded for restore."
+                }
+            }.onFailure { statusText = "Read failed: ${it.localizedMessage}" }
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "BACKUP & RESTORE", onBack = onBack)
 
-        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             item {
                 Text("BACKUP", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                 Spacer(Modifier.height(6.dp))
-                SarimCard(modifier = Modifier.clickable { createDocLauncher.launch("sarim_backup_${DateUtils.todayIso()}.json") }.testTag("backup_export_btn")) {
+                SarimCard(
+                    modifier = Modifier
+                        .clickable { showEncryptDialog = true }
+                        .testTag("backup_export_gznd_btn")
+                ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(accents.softPillFill), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = accents.emerald)
+                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = accents.emerald)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Backup to Phone", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                            Text("Save a local copy of all data to your device", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            Text("Encrypted Backup (.gznd)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                            Text("Password-protected GZND_ENC_V4 archive compatible with the web app", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                SarimCard(
+                    modifier = Modifier
+                        .clickable { createJsonLauncher.launch("sarim_backup_${DateUtils.todayIso()}.json") }
+                        .testTag("backup_export_btn")
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(accents.cyan.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = accents.cyan)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Plain JSON Backup (.json)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                            Text("Save an unencrypted local snapshot of all collections", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
                     }
                 }
             }
+
             item {
                 Text("RESTORE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                 Spacer(Modifier.height(6.dp))
-                SarimCard(modifier = Modifier.clickable { openDocLauncher.launch(arrayOf("application/json")) }.testTag("backup_restore_btn")) {
+                SarimCard(
+                    modifier = Modifier
+                        .clickable { openDocLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+                        .testTag("backup_restore_btn")
+                ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(accents.gold.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = accents.gold)
+                            Icon(Icons.Outlined.Backup, contentDescription = null, tint = accents.gold)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Restore from Phone", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                            Text("Load a previously saved backup file", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            Text("Restore from Phone (.json / .gznd)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                            Text("Load and merge a previously saved JSON or encrypted .gznd backup", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
                     }
                 }
             }
+
             if (statusText.isNotBlank()) {
-                item { Text(statusText, style = MaterialTheme.typography.bodySmall, color = accents.emerald) }
+                item {
+                    Text(statusText, style = MaterialTheme.typography.bodySmall, color = accents.emerald)
+                }
             }
         }
+    }
+
+    if (showEncryptDialog) {
+        AlertDialog(
+            onDismissRequest = { showEncryptDialog = false },
+            title = { Text("Encrypt Backup (.gznd)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter a password to encrypt your GZND_ENC_V4 backup. You will need this password to restore it on Android or Web.", style = MaterialTheme.typography.bodySmall)
+                    SarimPillInput(
+                        value = encryptPassword,
+                        onValueChange = { encryptPassword = it },
+                        label = "BACKUP PASSWORD",
+                        placeholder = "Min 4 characters",
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = encryptPassword.length >= 4,
+                    onClick = {
+                        val enc = vm.buildEncryptedGzndV4(encryptPassword)
+                        showEncryptDialog = false
+                        encryptPassword = ""
+                        if (enc != null) {
+                            pendingEncryptedBytes = enc
+                            createGzndLauncher.launch("sarim_backup_${DateUtils.todayIso()}.gznd")
+                        }
+                    }
+                ) { Text("Encrypt & Save") }
+            },
+            dismissButton = { TextButton(onClick = { showEncryptDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showDecryptDialog && pendingRestoreBytes != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDecryptDialog = false
+                pendingRestoreBytes = null
+            },
+            title = { Text("Decrypt .gznd Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This file is encrypted (GZND_ENC_V4). Enter the backup password to decrypt and restore.", style = MaterialTheme.typography.bodySmall)
+                    SarimPillInput(
+                        value = decryptPassword,
+                        onValueChange = { decryptPassword = it },
+                        label = "BACKUP PASSWORD",
+                        placeholder = "Password",
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = decryptPassword.isNotBlank(),
+                    onClick = {
+                        val bytes = pendingRestoreBytes
+                        showDecryptDialog = false
+                        pendingRestoreBytes = null
+                        vm.restoreBackupBytesOrJson(rawText = null, rawBytes = bytes, password = decryptPassword)
+                        decryptPassword = ""
+                        statusText = "Decryption & restore initiated."
+                    }
+                ) { Text("Decrypt & Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDecryptDialog = false
+                    pendingRestoreBytes = null
+                }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -592,22 +935,30 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
     val accents = LocalSarimAccents.current
     var confirmInput by remember { mutableStateOf("") }
 
-    val prodActive = snapshot.production.filter { !it.recycled }
-    val salesActive = snapshot.sales.filter { !it.recycled }
-    val calcActive = snapshot.calculator.filter { !it.recycled }
-    val txActive = snapshot.transactions.filter { !it.recycled }
-    val factoryActive = snapshot.factory.filter { !it.recycled }
-    val returnsCount = prodActive.count { it.transfer } + calcActive.count { it.returnedKg > 0 }
-    val storesList = snapshot.stores.joinToString(", ") { it.name.uppercase() }
+    val prodActive = snapshot.production.filter { it.deletedAt == null }
+    val salesActive = snapshot.sales.filter { it.deletedAt == null }
+    val repActive = snapshot.repRecords.filter { it.deletedAt == null }
+    val calcActive = snapshot.calculator.filter { it.deletedAt == null }
+    val txActive = snapshot.transactions.filter { it.deletedAt == null }
+    val expActive = snapshot.expenses.filter { it.deletedAt == null }
+    val factoryActive = snapshot.factory.filter { it.deletedAt == null }
+    val returnsCount = snapshot.returns.count { it.deletedAt == null } + calcActive.count { it.returned > 0.0 }
+    val storesList = snapshot.stores.filter { it.deletedAt == null }.joinToString(", ") { it.name.uppercase(Locale.ROOT) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
             title = "CLOSE FINANCIAL YEAR",
             onBack = onBack,
             subtitle = "Compact all records into opening balances",
-            badgeText = "PREVIEW",
+            badgeText = "FY #${snapshot.settings.fyCloseCount + 1}",
             leadingIcon = {
-                Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(accents.danger.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(accents.danger.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(Icons.Outlined.EventBusy, contentDescription = null, tint = accents.danger, modifier = Modifier.size(18.dp))
                 }
             }
@@ -615,27 +966,77 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
 
         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                CloseFyCard("Production", Icons.Outlined.Inventory2, accents.emerald, "${prodActive.size} rec", "${snapshot.stores.size} store balances", "Stores: ${storesList.ifBlank { "None" }}")
+                CloseFyCard(
+                    "Production",
+                    Icons.Outlined.Inventory2,
+                    accents.emerald,
+                    "${prodActive.size} rec",
+                    "${snapshot.stores.count { it.deletedAt == null }} store bal.",
+                    "Stores: ${storesList.ifBlank { "None" }}"
+                )
             }
             item {
-                CloseFyCard("Sales", Icons.Outlined.ReceiptLong, accents.emerald, "${salesActive.size} rec", "${snapshot.customers.count { !it.recycled }} balances", "Customers: ${snapshot.customers.count { !it.recycled }}")
+                CloseFyCard(
+                    "Sales",
+                    Icons.Outlined.ReceiptLong,
+                    accents.emerald,
+                    "${salesActive.size} rec",
+                    "${snapshot.customers.count { it.deletedAt == null }} balances",
+                    "Customers carry forward into oldDebit"
+                )
             }
             item {
-                CloseFyCard("Calculator", Icons.Outlined.Calculate, accents.cyan, "${calcActive.size} rec", "returns → Prod", "Reps settled across ${calcActive.map { it.repName }.distinct().size} reps")
+                CloseFyCard(
+                    "Rep Clients",
+                    Icons.Outlined.Group,
+                    accents.cyan,
+                    "${repActive.size} rec",
+                    "${snapshot.clients.count { it.deletedAt == null }} clients",
+                    "Rep customer balances carry forward into oldDebit"
+                )
             }
             item {
-                CloseFyCard("Payments", Icons.Outlined.Payments, accents.gold, "${txActive.size} rec", "${snapshot.entities.count { !it.recycled }} opening bal.", "Entities: ${snapshot.entities.count { !it.recycled }}")
+                CloseFyCard(
+                    "Calculator",
+                    Icons.Outlined.Calculate,
+                    accents.cyan,
+                    "${calcActive.size} rec",
+                    "returns -> Prod",
+                    "Reps settled across ${calcActive.map { it.seller }.filter { it.isNotBlank() }.distinct().size} sellers"
+                )
             }
             item {
-                CloseFyCard("Factory", Icons.Outlined.Factory, accents.purple, "${factoryActive.size} rec", "${snapshot.formulas.size} formula rec.", "Active inventory lines: ${snapshot.inventory.count { !it.recycled }}")
+                CloseFyCard(
+                    "Payments",
+                    Icons.Outlined.Payments,
+                    accents.gold,
+                    "${txActive.size} rec",
+                    "${snapshot.entities.count { it.deletedAt == null }} entities",
+                    "Entities: ${snapshot.entities.count { it.deletedAt == null }}"
+                )
             }
             item {
-                CloseFySkippedCard("Rep Sales")
-                Spacer(Modifier.height(8.dp))
-                CloseFySkippedCard("Expenses")
+                CloseFyCard(
+                    "Factory",
+                    Icons.Outlined.Factory,
+                    accents.purple,
+                    "${factoryActive.size} rec",
+                    "${snapshot.formulas.size} formulas",
+                    "Active inventory lines: ${snapshot.inventory.count { it.deletedAt == null }}"
+                )
             }
             item {
-                CloseFyCard("Stock Returns", Icons.Default.Restore, accents.danger, "$returnsCount rec", "1 per store + date", "Stores: ${storesList.ifBlank { "None" }}")
+                CloseFySkippedCard("Expenses (${expActive.size} records preserved)")
+            }
+            item {
+                CloseFyCard(
+                    "Stock Returns",
+                    Icons.Default.Restore,
+                    accents.danger,
+                    "$returnsCount rec",
+                    "per store",
+                    "Stores: ${storesList.ifBlank { "None" }}"
+                )
             }
             item {
                 Surface(
@@ -650,19 +1051,27 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Irreversible — original records will be compacted", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.danger)
-                            Text("Type CLOSE below to compact year-end records into opening balances.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            Text("Irreversible — production records compacted into Recycle Bin", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.danger)
+                            Text("Type CLOSE below to compact year-end records into carry-forward opening balances.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                SarimPillInput(value = confirmInput, onValueChange = { confirmInput = it.take(20) }, placeholder = "Type CLOSE to confirm", testTag = "cfy_confirm_input")
+                SarimPillInput(
+                    value = confirmInput,
+                    onValueChange = { confirmInput = it.take(20) },
+                    placeholder = "Type CLOSE to confirm",
+                    testTag = "cfy_confirm_input"
+                )
             }
         }
 
         Surface(color = accents.headerFrosted, border = BorderStroke(1.dp, accents.borderSubtle)) {
             Row(
-                modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(onClick = onBack, modifier = Modifier.weight(0.55f).height(50.dp), shape = RoundedCornerShape(26.dp)) {
@@ -716,7 +1125,7 @@ private fun CloseFySkippedCard(title: String) {
     SarimCard(contentPadding = PaddingValues(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = accents.textMuted)
-            Text("skipped", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+            Text("preserved", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
         }
     }
 }
@@ -724,36 +1133,94 @@ private fun CloseFySkippedCard(title: String) {
 @Composable
 fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
-    val deletedItems = remember(snapshot) {
-        buildList {
-            snapshot.production.filter { it.recycled }.forEach { add(Triple("production", it.id, "${it.storeName} • ${it.date}")) }
-            snapshot.sales.filter { it.recycled }.forEach { add(Triple("sales", it.id, "${it.customerName} • ${it.date}")) }
-            snapshot.repRecords.filter { it.recycled }.forEach { add(Triple("rep_records", it.id, "${it.repName} / ${it.customerName} • ${it.date}")) }
-            snapshot.calculator.filter { it.recycled }.forEach { add(Triple("calculator", it.id, "Settlement ${it.repName} • ${it.dateTo}")) }
-            snapshot.factory.filter { it.recycled }.forEach { add(Triple("factory", it.id, "${it.recordType} • ${it.date}")) }
-            snapshot.transactions.filter { it.recycled }.forEach { add(Triple("transactions", it.id, "${it.entityName} • ${it.date}")) }
-            snapshot.ledgerEntries.filter { it.recycled }.forEach { add(Triple("ledger_entries", it.id, "Ledger ${it.entryType} • ${it.date}")) }
-        }
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+
+    var colFilter by remember { mutableStateOf("all") }
+    var confirmPurgeItem by remember { mutableStateOf<DeletionTombstone?>(null) }
+
+    val sortedDeletions = remember(snapshot.deletions) {
+        snapshot.deletions.sortedByDescending { it.deletedAt }
+    }
+    val collections = remember(sortedDeletions) {
+        listOf("all") + sortedDeletions.map { it.collection.lowercase(Locale.ROOT) }.filter { it.isNotBlank() }.distinct()
+    }
+    val visible = remember(sortedDeletions, colFilter) {
+        if (colFilter == "all") sortedDeletions
+        else sortedDeletions.filter { it.collection.equals(colFilter, ignoreCase = true) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(title = "RECYCLE BIN", onBack = onBack)
+        SarimSubpageHeader(
+            title = "RECYCLE BIN",
+            subtitle = "${sortedDeletions.size} tombstone(s)",
+            onBack = onBack
+        )
+
         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (deletedItems.isEmpty()) {
-                item { EmptyStateCard("Recycle Bin is empty", "Recycled records are retained for 90 days before permanent purge.") }
+            if (collections.size > 1) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        collections.take(5).forEach { col ->
+                            FilterChip(
+                                selected = colFilter == col,
+                                onClick = { colFilter = col },
+                                label = { Text(col.uppercase(Locale.ROOT)) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (visible.isEmpty()) {
+                item {
+                    EmptyStateCard("Recycle Bin is Empty", "Deleted items remain recoverable here for 30 days.")
+                }
             } else {
-                items(deletedItems, key = { "${it.first}_${it.second}" }) { (col, id, label) ->
+                items(visible, key = { it.id.ifBlank { "${it.collection}_${it.recordId}" } }) { t ->
+                    val deletedDate = remember(t.deletedAt) {
+                        if (t.deletedAt > 0L) SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(t.deletedAt)) else ""
+                    }
+                    val daysLeft = remember(t.expiresAt) {
+                        if (t.expiresAt > 0L) max(0L, (t.expiresAt - System.currentTimeMillis()) / (24L * 60L * 60L * 1000L)) else 30L
+                    }
                     SarimCard {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(label, style = MaterialTheme.typography.titleSmall)
-                                Text(col.uppercase(), style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                Text(
+                                    text = t.displayName.ifBlank { t.recordId },
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                val subtitleParts = listOfNotNull(
+                                    t.collection.uppercase(Locale.ROOT),
+                                    t.displayDetail.takeIf { it.isNotBlank() },
+                                    if (!masked && t.displayAmount.isNotBlank()) t.displayAmount else null,
+                                    deletedDate.takeIf { it.isNotBlank() },
+                                    "${daysLeft}d left"
+                                )
+                                Text(
+                                    text = subtitleParts.joinToString(" • "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accents.textMuted
+                                )
                             }
-                            IconButton(onClick = { vm.restoreRecord(col, id) }, modifier = Modifier.testTag("bin_restore_$id")) {
+                            IconButton(
+                                onClick = { vm.restoreTombstone(t) },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("bin_restore_${t.recordId}")
+                            ) {
                                 Icon(Icons.Default.Restore, contentDescription = "Restore record", tint = accents.emerald)
                             }
-                            IconButton(onClick = { vm.deleteForever(col, id) }, modifier = Modifier.testTag("bin_purge_$id")) {
-                                Icon(Icons.Default.DeleteForever, contentDescription = "Delete forever", tint = accents.danger)
+                            if (snapshot.profile.isAdmin) {
+                                IconButton(
+                                    onClick = { confirmPurgeItem = t },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("bin_purge_${t.recordId}")
+                                ) {
+                                    Icon(Icons.Default.DeleteForever, contentDescription = "Delete forever", tint = accents.danger)
+                                }
                             }
                         }
                     }
@@ -761,24 +1228,43 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
             }
         }
     }
+
+    confirmPurgeItem?.let { itemToPurge ->
+        AlertDialog(
+            onDismissRequest = { confirmPurgeItem = null },
+            title = { Text("Delete Permanently") },
+            text = { Text("Permanently erase \"${itemToPurge.displayName.ifBlank { itemToPurge.recordId }}\" from ${itemToPurge.collection}? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.purgeTombstone(itemToPurge)
+                    confirmPurgeItem = null
+                }) { Text("Erase Forever", color = accents.danger) }
+            },
+            dismissButton = { TextButton(onClick = { confirmPurgeItem = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
 fun DbStructureScreen(snapshot: WorkspaceSnapshot, onBack: () -> Unit) {
     val rows = listOf(
-        "Stores" to snapshot.stores.size,
-        "Formulas" to snapshot.formulas.size,
-        "Customers" to snapshot.customers.size,
-        "Entities" to snapshot.entities.size,
-        "Inventory" to snapshot.inventory.size,
-        "Production" to snapshot.production.size,
-        "Sales" to snapshot.sales.size,
-        "Rep Records" to snapshot.repRecords.size,
-        "Calculator Settlements" to snapshot.calculator.size,
-        "Factory Records" to snapshot.factory.size,
-        "Transactions" to snapshot.transactions.size,
-        "Daily Ledger" to snapshot.ledgerEntries.size,
-        "Pending Approvals" to snapshot.pendingApprovals.size
+        "Stores" to "${snapshot.stores.count { it.deletedAt == null }} active (${snapshot.stores.size} total)",
+        "Formulas" to "${snapshot.formulas.size} formulas",
+        "Customers (Direct)" to "${snapshot.customers.count { it.deletedAt == null }} active (${snapshot.customers.size} total)",
+        "Clients (Rep)" to "${snapshot.clients.count { it.deletedAt == null }} active (${snapshot.clients.size} total)",
+        "Entities" to "${snapshot.entities.count { it.deletedAt == null }} active (${snapshot.entities.size} total)",
+        "Inventory" to "${snapshot.inventory.count { it.deletedAt == null }} active (${snapshot.inventory.size} total)",
+        "Production" to "${snapshot.production.count { it.deletedAt == null }} active (${snapshot.production.size} total)",
+        "Sales (Direct)" to "${snapshot.sales.count { it.deletedAt == null }} active (${snapshot.sales.size} total)",
+        "Rep Sales" to "${snapshot.repRecords.count { it.deletedAt == null }} active (${snapshot.repRecords.size} total)",
+        "Calculator Settlements" to "${snapshot.calculator.count { it.deletedAt == null }} active (${snapshot.calculator.size} total)",
+        "Factory Records" to "${snapshot.factory.count { it.deletedAt == null }} active (${snapshot.factory.size} total)",
+        "Transactions" to "${snapshot.transactions.count { it.deletedAt == null }} active (${snapshot.transactions.size} total)",
+        "Expenses" to "${snapshot.expenses.count { it.deletedAt == null }} active (${snapshot.expenses.size} total)",
+        "Returns" to "${snapshot.returns.count { it.deletedAt == null }} active (${snapshot.returns.size} total)",
+        "Daily Ledger" to "${snapshot.ledgerEntries.size} entries",
+        "Recycle Bin Tombstones" to "${snapshot.deletions.size} tombstones",
+        "Pending Approvals" to "${snapshot.pendingApprovals.count { it.status == "pending" }} pending"
     )
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "DB STRUCTURE", onBack = onBack)
@@ -786,19 +1272,37 @@ fun DbStructureScreen(snapshot: WorkspaceSnapshot, onBack: () -> Unit) {
             item {
                 MetricKpiCard(
                     label = "Active Workspace Owner",
-                    value = snapshot.profile.workspaceOwnerUid.take(16) + "...",
+                    value = snapshot.profile.effectiveOwnerUid.take(16) + "...",
                     subtitle = if (snapshot.pendingSyncCount > 0) {
-                        "Room SQLite (WAL) • ${snapshot.pendingSyncCount} pending sync"
+                        "Room kv_store + Outbox (${snapshot.pendingSyncCount} pending sync)"
                     } else {
-                        "Room SQLite (WAL) + Cloud Firestore Sync"
+                        "Room kv_store (WAL) + Cloud Firestore Sync"
                     }
                 )
             }
-            items(rows, key = { it.first }) { (name, count) ->
+            items(rows, key = { it.first }) { (name, countText) ->
                 SarimCard {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(name, style = MaterialTheme.typography.titleSmall)
-                        Text("$count docs", style = MaterialTheme.typography.labelLarge, color = LocalSarimAccents.current.emerald)
+                        Text(countText, style = MaterialTheme.typography.labelLarge, color = LocalSarimAccents.current.emerald)
+                    }
+                }
+            }
+            if (snapshot.syncStats.isNotEmpty()) {
+                item {
+                    Text(
+                        "SYNC TIMESTAMPS",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = LocalSarimAccents.current.textMuted
+                    )
+                }
+                items(snapshot.syncStats.entries.toList(), key = { it.key }) { (col, ts) ->
+                    val formatted = if (ts > 0L) SimpleDateFormat("dd MMM HH:mm:ss", Locale.getDefault()).format(Date(ts)) else "—"
+                    SarimCard(contentPadding = PaddingValues(12.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(col, style = MaterialTheme.typography.bodyMedium)
+                            Text(formatted, style = MaterialTheme.typography.labelMedium, color = LocalSarimAccents.current.textMuted)
+                        }
                     }
                 }
             }

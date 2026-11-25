@@ -8,10 +8,10 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         CachedProfileEntity::class,
-        WorkspaceRecordEntity::class,
-        PendingSyncOpEntity::class
+        KvStoreEntity::class,
+        NdappOutboxEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SarimOfflineDatabase : RoomDatabase() {
@@ -29,6 +29,7 @@ abstract class SarimOfflineDatabase : RoomDatabase() {
                     "sarim_offline.db"
                 )
                     .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { INSTANCE = it }
             }

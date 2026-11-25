@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,44 +44,82 @@ import com.gullzubair.sarim.util.StatementRow
 fun CustomerDetailScreen(
     snapshot: WorkspaceSnapshot,
     customerName: String,
+    isRepClient: Boolean = false,
     onBack: () -> Unit,
     onEditCustomer: () -> Unit
 ) {
     val context = LocalContext.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val masked = FinanceEngine.deriveSession(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
 
-    val customer = remember(snapshot.customers, customerName) {
-        snapshot.customers.firstOrNull { !it.recycled && it.name.equals(customerName, true) }
+    val customer = remember(snapshot.customers, snapshot.clients, customerName, isRepClient) {
+        val primary = if (isRepClient) snapshot.clients else snapshot.customers
+        val fallback = if (isRepClient) snapshot.customers else snapshot.clients
+        primary.firstOrNull { it.deletedAt == null && it.name.equals(customerName, true) }
+            ?: fallback.firstOrNull { it.deletedAt == null && it.name.equals(customerName, true) }
     }
     val balance = remember(snapshot, customerName) {
-        FinanceEngine.computeCustomerBalance(customerName, snapshot.customers, snapshot.sales, snapshot.repRecords)
+        FinanceEngine.computeCustomerBalance(
+            customerName = customerName,
+            customers = snapshot.customers,
+            sales = snapshot.sales,
+            repRecords = snapshot.repRecords,
+            calculator = snapshot.calculator,
+            stores = snapshot.stores,
+            clients = snapshot.clients,
+            includeClients = true
+        )
     }
 
     val rows = remember(snapshot, customerName) {
         val list = mutableListOf<StatementRow>()
-        val sales = snapshot.sales.filter { !it.recycled && it.customerName.equals(customerName, true) }
-        val rep = snapshot.repRecords.filter { !it.recycled && it.customerName.equals(customerName, true) }
-        val opening = snapshot.customers.filter { !it.recycled && it.name.equals(customerName, true) }.sumOf { it.openingBalance }
+        val reconciled = FinanceEngine.reconciledRepReturnIds(snapshot.calculator)
+        val directSales = snapshot.sales.filter { it.deletedAt == null && it.customerName.equals(customerName, true) }
+        val repSales = snapshot.repRecords.filter { it.deletedAt == null && it.customerName.equals(customerName, true) }
+        val directHonor = FinanceEngine.allocHonor(directSales)
+        val repHonor = FinanceEngine.allocHonor(repSales)
+
+        val directHasOldDebt = directSales.any { it.transactionType == "OLD_DEBT" }
+        val repHasOldDebt = repSales.any { it.transactionType == "OLD_DEBT" }
+        val opening = (if (directHasOldDebt) 0.0 else snapshot.customers.filter { it.deletedAt == null && it.name.equals(customerName, true) }.sumOf { it.oldDebit }) +
+            (if (repHasOldDebt) 0.0 else snapshot.clients.filter { it.deletedAt == null && it.name.equals(customerName, true) }.sumOf { it.oldDebit })
+
         var running = opening
         if (opening != 0.0) {
-            list.add(StatementRow("Opening", "Opening Balance", if (opening > 0) InputGuards.formatNum(opening) else "-", "-", InputGuards.formatNum(running)))
-        }
-        val combined = (sales.map { Triple(it.date, "Direct ${it.mode} ${InputGuards.formatKg(it.qtyKg)}", it.creditAmount to (it.cashReceived + it.choraValue)) } +
-            rep.map { Triple(it.date, "Rep ${it.mode} (${it.repName})", it.creditAmount to if (it.mode == "return") it.totalAmount else it.cashReceived) })
-            .sortedBy { it.first }
-        combined.forEach { (date, desc, pair) ->
-            val debit = pair.first
-            val credit = pair.second
-            running = InputGuards.round2(running + debit - credit)
             list.add(
                 StatementRow(
-                    date = date,
+                    date = "Opening",
+                    description = "Opening Balance",
+                    debit = if (opening > 0 && !masked) InputGuards.fmtNum(opening) else "-",
+                    credit = "-",
+                    balance = if (masked) "••••" else InputGuards.fmtNum(running)
+                )
+            )
+        }
+
+        val combined = (directSales.map { it to false } + repSales.map { it to true })
+            .sortedWith(compareBy({ it.first.date }, { it.first.timestamp }))
+
+        combined.forEach { (s, isRep) ->
+            val custPool = if (isRep) snapshot.clients.ifEmpty { snapshot.customers } else snapshot.customers
+            val gross = FinanceEngine.effectiveSaleValue(s, custPool, snapshot.stores)
+            val split = FinanceEngine.ledgerSplit(
+                t = s,
+                grossValue = gross,
+                reconciledReturnIds = reconciled,
+                honor = if (isRep) repHonor else directHonor
+            )
+            running = InputGuards.round2(running + split.delta)
+            val qtyTxt = if (s.quantity > 0.0) " ${InputGuards.formatKg(s.quantity)}" else if (s.returnedQty > 0.0) " ${InputGuards.formatKg(s.returnedQty)}" else ""
+            val desc = if (isRep) "Rep ${s.paymentType} (${s.salesRep})$qtyTxt" else "Direct ${s.paymentType}$qtyTxt"
+            list.add(
+                StatementRow(
+                    date = s.date,
                     description = desc,
-                    debit = if (debit > 0) InputGuards.formatNum(debit) else "-",
-                    credit = if (credit > 0) InputGuards.formatNum(credit) else "-",
-                    balance = InputGuards.formatNum(running)
+                    debit = if (split.debit > 0.005) (if (masked) "••••" else InputGuards.fmtNum(split.debit)) else "-",
+                    credit = if (split.credit > 0.005) (if (masked) "••••" else InputGuards.fmtNum(split.credit)) else "-",
+                    balance = if (masked) "••••" else InputGuards.fmtNum(running)
                 )
             )
         }
@@ -137,7 +174,7 @@ fun CustomerDetailScreen(
                                 title = "Customer Statement: $customerName",
                                 subtitle = "Gull & Zubair Naswar Dealers",
                                 rows = rows,
-                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, false)}"
+                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
                             )
                         },
                         testTag = "customer_pdf_btn"
@@ -154,7 +191,7 @@ fun CustomerDetailScreen(
                                 Text(r.description, style = MaterialTheme.typography.titleSmall)
                                 Text("${r.date} • Debit ${r.debit} • Credit ${r.credit}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                             }
-                            Text("$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.cyan)
+                            Text(if (masked) "$currency ••••" else "$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.cyan)
                         }
                     }
                 }
@@ -173,31 +210,58 @@ fun EntityDetailScreen(
     val context = LocalContext.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = snapshot.settings.hideSensitiveMoney
+    val masked = FinanceEngine.deriveSession(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
     val entity = remember(snapshot.entities, entityName) {
-        snapshot.entities.firstOrNull { !it.recycled && it.name.equals(entityName, true) }
+        snapshot.entities.firstOrNull { it.deletedAt == null && it.name.equals(entityName, true) }
     }
     val balance = remember(snapshot, entity) {
-        entity?.let { FinanceEngine.computeEntityBalance(it, snapshot.transactions, snapshot.factory) } ?: 0.0
+        entity?.let { FinanceEngine.computeEntityBalance(it, snapshot.transactions, snapshot.inventory) } ?: 0.0
     }
-    val rows = remember(snapshot, entityName, entity) {
+    val rows = remember(snapshot, entityName, entity, masked) {
         var running = entity?.openingBalance ?: 0.0
         val list = mutableListOf<StatementRow>()
         if (running != 0.0) {
-            list.add(StatementRow("Opening", "Opening Balance", "-", "-", InputGuards.formatNum(running)))
+            list.add(
+                StatementRow(
+                    date = "Opening",
+                    description = "Opening Balance",
+                    debit = "-",
+                    credit = "-",
+                    balance = if (masked) "••••" else InputGuards.fmtNum(running)
+                )
+            )
         }
-        snapshot.transactions.filter { !it.recycled && it.entityName.equals(entityName, true) }
-            .sortedBy { it.date }
-            .forEach { tx ->
-                val isOut = tx.txType in listOf("out", "transfer_out", "expense")
-                running = InputGuards.round2(running + if (isOut) tx.amount else -tx.amount)
+        val txEvents = snapshot.transactions
+            .filter {
+                it.deletedAt == null && !it.isPayable &&
+                    ((entity != null && it.entityId == entity.id) || it.entityName.equals(entityName, true))
+            }
+            .map { tx ->
+                val delta = if (tx.type.equals("IN", true)) tx.amount else -tx.amount
+                Triple(tx.date, tx.timestamp, Triple("${tx.type.uppercase()} • ${tx.paymentMethod}", delta, tx.amount to tx.type.equals("IN", true)))
+            }
+        val lotEvents = snapshot.inventory
+            .filter {
+                it.deletedAt == null && it.paymentStatus != "paid" && it.totalPayable > 0.0 &&
+                    ((entity != null && it.supplierId == entity.id) || it.supplierName.equals(entityName, true))
+            }
+            .map { lot ->
+                val dateStr = lot.purchaseDate.ifBlank { "Purchase" }
+                Triple(dateStr, lot.timestamp, Triple("PURCHASE • ${lot.materialName.ifBlank { lot.name }}", -lot.totalPayable, lot.totalPayable to false))
+            }
+        (txEvents + lotEvents)
+            .sortedWith(compareBy({ it.first }, { it.second }))
+            .forEach { (date, _, details) ->
+                val (desc, delta, amtPair) = details
+                val (amt, isDebitSide) = amtPair
+                running = InputGuards.round2(running + delta)
                 list.add(
                     StatementRow(
-                        date = tx.date,
-                        description = "${tx.txType.uppercase()} • ${tx.paymentChannel}",
-                        debit = if (isOut) InputGuards.formatNum(tx.amount) else "-",
-                        credit = if (!isOut) InputGuards.formatNum(tx.amount) else "-",
-                        balance = InputGuards.formatNum(running)
+                        date = date,
+                        description = desc,
+                        debit = if (!isDebitSide) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
+                        credit = if (isDebitSide) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
+                        balance = if (masked) "••••" else InputGuards.fmtNum(running)
                     )
                 )
             }
@@ -207,7 +271,7 @@ fun EntityDetailScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
             title = entityName.uppercase(),
-            subtitle = entity?.entityType?.uppercase(),
+            subtitle = entity?.type?.uppercase(),
             onBack = onBack
         )
 
@@ -231,9 +295,9 @@ fun EntityDetailScreen(
                             PdfExporter.exportAndShareStatement(
                                 context = context,
                                 title = "Entity Statement: $entityName",
-                                subtitle = entity?.entityType?.uppercase() ?: "Account",
+                                subtitle = entity?.type?.uppercase() ?: "Account",
                                 rows = rows,
-                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, false)}"
+                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
                             )
                         },
                         testTag = "entity_pdf_btn"
@@ -250,7 +314,7 @@ fun EntityDetailScreen(
                                 Text(r.description, style = MaterialTheme.typography.titleSmall)
                                 Text("${r.date} • Debit ${r.debit} • Credit ${r.credit}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                             }
-                            Text("$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                            Text(if (masked) "$currency ••••" else "$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
                         }
                     }
                 }
