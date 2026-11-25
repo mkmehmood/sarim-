@@ -334,7 +334,12 @@ fun EditCustomerScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
-            title = if (isRepClient) "EDIT REP CUSTOMER" else "EDIT CUSTOMER",
+            title = when {
+                isRepClient && customerName.isBlank() -> "ADD REP CUSTOMER"
+                isRepClient -> "EDIT REP CUSTOMER"
+                customerName.isBlank() -> "ADD CUSTOMER"
+                else -> "EDIT CUSTOMER"
+            },
             onBack = onBack
         )
 
@@ -505,7 +510,7 @@ fun EditCustomerScreen(
                     )
                 }
                 SarimGradientButton(
-                    text = if (saving) "Saving..." else "Update Customer",
+                    text = if (saving) "Saving..." else if (existing.id.isBlank()) "Add Customer" else "Update Customer",
                     onClick = {
                         saving = true
                         scope.launch {

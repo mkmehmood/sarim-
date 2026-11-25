@@ -25,6 +25,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -425,21 +426,96 @@ class SarimActionDispatcher(
         expiredUnitPrice: Double,
         collectedAmount: Double,
         addToLedger: Boolean,
-        notes: String
+        notes: String,
+        customerPhone: String = ""
     ): Result<String> {
         val cleanCust = InputGuards.sanitizeName(customerName)
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val normType = paymentType.trim().uppercase(Locale.ROOT)
         val now = System.currentTimeMillis()
         val storeKey = store?.let(::resolvedStoreKey).orEmpty()
         val existingCust = snapshot.customers.firstOrNull {
             it.deletedAt == null && it.name.equals(cleanCust, ignoreCase = true)
         }
+        val resolvedPhone = cleanPhone.ifBlank { existingCust?.phone ?: "" }
+
+        if (normType == "REP_RETURN") {
+            val cleanRep = salesRep.trim().takeIf { it.isNotBlank() && !it.equals("NONE", true) } ?: cleanCust
+            if (quantityKg < 0.0 || expiredKg < 0.0) {
+                return Result.failure(IllegalArgumentException("Quantities cannot be negative"))
+            }
+            if (quantityKg <= 0.0 && expiredKg <= 0.0) {
+                return Result.failure(IllegalArgumentException("Enter expired and/or returned quantity"))
+            }
+            val pendingInfo = SalesAnalyticsEngine.computeRepReturnPendingInfo(cleanRep, snapshot)
+            val totalBack = InputGuards.round3(expiredKg + quantityKg)
+            if (pendingInfo.pendingDeliveredKg > 0.0 && pendingInfo.alreadyReturnedKg + totalBack > pendingInfo.pendingDeliveredKg + 0.001) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "Cannot return ${InputGuards.formatKg(totalBack)}. Pending deliveries total ${InputGuards.formatKg(pendingInfo.pendingDeliveredKg)} and ${InputGuards.formatKg(pendingInfo.alreadyReturnedKg)} already returned (remaining ${InputGuards.formatKg(pendingInfo.remainingDeliverableKg)})."
+                    )
+                )
+            }
+            val retUnit = if (unitPrice > 0.0) InputGuards.round2(unitPrice)
+            else SalesAnalyticsEngine.computeGoodsCreditUnitPrice(cleanRep, snapshot, fallbackStore = store)
+            val custOut = SalesAnalyticsEngine.computeCustomerOutstanding(cleanRep, snapshot)
+            val repPlan = SalesAnalyticsEngine.planGoodsCredit(
+                totalBack,
+                retUnit,
+                if (custOut >= 0.0) custOut else null
+            )
+            val docId = ops.newId("sale")
+            val repRet = SalesRecord(
+                id = docId,
+                date = date,
+                supplyDate = date,
+                time = DateUtils.nowTimeStr(),
+                customerName = cleanRep,
+                customerPhone = "",
+                quantity = 0.0,
+                supplyStore = "",
+                paymentType = "REP_RETURN",
+                salesRep = cleanRep,
+                currentRepProfile = "admin",
+                unitPrice = if (repPlan.value > 0.0) retUnit else 0.0,
+                totalCost = 0.0,
+                totalValue = 0.0,
+                profit = 0.0,
+                creditReceived = true,
+                isRepReturn = true,
+                expiredQty = InputGuards.round2(expiredKg),
+                returnedQty = InputGuards.round2(quantityKg),
+                returnValue = repPlan.value,
+                notes = InputGuards.sanitizeNotes(notes),
+                timestamp = now,
+                createdAt = now
+            )
+            return ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "sales",
+                docId = docId,
+                summaryTitle = "Rep Return: $cleanRep",
+                summaryDetail = "$date • Exp ${InputGuards.formatKg(expiredKg)} • Ret ${InputGuards.formatKg(quantityKg)}",
+                payload = WorkspaceJsonCodec.saleToMap(repRet)
+            )
+        }
 
         if (normType == "COLLECTION" || normType == "PARTIAL_PAYMENT") {
-            val expVal = InputGuards.round2(expiredKg * expiredUnitPrice)
+            val effExpRate = when {
+                expiredUnitPrice > 0.0 -> InputGuards.round2(expiredUnitPrice)
+                expiredKg > 0.0 -> SalesAnalyticsEngine.computeGoodsCreditUnitPrice(cleanCust, snapshot, fallbackStore = store)
+                else -> 0.0
+            }
+            val custOutstanding = SalesAnalyticsEngine.computeCustomerOutstanding(cleanCust, snapshot)
+            val goodsPlan = if (expiredKg > 0.0) {
+                SalesAnalyticsEngine.planGoodsCredit(expiredKg, effExpRate, max(0.0, custOutstanding - collectedAmount))
+            } else {
+                SalesAnalyticsEngine.GoodsCreditPlan(0.0, 0.0, false)
+            }
+            val expVal = goodsPlan.value
             val totalPool = InputGuards.round2(collectedAmount + expVal)
-            if (totalPool <= 0.0) {
+            if (collectedAmount <= 0.0 && expiredKg <= 0.0) {
                 return Result.failure(IllegalArgumentException("Enter collected amount or expired kg"))
             }
             val colId = ops.newId("sale")
@@ -449,7 +525,7 @@ class SarimActionDispatcher(
                     !it.creditReceived &&
                     (it.paymentType == "CREDIT" || it.transactionType == "OLD_DEBT")
             }
-            val plan = if (snapshot.profile.isAdmin) {
+            val plan = if (snapshot.profile.isAdmin && totalPool > 0.0) {
                 FinanceEngine.computeCollectionFifoPlan(totalPool, customerOpenSales, snapshot.customers, snapshot.stores)
             } else emptyMap()
 
@@ -493,7 +569,7 @@ class SarimActionDispatcher(
                 supplyDate = date,
                 time = DateUtils.nowTimeStr(),
                 customerName = cleanCust,
-                customerPhone = existingCust?.phone ?: "",
+                customerPhone = resolvedPhone,
                 quantity = 0.0,
                 supplyStore = storeKey,
                 paymentType = "COLLECTION",
@@ -508,7 +584,7 @@ class SarimActionDispatcher(
                 allocationFull = plan.mapValues { it.value.second },
                 expiredQty = InputGuards.round2(expiredKg),
                 expiredValue = expVal,
-                expiredUnitPrice = InputGuards.round2(expiredUnitPrice),
+                expiredUnitPrice = effExpRate,
                 expiredApplied = if (choraAdded) expiredKg else 0.0,
                 expiredAllocated = expAppliedAmt,
                 creditReceived = true,
@@ -608,17 +684,32 @@ class SarimActionDispatcher(
             return Result.failure(IllegalArgumentException("Quantity and unit price must be greater than 0"))
         }
         val effSupplyDate = supplyDate.ifBlank { date }
+        if (store != null) {
+            val stockTile = SalesAnalyticsEngine.computeDateStockTile(snapshot, store, effSupplyDate, quantityKg)
+            if (stockTile.totalInKg <= 0.0) {
+                return Result.failure(IllegalArgumentException("No production or returns for ${store.name} on $effSupplyDate."))
+            }
+            if (stockTile.availableKg - quantityKg < -1e-6) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "Insufficient stock! Available: ${InputGuards.formatKg(max(0.0, stockTile.availableKg))}, Requested: ${InputGuards.formatKg(quantityKg)}"
+                    )
+                )
+            }
+        }
         val costIdx = FormulaEngine.buildCostIndex(snapshot.production)
         val costLookup = FormulaEngine.costSourceFromIndex(costIdx, storeKey, effSupplyDate)
         val totalVal = InputGuards.round2(quantityKg * unitPrice)
         val totalCost = InputGuards.round2(quantityKg * costLookup.cp)
         val profit = InputGuards.round2(totalVal - totalCost)
         val saleId = ops.newId("sale")
+        val isDirectCustomer = salesRep.isBlank() || salesRep.equals("NONE", true)
 
-        if (existingCust == null) {
+        if (existingCust == null && isDirectCustomer) {
             val newCust = CustomerRecord(
                 id = ops.newId("cust"),
                 name = cleanCust,
+                phone = cleanPhone,
                 visitCount = 1L,
                 createdAt = now,
                 timestamp = now
@@ -631,6 +722,16 @@ class SarimActionDispatcher(
                 summaryDetail = "Added on $date",
                 payload = WorkspaceJsonCodec.customerToMap(newCust)
             )
+        } else if (existingCust != null && existingCust.phone.isBlank() && cleanPhone.isNotBlank()) {
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "customers",
+                docId = existingCust.id,
+                summaryTitle = "Update Phone: $cleanCust",
+                summaryDetail = cleanPhone,
+                payload = WorkspaceJsonCodec.customerToMap(existingCust.copy(phone = cleanPhone, timestamp = now)),
+                isEdit = true
+            )
         }
 
         val sale = SalesRecord(
@@ -639,7 +740,7 @@ class SarimActionDispatcher(
             supplyDate = effSupplyDate,
             time = DateUtils.nowTimeStr(),
             customerName = cleanCust,
-            customerPhone = existingCust?.phone ?: "",
+            customerPhone = resolvedPhone,
             quantity = InputGuards.round2(quantityKg),
             supplyStore = storeKey,
             paymentType = normType,

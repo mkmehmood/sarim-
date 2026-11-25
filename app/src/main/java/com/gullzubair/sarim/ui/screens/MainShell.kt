@@ -651,6 +651,7 @@ private fun WorkspaceNavContainer(
                                 snapshot = snapshot,
                                 customerName = arg.customerName,
                                 isRepClient = arg.isRepClient,
+                                vm = vm,
                                 onBack = { navController.popBackStack() },
                                 onEditCustomer = { navigateTo(AppRoute.EditCustomer(arg.customerName, isRepClient = arg.isRepClient)) }
                             )

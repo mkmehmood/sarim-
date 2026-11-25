@@ -17,12 +17,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,8 +35,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
+import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.ui.components.CustomerMoneyOutDialog
 import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.SarimCard
@@ -40,6 +46,7 @@ import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.PdfExporter
 import com.gullzubair.sarim.util.StatementRow
 
@@ -48,6 +55,7 @@ fun CustomerDetailScreen(
     snapshot: WorkspaceSnapshot,
     customerName: String,
     isRepClient: Boolean = false,
+    vm: SarimViewModel,
     onBack: () -> Unit,
     onEditCustomer: () -> Unit
 ) {
@@ -55,6 +63,7 @@ fun CustomerDetailScreen(
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
     val masked = FinanceEngine.deriveSession(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    var showMoneyOut by remember { mutableStateOf(false) }
 
     val customer = remember(snapshot.customers, snapshot.clients, customerName, isRepClient) {
         val primary = if (isRepClient) snapshot.clients else snapshot.customers
@@ -194,19 +203,41 @@ fun CustomerDetailScreen(
                         Text("Ledger Page: ${customer?.ledgerPage}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     }
                     Spacer(Modifier.height(12.dp))
-                    SarimGradientButton(
-                        text = "Export Statement PDF",
-                        onClick = {
-                            PdfExporter.exportAndShareStatement(
-                                context = context,
-                                title = "Customer Statement: $customerName",
-                                subtitle = "Gull & Zubair Naswar Dealers",
-                                rows = rows,
-                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
-                            )
-                        },
-                        testTag = "customer_pdf_btn"
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!isRepClient) {
+                            Surface(
+                                onClick = { showMoneyOut = true },
+                                shape = RoundedCornerShape(22.dp),
+                                color = accents.gold.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, accents.gold),
+                                modifier = Modifier.weight(0.42f).height(50.dp).testTag("customer_money_out_btn")
+                            ) {
+                                Row(
+                                    Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Payments, contentDescription = null, tint = accents.gold, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Money Out", style = MaterialTheme.typography.labelLarge, color = accents.gold, maxLines = 1)
+                                }
+                            }
+                        }
+                        SarimGradientButton(
+                            text = "Export PDF",
+                            onClick = {
+                                PdfExporter.exportAndShareStatement(
+                                    context = context,
+                                    title = "Customer Statement: $customerName",
+                                    subtitle = "Gull & Zubair Naswar Dealers",
+                                    rows = rows,
+                                    summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
+                                )
+                            },
+                            modifier = Modifier.weight(if (isRepClient) 1f else 0.58f),
+                            testTag = "customer_pdf_btn"
+                        )
+                    }
                 }
             }
             if (rows.isEmpty()) {
@@ -226,6 +257,35 @@ fun CustomerDetailScreen(
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    if (showMoneyOut) {
+        CustomerMoneyOutDialog(
+            customerName = customerName,
+            currentOutstanding = balance,
+            currency = currency,
+            masked = masked,
+            defaultDate = DateUtils.todayIso(),
+            onConfirm = { mDate, mAmt, mLedger, mNotes ->
+                showMoneyOut = false
+                vm.submitSale(
+                    date = mDate,
+                    supplyDate = mDate,
+                    paymentType = "MONEY_OUT",
+                    customer = customerName,
+                    store = snapshot.stores.firstOrNull { it.deletedAt == null && it.active },
+                    rep = "NONE",
+                    qty = 0.0,
+                    rate = 0.0,
+                    collectedAmount = mAmt,
+                    expiredKg = 0.0,
+                    choraRate = 0.0,
+                    addToLedger = mLedger,
+                    notes = mNotes
+                )
+            },
+            onDismiss = { showMoneyOut = false }
+        )
     }
 }
 

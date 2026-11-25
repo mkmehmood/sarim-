@@ -18,6 +18,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import java.time.Instant
 import java.util.Locale
 import kotlin.math.abs
@@ -234,14 +235,17 @@ class SarimEditActions(
         collectedAmount: Double,
         expiredKg: Double,
         expiredUnitPrice: Double,
-        notes: String
+        notes: String,
+        customerPhone: String = ""
     ): Result<String> {
-        if (original.isMerged) return Result.failure(IllegalArgumentException("Merged records cannot be edited"))
+        val blockReason = SalesAnalyticsEngine.getSaleBlockReason(snapshot, original, forEdit = true)
+        if (blockReason.isNotBlank()) return Result.failure(IllegalArgumentException(blockReason))
         if (original.isTransfer || original.isRepTransfer) {
             return Result.failure(IllegalArgumentException("Transferred stock entries cannot be edited directly"))
         }
         val cleanCust = InputGuards.sanitizeName(customerName)
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val normType = paymentType.trim().uppercase(Locale.ROOT)
         val storeKey = store?.let(dispatcher::resolvedStoreKey).orEmpty()
         val iso = nowIso()
@@ -253,9 +257,20 @@ class SarimEditActions(
         }
 
         if (original.paymentType == "COLLECTION" || normType == "COLLECTION") {
-            val expVal = InputGuards.round2(expiredKg * expiredUnitPrice)
+            val effExpRate = when {
+                expiredUnitPrice > 0.0 -> InputGuards.round2(expiredUnitPrice)
+                expiredKg > 0.0 -> SalesAnalyticsEngine.computeGoodsCreditUnitPrice(cleanCust, snapshot, excludeSaleId = original.id, fallbackStore = store)
+                else -> 0.0
+            }
+            val custOut = SalesAnalyticsEngine.computeCustomerOutstanding(cleanCust, snapshot, excludeSaleId = original.id)
+            val gp = if (expiredKg > 0.0) {
+                SalesAnalyticsEngine.planGoodsCredit(expiredKg, effExpRate, max(0.0, custOut - collectedAmount))
+            } else {
+                SalesAnalyticsEngine.GoodsCreditPlan(0.0, 0.0, false)
+            }
+            val expVal = gp.value
             val totalPool = InputGuards.round2(collectedAmount + expVal)
-            if (totalPool <= 0.0) {
+            if (collectedAmount <= 0.0 && expiredKg <= 0.0) {
                 return Result.failure(IllegalArgumentException("Enter collected amount or expired kg"))
             }
             val origExpApplied = if (original.expiredQty > 0.0) original.expiredApplied else 0.0
@@ -353,6 +368,7 @@ class SarimEditActions(
                 date = date,
                 supplyDate = date,
                 customerName = cleanCust,
+                customerPhone = cleanPhone.ifBlank { original.customerPhone },
                 supplyStore = storeKey,
                 salesRep = salesRep.ifBlank { "NONE" },
                 collectedAmount = InputGuards.round2(collectedAmount),
@@ -362,7 +378,7 @@ class SarimEditActions(
                 allocationFull = newPlan.mapValues { it.value.second },
                 expiredQty = InputGuards.round2(expiredKg),
                 expiredValue = expVal,
-                expiredUnitPrice = InputGuards.round2(expiredUnitPrice),
+                expiredUnitPrice = effExpRate,
                 expiredApplied = if (expiredKg > 0.0) expiredKg else 0.0,
                 expiredAllocated = expAppliedAmt,
                 notes = cleanNotes,
@@ -407,8 +423,22 @@ class SarimEditActions(
             if (quantityKg <= 0.0 && expiredKg <= 0.0) {
                 return Result.failure(IllegalArgumentException("Enter returned or expired kg"))
             }
+            val cleanRep = salesRep.trim().takeIf { it.isNotBlank() && !it.equals("NONE", true) } ?: cleanCust
+            val pendingInfo = SalesAnalyticsEngine.computeRepReturnPendingInfo(cleanRep, snapshot, excludeReturnId = original.id)
+            val totalBack = InputGuards.round3(expiredKg + quantityKg)
+            if (pendingInfo.pendingDeliveredKg > 0.0 && pendingInfo.alreadyReturnedKg + totalBack > pendingInfo.pendingDeliveredKg + 0.001) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "Cannot return ${InputGuards.formatKg(totalBack)}. Remaining pending deliveries: ${InputGuards.formatKg(pendingInfo.remainingDeliverableKg)}."
+                    )
+                )
+            }
             val cleanNotes = InputGuards.sanitizeNotes(notes)
-            val retVal = InputGuards.round2((quantityKg + expiredKg) * unitPrice)
+            val retUnit = if (unitPrice > 0.0) InputGuards.round2(unitPrice)
+            else SalesAnalyticsEngine.computeGoodsCreditUnitPrice(cleanRep, snapshot, excludeSaleId = original.id, fallbackStore = store)
+            val custOut = SalesAnalyticsEngine.computeCustomerOutstanding(cleanRep, snapshot, excludeSaleId = original.id)
+            val repPlan = SalesAnalyticsEngine.planGoodsCredit(totalBack, retUnit, if (custOut >= 0.0) custOut else null)
+            val retVal = repPlan.value
             val diff = FinanceEngine.buildEditDiff(
                 listOf("date" to "Date", "returnedQty" to "Returned", "expiredQty" to "Expired", "returnValue" to "Value", "notes" to "Notes"),
                 mapOf("date" to original.date, "returnedQty" to original.returnedQty, "expiredQty" to original.expiredQty, "returnValue" to original.returnValue, "notes" to original.notes),
@@ -416,11 +446,12 @@ class SarimEditActions(
             )
             val updated = original.copy(
                 date = date,
-                customerName = cleanCust,
-                salesRep = salesRep.ifBlank { original.salesRep },
+                supplyDate = date,
+                customerName = cleanRep,
+                salesRep = cleanRep,
                 returnedQty = InputGuards.round2(quantityKg),
                 expiredQty = InputGuards.round2(expiredKg),
-                unitPrice = InputGuards.round2(unitPrice),
+                unitPrice = if (retVal > 0.0) retUnit else 0.0,
                 returnValue = retVal,
                 notes = cleanNotes,
                 updatedAtEpoch = System.currentTimeMillis(),
@@ -432,7 +463,7 @@ class SarimEditActions(
                 profile = snapshot.profile,
                 targetCollection = "sales",
                 docId = original.id,
-                summaryTitle = "Edit Rep Return: $cleanCust",
+                summaryTitle = "Edit Rep Return: $cleanRep",
                 summaryDetail = "$date • ${InputGuards.formatKg(quantityKg)}",
                 payload = WorkspaceJsonCodec.saleToMap(updated),
                 isEdit = true
@@ -444,6 +475,19 @@ class SarimEditActions(
             return Result.failure(IllegalArgumentException("Quantity and unit price must be greater than 0"))
         }
         val effSupplyDate = supplyDate.ifBlank { date }
+        if (store != null) {
+            val stockTile = SalesAnalyticsEngine.computeDateStockTile(snapshot, store, effSupplyDate, quantityKg, excludeSaleId = original.id)
+            if (stockTile.totalInKg <= 0.0) {
+                return Result.failure(IllegalArgumentException("No production or returns for ${store.name} on $effSupplyDate."))
+            }
+            if (stockTile.availableKg - quantityKg < -1e-6) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "Insufficient stock! Available: ${InputGuards.formatKg(max(0.0, stockTile.availableKg))}, Requested: ${InputGuards.formatKg(quantityKg)}"
+                    )
+                )
+            }
+        }
         val sameCostBasis = storeKey.equals(original.supplyStore, ignoreCase = true) && effSupplyDate == original.supplyDate.ifBlank { original.date }
         val costLookup = if (sameCostBasis && original.quantity > 0.0 && original.totalCost > 0.0) {
             FormulaEngine.CostLookupResult(InputGuards.round2(original.totalCost / original.quantity), original.costSource.ifBlank { "store-average" })
@@ -498,6 +542,7 @@ class SarimEditActions(
             date = date,
             supplyDate = effSupplyDate,
             customerName = cleanCust,
+            customerPhone = cleanPhone.ifBlank { original.customerPhone },
             supplyStore = storeKey,
             paymentType = normType,
             salesRep = salesRep.ifBlank { "NONE" },

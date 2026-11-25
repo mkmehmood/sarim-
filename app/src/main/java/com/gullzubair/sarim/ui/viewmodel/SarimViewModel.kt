@@ -313,16 +313,22 @@ class SarimViewModel(
         expiredKg: Double,
         choraRate: Double,
         addToLedger: Boolean,
-        notes: String
+        notes: String,
+        customerPhone: String = ""
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
             handleResult(
                 dispatcher.saveSaleOrCollection(
                     snap, date, supplyDate, paymentType, customer, store, rep,
-                    qty, rate, expiredKg, choraRate, collectedAmount, addToLedger, notes
+                    qty, rate, expiredKg, choraRate, collectedAmount, addToLedger, notes, customerPhone
                 ),
-                "Sales record saved"
+                when (paymentType.uppercase()) {
+                    "REP_RETURN" -> "Rep return saved"
+                    "COLLECTION" -> "Collection saved"
+                    "MONEY_OUT" -> "Money out saved"
+                    else -> "Sales record saved"
+                }
             )
         }
     }
@@ -604,13 +610,14 @@ class SarimViewModel(
         expiredKg: Double,
         expiredUnitPrice: Double,
         notes: String,
+        customerPhone: String = "",
         onSuccess: () -> Unit = {}
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
             val res = editActions.editSaleOrCollection(
                 snap, original, date, supplyDate, paymentType, customerName, store, salesRep,
-                quantityKg, unitPrice, collectedAmount, expiredKg, expiredUnitPrice, notes
+                quantityKg, unitPrice, collectedAmount, expiredKg, expiredUnitPrice, notes, customerPhone
             )
             handleResult(res, "Sales record updated")
             if (res.isSuccess) onSuccess()
