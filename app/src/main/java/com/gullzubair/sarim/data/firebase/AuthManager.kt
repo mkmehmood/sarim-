@@ -13,11 +13,14 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
 import com.gullzubair.sarim.R
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
@@ -116,6 +119,48 @@ fun onGoogleSignInClicked(
         } catch (e: Exception) {
             Log.e(TAG, "Google Sign-In failed", e)
             onAuthError(e.localizedMessage ?: "Sign in failed")
+        }
+    }
+}
+
+fun onEmailPasswordSignInClicked(
+    email: String,
+    password: String,
+    onAuthSuccess: () -> Unit,
+    onAuthError: (String) -> Unit,
+    scope: CoroutineScope
+) {
+    val cleanEmail = email.trim()
+    if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+        onAuthError("Please enter a valid email address.")
+        return
+    }
+    if (password.isBlank()) {
+        onAuthError("Please enter your password.")
+        return
+    }
+    scope.launch {
+        try {
+            val credential = EmailAuthProvider.getCredential(cleanEmail, password)
+            Firebase.auth.signInWithCredential(credential).await()
+            onAuthSuccess()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FirebaseAuthException) {
+            Log.w(TAG, "Email/Password sign-in failed (${e.errorCode}): ${e.message}")
+            val message = when (e.errorCode) {
+                "ERROR_INVALID_EMAIL" -> "The email address format is invalid."
+                "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL" -> "Incorrect email or password."
+                "ERROR_USER_NOT_FOUND" -> "No account found for this email. Contact the administrator to add yours."
+                "ERROR_USER_DISABLED" -> "This account has been disabled by the administrator."
+                "ERROR_OPERATION_NOT_ALLOWED" -> "Email/Password sign-in is not enabled on Firebase Console yet."
+                "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Please wait a moment and try again."
+                else -> e.localizedMessage ?: "Email sign-in failed."
+            }
+            onAuthError(message)
+        } catch (e: Exception) {
+            Log.e(TAG, "Email/Password sign-in failed", e)
+            onAuthError(e.localizedMessage ?: "Email sign-in failed.")
         }
     }
 }
