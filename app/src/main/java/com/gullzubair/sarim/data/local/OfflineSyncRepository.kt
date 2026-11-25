@@ -29,7 +29,10 @@ import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
@@ -38,6 +41,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class OfflineSyncRepository(private val dao: OfflineDao) {
 
     companion object {
@@ -91,7 +95,7 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
     fun observeCachedWorkspaceSnapshot(profile: UserProfile): Flow<WorkspaceSnapshot?> {
         val ownerUid = profile.effectiveOwnerUid
         return combine(
-            dao.observeAllKv(),
+            dao.observeKvMeta().mapLatest { dao.getAllKvOnce() },
             dao.observeOutboxCount(ownerUid)
         ) { kvList, pendingCount ->
             val map = kvList.associate { it.key to it.valueJson }
@@ -101,12 +105,23 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
             } else {
                 decodeSnapshot(profile, map, pendingCount)
             }
-        }.flowOn(Dispatchers.Default)
+        }
+            .catch { e ->
+                if (e is CancellationException) throw e
+                emit(null) // never let a local-cache read failure crash the app; live data still flows
+            }
+            .flowOn(Dispatchers.Default)
     }
 
     suspend fun getWorkspaceSnapshotOnce(profile: UserProfile): WorkspaceSnapshot? = withContext(Dispatchers.Default) {
         val ownerUid = profile.effectiveOwnerUid
-        val kvList = dao.getAllKvOnce()
+        val kvList = try {
+            dao.getAllKvOnce()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@withContext null
+        }
         if (kvList.isEmpty()) return@withContext null
         val map = kvList.associate { it.key to it.valueJson }
         val storedOwner = map[KV_OWNER_UID]?.trim('"')

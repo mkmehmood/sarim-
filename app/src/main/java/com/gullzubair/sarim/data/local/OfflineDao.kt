@@ -18,14 +18,27 @@ interface OfflineDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProfile(entity: CachedProfileEntity)
 
-    @Query("SELECT * FROM kv_store")
-    fun observeAllKv(): Flow<List<KvStoreEntity>>
+    // NOTE: never `SELECT *` / `valueJson` straight from kv_store. A single row (e.g. the
+    // "photos" map of base64 images) can exceed the ~2 MB CursorWindow, which throws
+    // SQLiteBlobTooBigException and crash-loops the app. Values are read in bounded chunks.
+    @Query("SELECT `key` AS `key`, LENGTH(valueJson) AS valueLength, updatedAtEpochMs FROM kv_store")
+    fun observeKvMeta(): Flow<List<KvMeta>>
 
-    @Query("SELECT * FROM kv_store")
-    suspend fun getAllKvOnce(): List<KvStoreEntity>
+    @Query("SELECT `key` AS `key`, LENGTH(valueJson) AS valueLength, updatedAtEpochMs FROM kv_store")
+    suspend fun getKvMeta(): List<KvMeta>
 
-    @Query("SELECT * FROM kv_store WHERE `key` = :key LIMIT 1")
-    suspend fun getKv(key: String): KvStoreEntity?
+    @Query("SELECT `key` AS `key`, LENGTH(valueJson) AS valueLength, updatedAtEpochMs FROM kv_store WHERE `key` = :key LIMIT 1")
+    suspend fun getKvMetaFor(key: String): KvMeta?
+
+    @Query("SELECT SUBSTR(valueJson, :start, :length) FROM kv_store WHERE `key` = :key")
+    suspend fun getKvChunk(key: String, start: Int, length: Int): String?
+
+    /** Consistent (single transaction) snapshot of every kv row, safe for oversized rows. */
+    @Transaction
+    suspend fun getAllKvOnce(): List<KvStoreEntity> = getKvMeta().map { readKvValue(it) }
+
+    @Transaction
+    suspend fun getKv(key: String): KvStoreEntity? = getKvMetaFor(key)?.let { readKvValue(it) }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putKv(entity: KvStoreEntity)
@@ -64,4 +77,31 @@ interface OfflineDao {
     suspend fun replaceKvKeys(updates: List<KvStoreEntity>) {
         if (updates.isNotEmpty()) putKvBatch(updates)
     }
+}
+
+/** Lightweight kv_store row descriptor (no payload) used to read big values in chunks. */
+data class KvMeta(
+    val key: String,
+    val valueLength: Long,
+    val updatedAtEpochMs: Long
+)
+
+/** Max characters fetched per query; at <= 4 bytes/char this stays well under the 2 MB CursorWindow. */
+const val KV_CHUNK_CHARS = 250_000
+
+internal suspend fun OfflineDao.readKvValue(meta: KvMeta): KvStoreEntity {
+    val total = meta.valueLength
+    if (total <= KV_CHUNK_CHARS) {
+        val whole = getKvChunk(meta.key, 1, KV_CHUNK_CHARS).orEmpty()
+        return KvStoreEntity(meta.key, whole, meta.updatedAtEpochMs)
+    }
+    val sb = StringBuilder(total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+    var start = 1
+    while (start <= total) {
+        val chunk = getKvChunk(meta.key, start, KV_CHUNK_CHARS) ?: break
+        if (chunk.isEmpty()) break
+        sb.append(chunk)
+        start += KV_CHUNK_CHARS
+    }
+    return KvStoreEntity(meta.key, sb.toString(), meta.updatedAtEpochMs)
 }
