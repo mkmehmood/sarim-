@@ -99,10 +99,10 @@ jobs:
               for c in data.get("client", [])
           ]
           print(f"Firebase config loaded from {source} (project_id={project_id}, clients={pkgs})")
-          if "com.gullzubair.sarim" not in pkgs:
+          if "com.sarim.dealersapp" not in pkgs:
               print(
                   f"::error::app/google-services.json from {source} has clients {pkgs} (project_id={project_id}), "
-                  "but applicationId requires 'com.gullzubair.sarim'. Update your GitHub Actions secret "
+                  "but applicationId requires 'com.sarim.dealersapp'. Update your GitHub Actions secret "
                   "GOOGLE_SERVICES_JSON (or GOOGLE_SERVICES_JSON_BASE64) with the new google-services.json."
               )
               sys.exit(1)
