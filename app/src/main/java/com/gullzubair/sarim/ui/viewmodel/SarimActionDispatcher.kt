@@ -185,6 +185,79 @@ class SarimActionDispatcher(
         )
     }
 
+    /**
+     * Cash paid out to a customer. It adds to what the customer owes (or reduces their credit)
+     * and, when mirrored, lowers cash in hand through a Daily Ledger OUT entry. It never touches stock.
+     */
+    suspend fun saveMoneyOut(
+        snapshot: WorkspaceSnapshot,
+        date: String,
+        customerName: String,
+        amount: Double,
+        addToLedger: Boolean,
+        notes: String
+    ): Result<String> {
+        val cleanCustomer = InputGuards.sanitizeName(customerName)
+        if (cleanCustomer.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val amt = InputGuards.round2(amount)
+        if (amt <= 0.0) return Result.failure(IllegalArgumentException("Enter an amount greater than zero"))
+        if (amt > 1_000_000_000.0) return Result.failure(IllegalArgumentException("Amount is too large"))
+        val members = memberUids(snapshot)
+        val isAdmin = snapshot.profile.role == "admin" || snapshot.profile.uid == snapshot.profile.workspaceOwnerUid
+        val saleId = "sale_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(5)}"
+        val cleanNotes = InputGuards.sanitizeNotes(notes)
+
+        var ledgerId = ""
+        if (addToLedger && isAdmin) {
+            ledgerId = ops.saveLedgerMirror(
+                profile = snapshot.profile,
+                memberUids = members,
+                date = date,
+                entryType = "OUT",
+                expenseScope = "none",
+                channel = "Cash",
+                category = "Miscellaneous Business",
+                partyName = cleanCustomer,
+                amount = amt,
+                sourceCollection = "sales",
+                sourceDocId = saleId,
+                notes = cleanNotes.ifBlank { "Money out to customer" }
+            ).getOrDefault("")
+        }
+
+        val existingCustomer = snapshot.customers.firstOrNull { !it.recycled && it.name.equals(cleanCustomer, true) }
+        return ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            memberUids = members,
+            targetCollection = "sales",
+            docId = saleId,
+            summaryTitle = "Money Out: $cleanCustomer",
+            summaryDetail = "$date • ${InputGuards.formatMoney(amt)}",
+            recordDate = date,
+            payload = mapOf(
+                "date" to date,
+                "mode" to "money_out",
+                "customerId" to (existingCustomer?.id ?: ""),
+                "customerName" to cleanCustomer,
+                "storeKey" to "",
+                "storeName" to "",
+                "repName" to "NONE",
+                "qtyKg" to 0.0,
+                "ratePerKg" to 0.0,
+                "totalAmount" to amt,
+                "cashReceived" to 0.0,
+                "creditAmount" to 0.0,
+                "expiredKg" to 0.0,
+                "choraValue" to 0.0,
+                "addToLedger" to (addToLedger && isAdmin),
+                "ledgerEntryId" to ledgerId,
+                "notes" to cleanNotes,
+                "recycled" to false,
+                "recycledAtEpoch" to 0L
+            )
+        )
+    }
+
     suspend fun saveRepRecord(
         snapshot: WorkspaceSnapshot,
         date: String,

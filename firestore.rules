@@ -215,7 +215,7 @@ service cloud.firestore {
       return data.ownerUid == ownerId &&
              isValidMemberUids(data.memberUids, ownerId) &&
              isBoundedStr(data.date, 8, 20) &&
-             data.mode in ['sale', 'collection'] &&
+             data.mode in ['sale', 'collection', 'money_out'] &&
              (!('customerId' in data) || isBoundedStr(data.customerId, 0, 128)) &&
              isBoundedStr(data.customerName, 1, 80) &&
              isBoundedStr(data.storeKey, 0, 64) &&

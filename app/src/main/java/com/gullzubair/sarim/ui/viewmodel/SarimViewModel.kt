@@ -188,6 +188,13 @@ class SarimViewModel(
         }
     }
 
+    fun submitMoneyOut(date: String, customer: String, amount: Double, addToLedger: Boolean, notes: String) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            handleResult(dispatcher.saveMoneyOut(snap, date, customer, amount, addToLedger, notes), "Money out recorded")
+        }
+    }
+
     fun submitRepRecord(date: String, repName: String, mode: String, customer: String, store: StoreConfig?, qty: Double, rate: Double, cash: Double, lat: Double?, lng: Double?, confirmed: Boolean, notes: String) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
@@ -451,9 +458,14 @@ class SarimViewModel(
             val members = snap.teamMembers.map { it.uid }
             val ledgerIds = snap.ledgerEntries.filter { !it.recycled }.map { it.id }.toSet()
             var repaired = 0
-            snap.sales.filter { !it.recycled && it.addToLedger && it.cashReceived > 0 && (it.ledgerEntryId.isNullOrBlank() || it.ledgerEntryId !in ledgerIds) }
+            snap.sales.filter { !it.recycled && it.addToLedger && it.mode != "money_out" && it.cashReceived > 0 && (it.ledgerEntryId.isNullOrBlank() || it.ledgerEntryId !in ledgerIds) }
                 .forEach { sale ->
                     ops.saveLedgerMirror(snap.profile, members, sale.date, "IN", "none", "Cash", "Sales Receipt", sale.customerName, sale.cashReceived, "sales", sale.id, "Auto-repaired")
+                    repaired++
+                }
+            snap.sales.filter { !it.recycled && it.addToLedger && it.mode == "money_out" && it.totalAmount > 0 && (it.ledgerEntryId.isNullOrBlank() || it.ledgerEntryId !in ledgerIds) }
+                .forEach { sale ->
+                    ops.saveLedgerMirror(snap.profile, members, sale.date, "OUT", "none", "Cash", "Miscellaneous Business", sale.customerName, sale.totalAmount, "sales", sale.id, "Auto-repaired")
                     repaired++
                 }
             snap.transactions.filter { !it.recycled && it.addToLedger && it.amount > 0 && it.txType in listOf("in", "out", "expense") && (it.ledgerEntryId.isNullOrBlank() || it.ledgerEntryId !in ledgerIds) }

@@ -307,6 +307,38 @@ test("Workspace business collections: Kotlin payloads, owner unfiltered list, me
     })
   );
 
+  // Money Out: a sales doc with mode money_out is accepted, an unknown mode is rejected
+  const moneyOutDoc = {
+    ownerUid: ALICE_UID,
+    memberUids: [ALICE_UID],
+    date: "2026-11-24",
+    mode: "money_out",
+    customerName: "Khan Traders",
+    storeKey: "",
+    repName: "NONE",
+    qtyKg: 0,
+    ratePerKg: 0,
+    totalAmount: 5000.0,
+    cashReceived: 0,
+    creditAmount: 0,
+    expiredKg: 0,
+    choraValue: 0,
+    addToLedger: true,
+    ledgerEntryId: "ldg_1",
+    notes: "Advance",
+    recycled: false,
+    recycledAtEpoch: 0,
+    createdByUid: ALICE_UID,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await assertSucceeds(
+    alice.collection("users").doc(ALICE_UID).collection("sales").doc("sale_money_out_1").set(moneyOutDoc)
+  );
+  await assertFails(
+    alice.collection("users").doc(ALICE_UID).collection("sales").doc("sale_bad_mode").set({ ...moneyOutDoc, mode: "refund" })
+  );
+
   // Partial update on production preserving createdAt succeeds; mutating createdAt fails
   await assertSucceeds(
     alice.collection("users").doc(ALICE_UID).collection("production").doc("prod_1").update({

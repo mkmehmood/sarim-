@@ -195,6 +195,7 @@ object FinanceEngine {
             when (it.mode) {
                 "sale" -> it.creditAmount
                 "collection" -> -(it.cashReceived + it.choraValue)
+                "money_out" -> it.totalAmount
                 else -> 0.0
             }
         }

@@ -69,7 +69,10 @@ fun CustomerDetailScreen(
         if (opening != 0.0) {
             list.add(StatementRow("Opening", "Opening Balance", if (opening > 0) InputGuards.formatNum(opening) else "-", "-", InputGuards.formatNum(running)))
         }
-        val combined = (sales.map { Triple(it.date, "Direct ${it.mode} ${InputGuards.formatKg(it.qtyKg)}", it.creditAmount to (it.cashReceived + it.choraValue)) } +
+        val combined = (sales.map {
+            if (it.mode == "money_out") Triple(it.date, "Money Out", it.totalAmount to 0.0)
+            else Triple(it.date, "Direct ${it.mode} ${InputGuards.formatKg(it.qtyKg)}", it.creditAmount to (it.cashReceived + it.choraValue))
+        } +
             rep.map { Triple(it.date, "Rep ${it.mode} (${it.repName})", it.creditAmount to if (it.mode == "return") it.totalAmount else it.cashReceived) })
             .sortedBy { it.first }
         combined.forEach { (date, desc, pair) ->

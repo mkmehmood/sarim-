@@ -164,7 +164,7 @@ data class SalesRecord(
     val ownerUid: String = "",
     val memberUids: List<String> = emptyList(),
     val date: String = "",
-    val mode: String = "sale", // sale | collection
+    val mode: String = "sale", // sale | collection | money_out (cash paid to the customer; totalAmount holds the amount)
     val customerId: String? = null,
     val customerName: String = "",
     val storeKey: String = "",

@@ -147,7 +147,7 @@ fun SalesScreen(
                     item {
                         SarimCard {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("sale" to "New Sale", "collection" to "Collection / Return").forEach { (key, title) ->
+                                listOf("sale" to "New Sale", "collection" to "Collection / Return", "money_out" to "Money Out").forEach { (key, title) ->
                                     val selected = mode == key
                                     Surface(
                                         onClick = { mode = key },
@@ -223,13 +223,23 @@ fun SalesScreen(
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                DecimalField("Cash Received", cashStr, { cashStr = it }, "sales_cash_input", Modifier.weight(1f))
-                                DecimalField("Expired -> CHORA", expiredStr, { expiredStr = it }, "sales_expired_input", Modifier.weight(1f), "kg")
+                            if (mode == "money_out") {
+                                Text(
+                                    "Cash paid out to the customer. It is added to what they owe (or reduces their credit).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = accents.textMuted
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                DecimalField("Amount Paid Out", cashStr, { cashStr = it }, "sales_cash_input", Modifier.fillMaxWidth())
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    DecimalField("Cash Received", cashStr, { cashStr = it }, "sales_cash_input", Modifier.weight(1f))
+                                    DecimalField("Expired -> CHORA", expiredStr, { expiredStr = it }, "sales_expired_input", Modifier.weight(1f), "kg")
+                                }
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Mirror cash in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
+                                Text(if (mode == "money_out") "Add to Daily Ledger (Cash Out)" else "Mirror cash in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
                                 Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("sales_ledger_switch"))
                             }
                             SarimPillInput(
@@ -241,20 +251,38 @@ fun SalesScreen(
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Bill / Chora", InputGuards.formatMoney(if (mode == "sale") totalAmt else choraValue, currency, masked), accents.cyan, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("New Balance", InputGuards.formatMoney(existingBal + creditAmt - (if (mode == "collection") cash + choraValue else choraValue), currency, masked), accents.gold, Modifier.weight(1f))
+                                SarimHalfRingKpiBox(
+                                    if (mode == "money_out") "Money Out" else "Bill / Chora",
+                                    InputGuards.formatMoney(if (mode == "money_out") InputGuards.round2(cash) else if (mode == "sale") totalAmt else choraValue, currency, masked),
+                                    accents.cyan,
+                                    Modifier.weight(1f)
+                                )
+                                SarimHalfRingKpiBox(
+                                    "New Balance",
+                                    InputGuards.formatMoney(
+                                        if (mode == "money_out") existingBal + cash
+                                        else existingBal + creditAmt - (if (mode == "collection") cash + choraValue else choraValue),
+                                        currency, masked
+                                    ),
+                                    accents.gold,
+                                    Modifier.weight(1f)
+                                )
                             }
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
-                                text = if (mode == "sale") "Save Sale" else "Save Collection",
+                                text = when (mode) { "sale" -> "Save Sale"; "money_out" -> "Save Money Out"; else -> "Save Collection" },
                                 onClick = {
-                                    vm.submitSale(date, mode, customerName, selectedStore, selectedRep, qty, rate, cash, expired, rate, addToLedger, notes)
+                                    if (mode == "money_out") {
+                                        vm.submitMoneyOut(date, customerName, cash, addToLedger, notes)
+                                    } else {
+                                        vm.submitSale(date, mode, customerName, selectedStore, selectedRep, qty, rate, cash, expired, rate, addToLedger, notes)
+                                    }
                                     qtyStr = ""
                                     cashStr = ""
                                     expiredStr = "0"
                                     notes = ""
                                 },
-                                enabled = customerName.isNotBlank() && ((mode == "sale" && qty > 0) || (mode == "collection" && (cash > 0 || expired > 0))),
+                                enabled = customerName.isNotBlank() && ((mode == "sale" && qty > 0) || (mode == "collection" && (cash > 0 || expired > 0)) || (mode == "money_out" && cash > 0)),
                                 testTag = "sales_save_btn"
                             )
                         }
@@ -351,12 +379,18 @@ fun SalesScreen(
                                     ) {
                                         Column(Modifier.weight(1f)) {
                                             Text(s.customerName.uppercase(), style = MaterialTheme.typography.titleSmall)
-                                            Text("${s.mode.uppercase()} • ${s.storeName ?: s.storeKey} • ${InputGuards.formatKg(s.qtyKg)}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                            Text(
+                                                if (s.mode == "money_out") "MONEY OUT${s.notes?.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""}"
+                                                else "${s.mode.uppercase()} • ${s.storeName ?: s.storeKey} • ${InputGuards.formatKg(s.qtyKg)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                         }
                                         Text(
-                                            InputGuards.formatMoney(s.cashReceived, currency, masked),
+                                            if (s.mode == "money_out") "-" + InputGuards.formatMoney(s.totalAmount, currency, masked)
+                                            else InputGuards.formatMoney(s.cashReceived, currency, masked),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.emerald
+                                            color = if (s.mode == "money_out") accents.gold else accents.emerald
                                         )
                                     }
                                 }
@@ -378,19 +412,30 @@ fun SalesScreen(
             content = {
                 HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                 Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatKg(s.qtyKg), style = MaterialTheme.typography.titleSmall)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cash received", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(s.cashReceived, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Credit", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(s.creditAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.gold)
+                if (s.mode == "money_out") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Paid out to customer", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(s.totalAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.gold)
+                    }
+                    if (!s.notes.isNullOrBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(s.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatKg(s.qtyKg), style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Cash received", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(s.cashReceived, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Credit", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(s.creditAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.gold)
+                    }
                 }
             },
             footer = {

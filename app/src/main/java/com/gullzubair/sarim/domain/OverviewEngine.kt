@@ -98,15 +98,16 @@ object OverviewEngine {
         val ledgerIds = snapshot.ledgerEntries.filter { !it.recycled }.map { it.id }.toSet()
 
         // 1. Check sales marked addToLedger without active ledger mirror
-        snapshot.sales.filter { !it.recycled && it.addToLedger && it.cashReceived > 0 }.forEach { sale ->
+        snapshot.sales.filter { !it.recycled && it.addToLedger && (if (it.mode == "money_out") it.totalAmount > 0 else it.cashReceived > 0) }.forEach { sale ->
             if (sale.ledgerEntryId.isNullOrBlank() || sale.ledgerEntryId !in ledgerIds) {
+                val isMoneyOut = sale.mode == "money_out"
                 findings.add(
                     AuditFinding(
                         id = "mirror_sale_${sale.id}",
                         category = "ledger_mirror",
                         severity = "warning",
-                        title = "Missing Ledger Mirror for Sale",
-                        detail = "${sale.date} • ${sale.customerName} (${InputGuards.formatMoney(sale.cashReceived)})",
+                        title = if (isMoneyOut) "Missing Ledger Mirror for Money Out" else "Missing Ledger Mirror for Sale",
+                        detail = "${sale.date} • ${sale.customerName} (${InputGuards.formatMoney(if (isMoneyOut) sale.totalAmount else sale.cashReceived)})",
                         targetId = sale.id
                     )
                 )
