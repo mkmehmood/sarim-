@@ -62,9 +62,8 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
-          if [ -f app/google-services.json ]; then
-            echo "Using checked-in app/google-services.json"
-          elif [ -n "$GOOGLE_SERVICES_JSON" ]; then
+          SOURCE_LABEL=""
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             TRIMMED="$(printf '%s' "$GOOGLE_SERVICES_JSON" | sed 's/^[[:space:]]*//')"
             if printf '%s' "$TRIMMED" | grep -q '^{'; then
               echo "Restoring app/google-services.json from raw GOOGLE_SERVICES_JSON secret"
@@ -73,17 +72,41 @@ jobs:
               echo "Decoding base64 GOOGLE_SERVICES_JSON secret into app/google-services.json"
               printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r\n ' | base64 -d > app/google-services.json
             fi
+            SOURCE_LABEL="GOOGLE_SERVICES_JSON secret"
           elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
             echo "Decoding GOOGLE_SERVICES_JSON_BASE64 secret into app/google-services.json"
             printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '\r\n ' | base64 -d > app/google-services.json
+            SOURCE_LABEL="GOOGLE_SERVICES_JSON_BASE64 secret"
+          elif [ -f app/google-services.json ]; then
+            echo "Using checked-in app/google-services.json"
+            SOURCE_LABEL="checked-in app/google-services.json"
           else
             echo "::error::app/google-services.json is missing (AI Studio omits google-services.json when pushing to GitHub). Add repository secret GOOGLE_SERVICES_JSON in GitHub -> Settings -> Secrets and variables -> Actions."
             exit 1
           fi
-          python3 -m json.tool app/google-services.json >/dev/null || {
-            echo "::error::app/google-services.json is not valid JSON. Check your GOOGLE_SERVICES_JSON secret."
-            exit 1
-          }
+          python3 - "$SOURCE_LABEL" <<'PY'
+          import json, sys
+          source = sys.argv[1]
+          try:
+              with open("app/google-services.json", "r", encoding="utf-8") as f:
+                  data = json.load(f)
+          except Exception as exc:
+              print(f"::error::app/google-services.json ({source}) is not valid JSON: {exc}")
+              sys.exit(1)
+          project_id = data.get("project_info", {}).get("project_id", "<unknown>")
+          pkgs = [
+              c.get("client_info", {}).get("android_client_info", {}).get("package_name", "")
+              for c in data.get("client", [])
+          ]
+          print(f"Firebase config loaded from {source} (project_id={project_id}, clients={pkgs})")
+          if "com.gullzubair.sarim" not in pkgs:
+              print(
+                  f"::error::app/google-services.json from {source} has clients {pkgs} (project_id={project_id}), "
+                  "but applicationId requires 'com.gullzubair.sarim'. Update your GitHub Actions secret "
+                  "GOOGLE_SERVICES_JSON (or GOOGLE_SERVICES_JSON_BASE64) with the new google-services.json."
+              )
+              sys.exit(1)
+          PY
 
       - name: Build & Verify Release and Debug APKs
         run: gradle :app:testDebugUnitTest assembleRelease assembleDebug --no-daemon
