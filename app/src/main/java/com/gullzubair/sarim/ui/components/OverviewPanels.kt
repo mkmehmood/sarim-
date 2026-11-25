@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
@@ -128,24 +129,28 @@ fun OverviewSalesPanel(
         )
 
         if (summary.owedAging.count > 0) {
+            val o = summary.owedAging
             SarimCard {
-                Text("Owed to you (${summary.owedAging.count} open • oldest ${summary.owedAging.oldestDays}d)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Who owes you", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("≤30d: ${InputGuards.formatMoney(summary.owedAging.d30, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.emerald)
-                    Text("31–60d: ${InputGuards.formatMoney(summary.owedAging.d60, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.gold)
-                    Text("60d+: ${InputGuards.formatMoney(summary.owedAging.d90, currency, masked)}", style = MaterialTheme.typography.bodySmall, color = accents.danger)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OverviewOwedTile("Total owed", InputGuards.formatMoney(o.total, currency, masked), "${o.count} sale${if (o.count == 1) "" else "s"}, oldest ${o.oldestDays} days", accents.gold, Modifier.weight(1f))
+                    OverviewOwedTile("Up to 30 days", InputGuards.formatMoney(o.d30, currency, masked), "", accents.emerald, Modifier.weight(1f))
                 }
-                if (summary.owedAging.topCustomers.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    summary.owedAging.topCustomers.forEach { (cust, amt, age) ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("$cust (${age}d)", style = MaterialTheme.typography.bodySmall)
-                            Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.labelMedium, color = accents.danger)
-                        }
-                    }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OverviewOwedTile("31 to 60 days", InputGuards.formatMoney(o.d60, currency, masked), "", accents.gold, Modifier.weight(1f))
+                    OverviewOwedTile("Over 60 days", InputGuards.formatMoney(o.d90, currency, masked), "", accents.danger, Modifier.weight(1f))
                 }
             }
+            OverviewRankedBarsCard(
+                title = "By customer, with age of the oldest sale",
+                items = o.topCustomers.map { (cust, amt, age) -> "$cust (${age}d)" to amt },
+                barColor = accents.gold,
+                currency = currency,
+                masked = masked,
+                showSharePct = false
+            )
         }
 
         OverviewRankedBarsCard("Top customers", summary.topCustomersValue, accents.emerald, currency, masked)
@@ -228,47 +233,6 @@ fun OverviewProdPanel(
         if (summary.formulaCostPerKg.isNotEmpty()) {
             OverviewRankedBarsCard("Formula cost per kg", summary.formulaCostPerKg, accents.purple, currency, masked)
         }
-
-        SectionHeader("Store Inventory & Pricing", "Produced + returned - sold")
-        if (storeSnapshots.isEmpty()) {
-            EmptyStateCard("No stores yet", "Add stores from Store Manager in Settings.")
-        } else {
-            storeSnapshots.forEach { s ->
-                SarimCard {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(s.storeName, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            InputGuards.formatKg(s.availableKg),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (s.availableKg >= 0) accents.emerald else accents.danger
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Produced: ${InputGuards.formatKg(s.producedKg)} • Sold: ${InputGuards.formatKg(s.soldKg)} • Avg Cost: ${InputGuards.formatMoney(s.avgCostPerKg, currency, masked)}/kg",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accents.textMuted
-                    )
-                }
-            }
-        }
-
-        if (unitPools.isNotEmpty()) {
-            SectionHeader("Formula Unit Pools")
-            unitPools.forEach { pool ->
-                SarimCard {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(pool.label, style = MaterialTheme.typography.titleMedium)
-                        Text("${InputGuards.fmtNum(pool.availableUnits)} units free", color = accents.purple, style = MaterialTheme.typography.labelLarge)
-                    }
-                    Text(
-                        "Produced ${InputGuards.fmtNum(pool.producedUnits)} • Used ${InputGuards.fmtNum(pool.usedUnits)} • Cost/unit ${InputGuards.formatMoney(pool.avgUnitCost, currency, masked)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accents.textMuted
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -298,45 +262,6 @@ fun OverviewMoneyPanel(
         )
 
         OverviewRankedBarsCard("Expenses by category", summary.expenseCategories, accents.gold, currency, masked)
-
-        SarimCard {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Economic Health Balance Sheet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                if (isAdmin) {
-                    Surface(
-                        onClick = onOpenDailyLedger,
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.softPillFill,
-                        border = BorderStroke(1.dp, accents.emerald),
-                        modifier = Modifier.testTag("overview_open_ledger_btn")
-                    ) {
-                        Text("Cashbook", style = MaterialTheme.typography.labelLarge, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            listOf(
-                "Cash & Bank Channels" to health.cashInHand,
-                "Raw Material Stock" to health.rawMaterialValue,
-                "Formula Unit Pools" to health.formulaUnitsValue,
-                "Finished Store Stock" to health.finishedStockValue,
-                "Customer Receivables" to health.customerReceivables,
-                "Entity Receivables" to health.entityReceivables,
-                "Supplier & Entity Payables" to -health.totalLiabilities,
-                "Net Working Capital" to health.netWorkingCapital
-            ).forEach { (label, amt) ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        InputGuards.formatMoney(amt, currency, masked),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (amt >= 0) accents.emerald else accents.danger
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text("Current Liquidity Ratio: ${health.currentRatio}x", style = MaterialTheme.typography.labelMedium, color = accents.cyan)
-        }
     }
 }
 
@@ -349,15 +274,12 @@ fun OverviewStockPanel(
     masked: Boolean
 ) {
     val accents = LocalSarimAccents.current
-    val materials = remember(snapshot.inventory) {
-        FinanceEngine.materialRecords(snapshot.inventory).sortedBy { it.name.lowercase() }
-    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OverviewRankedBarsCard("Stock by value", summary.stockByValue, accents.purple, currency, masked)
 
         if (summary.outOfStockNames.isNotEmpty()) {
             SarimCard(accentBorder = accents.danger.copy(alpha = 0.45f)) {
-                Text("Out of stock (${summary.outOfStockNames.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
+                Text("Out of stock", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     summary.outOfStockNames.forEach { name ->
@@ -368,28 +290,6 @@ fun OverviewStockPanel(
                         ) {
                             Text(name, style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                         }
-                    }
-                }
-            }
-        }
-
-        if (materials.isEmpty()) {
-            EmptyStateCard("No raw materials tracked", "Record a Raw Material Purchase from Factory or Drawer.")
-        } else {
-            materials.forEach { item ->
-                val low = item.quantity <= 0.0
-                SarimCard(accentBorder = if (low) accents.gold else null) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = if (low) accents.gold else accents.emerald)
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                val unitDesc = if (item.purchaseUnitName.isNotBlank()) " (${item.purchaseUnitName} = ${InputGuards.fmtNum(item.conversionFactor)} kg)" else ""
-                                Text("Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg$unitDesc", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                            }
-                        }
-                        Text(InputGuards.formatKg(item.quantity), style = MaterialTheme.typography.titleMedium, color = if (low) accents.gold else accents.emerald)
                     }
                 }
             }
@@ -417,15 +317,15 @@ fun OverviewChecksPanel(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (p.count > 0) {
             SarimCard {
-                Text("Profit Analysis", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Profit and data check", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${p.losingCount} of ${p.count} sales made a loss (${InputGuards.formatMoney(-p.losingSum, currency, masked)}). The other ${p.gainingCount} earned ${InputGuards.formatMoney(p.gainingSum, currency, masked)}, net ${InputGuards.formatMoney(p.net, currency, masked)}.",
+                    "${p.losingCount} of ${p.count} sales made a loss, losing ${InputGuards.formatMoney(-p.losingSum, currency, masked)} in total. The other ${p.gainingCount} earned ${InputGuards.formatMoney(p.gainingSum, currency, masked)}, so the net is ${InputGuards.formatMoney(p.net, currency, masked)}.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Avg selling price ${InputGuards.formatMoney(p.avgPrice, currency, masked)}/kg vs avg cost ${InputGuards.formatMoney(p.avgCost, currency, masked)}/kg.",
+                    "Average selling price was ${InputGuards.fmtNum(p.avgPrice)} per kg against an average cost of ${InputGuards.fmtNum(p.avgCost)} per kg${if (p.avgPrice < p.avgCost) ", so on average you sold below cost" else ""}.",
                     style = MaterialTheme.typography.bodySmall,
                     color = accents.textMuted
                 )
@@ -457,9 +357,9 @@ fun OverviewChecksPanel(
             }
             if (p.worstLosses.isNotEmpty()) {
                 SarimCard(accentBorder = accents.danger.copy(alpha = 0.45f)) {
-                    Text("Biggest losses (${p.worstLosses.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
+                    Text("Biggest losses", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
                     Spacer(Modifier.height(8.dp))
-                    p.worstLosses.take(6).forEach { w ->
+                    p.worstLosses.forEach { w ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -479,6 +379,10 @@ fun OverviewChecksPanel(
                             }
                             Spacer(Modifier.width(8.dp))
                             Text(InputGuards.formatMoney(w.profit, currency, masked), style = MaterialTheme.typography.labelLarge, color = accents.danger)
+                            Spacer(Modifier.width(8.dp))
+                            Surface(shape = RoundedCornerShape(12.dp), color = accents.softPillFill, border = BorderStroke(1.dp, accents.emerald)) {
+                                Text("Open", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                            }
                         }
                         HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
                     }
@@ -490,10 +394,10 @@ fun OverviewChecksPanel(
         SarimCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Data Problems & Integrity", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Data problems", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Text(
-                        if (a.findings.isEmpty()) "Scanned ${a.scannedTotal} records — all checks passed"
-                        else "${a.findings.size} of ${a.scannedTotal} records need attention (${a.errors} errors • ${a.warnings} warnings)",
+                        if (a.findings.isEmpty()) "No problems found in ${a.scannedTotal} records."
+                        else "${a.findings.size} of ${a.scannedTotal} records need attention: ${a.errors} with errors and ${a.warnings} with warnings. Errors break totals or links; warnings are unusual but may be intentional.",
                         style = MaterialTheme.typography.bodySmall,
                         color = accents.textMuted
                     )
@@ -525,7 +429,7 @@ fun OverviewChecksPanel(
                     modifier = Modifier.testTag("overview_fix_one_by_one_btn")
                 ) {
                     Text(
-                        "Fix one by one (${a.findings.size})",
+                        "Fix one by one",
                         style = MaterialTheme.typography.labelLarge,
                         color = accents.emerald,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -546,7 +450,7 @@ fun OverviewChecksPanel(
                             modifier = Modifier.testTag("ov_check_${chk.code}")
                         ) {
                             Text(
-                                "${chk.label} (${chk.count})",
+                                "${chk.label}  ${chk.count}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = col,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -639,10 +543,10 @@ fun OverviewActivityPanel(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.background(accents.inputFill).padding(vertical = 6.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("Month", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(64.dp))
-                        Text("Prod kg", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(68.dp))
+                        Text("Produced kg", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(68.dp))
                         Text("Sales", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(78.dp))
-                        Text("Net Profit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(78.dp))
-                        Text("Sales Profit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(78.dp))
+                        Text("Net profit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(78.dp))
+                        Text("Sales profit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(78.dp))
                         Text("In", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(74.dp))
                         Text("Out", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(74.dp))
                         Text("Expenses", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(74.dp))
@@ -662,6 +566,23 @@ fun OverviewActivityPanel(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun OverviewOwedTile(label: String, value: String, sub: String, color: Color, modifier: Modifier = Modifier) {
+    val accents = LocalSarimAccents.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = color.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.40f))
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)
+            Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 2)
         }
     }
 }
