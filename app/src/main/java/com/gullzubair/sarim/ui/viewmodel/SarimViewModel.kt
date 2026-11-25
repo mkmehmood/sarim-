@@ -9,14 +9,21 @@ import com.gullzubair.sarim.data.firebase.AppRepository
 import com.gullzubair.sarim.data.firebase.WorkspaceOperations
 import com.gullzubair.sarim.data.firebase.unwrapFirestoreError
 import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.data.model.CalculatorRecord
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.EntityRecord
+import com.gullzubair.sarim.data.model.ExpenseRecord
+import com.gullzubair.sarim.data.model.FactoryRecord
 import com.gullzubair.sarim.data.model.FormulaConfig
 import com.gullzubair.sarim.data.model.FormulaIngredient
+import com.gullzubair.sarim.data.model.InventoryRecord
 import com.gullzubair.sarim.data.model.MainTab
+import com.gullzubair.sarim.data.model.PaymentTransaction
 import com.gullzubair.sarim.data.model.PendingApproval
+import com.gullzubair.sarim.data.model.ProductionRecord
 import com.gullzubair.sarim.data.model.ReturnRecord
+import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.SavedCalcRecord
 import com.gullzubair.sarim.data.model.StoreConfig
 import com.gullzubair.sarim.data.model.UiState
@@ -52,6 +59,8 @@ class SarimViewModel(
 
     private val ops = WorkspaceOperations(repo)
     private val dispatcher = SarimActionDispatcher(repo, ops)
+    private val editActions = SarimEditActions(repo, ops, dispatcher)
+    private val calcAndRepairActions = SarimCalcAndRepairActions(repo, ops, dispatcher)
 
     private val _selectedTab = MutableStateFlow(MainTab.OVERVIEW)
     val selectedTab: StateFlow<MainTab> = _selectedTab.asStateFlow()
@@ -236,10 +245,44 @@ class SarimViewModel(
         }
     }
 
-    fun submitProduction(date: String, store: StoreConfig, gross: Double, container: Double, units: Double, costPerKg: Double, notes: String, photoDataUri: String? = null) {
+    fun submitProduction(
+        date: String,
+        store: StoreConfig,
+        gross: Double,
+        container: Double,
+        units: Double,
+        costPerKg: Double,
+        notes: String,
+        photoDataUri: String? = null,
+        photoDataUris: List<String> = emptyList()
+    ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            handleResult(dispatcher.saveProduction(snap, date, store, gross, container, units, costPerKg, notes, photoDataUri), "Production saved")
+            handleResult(
+                dispatcher.saveProduction(snap, date, store, gross, container, units, costPerKg, notes, photoDataUri, photoDataUris),
+                "Production saved"
+            )
+        }
+    }
+
+    fun editProduction(
+        original: ProductionRecord,
+        date: String,
+        store: StoreConfig,
+        gross: Double,
+        container: Double,
+        units: Double,
+        costPerKg: Double,
+        notes: String,
+        retainedPhotoKeys: List<String>,
+        newPhotoDataUris: List<String>,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editProduction(snap, original, date, store, gross, container, units, costPerKg, notes, retainedPhotoKeys, newPhotoDataUris)
+            handleResult(res, "Production updated")
+            if (res.isSuccess) onSuccess()
         }
     }
 
@@ -392,6 +435,7 @@ class SarimViewModel(
 
     fun submitCalculatorSettlement(
         date: String,
+        dateFrom: String = date,
         seller: String,
         store: StoreConfig,
         totalSold: Double,
@@ -400,10 +444,10 @@ class SarimViewModel(
         returnTargetRep: String,
         expired: Double,
         shared: Double,
-        cashQty: Double,
         creditQty: Double,
         unitPrice: Double,
         fieldExpenseItems: List<Map<String, Any>>,
+        commissionPerUnit: Double = 0.0,
         commissionItems: List<Map<String, Any>>,
         prevColl: Double,
         received: Double,
@@ -414,12 +458,46 @@ class SarimViewModel(
         viewModelScope.launch {
             handleResult(
                 dispatcher.saveCalculatorSettlement(
-                    snap, date, seller, store, totalSold, returned, returnType,
-                    returnTargetRep, expired, shared, cashQty, creditQty, unitPrice,
-                    fieldExpenseItems, commissionItems, prevColl, received, addToLedger, notes
+                    snap, date, dateFrom, seller, store, totalSold, returned, returnType,
+                    returnTargetRep, expired, shared, creditQty, unitPrice,
+                    fieldExpenseItems, commissionPerUnit, commissionItems, prevColl, received, addToLedger, notes
                 ),
                 "Settlement recorded"
             )
+        }
+    }
+
+    fun editCalculatorSettlement(
+        original: CalculatorRecord,
+        date: String,
+        dateFrom: String,
+        seller: String,
+        store: StoreConfig,
+        totalSold: Double,
+        returned: Double,
+        returnType: String,
+        returnTargetRep: String,
+        expired: Double,
+        shared: Double,
+        creditQty: Double,
+        unitPrice: Double,
+        fieldExpenseItems: List<Map<String, Any>>,
+        commissionPerUnit: Double,
+        commissionItems: List<Map<String, Any>>,
+        prevColl: Double,
+        received: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = calcAndRepairActions.editCalculatorSettlement(
+                snap, original, date, dateFrom, seller, store, totalSold, returned, returnType,
+                returnTargetRep, expired, shared, creditQty, unitPrice, fieldExpenseItems,
+                commissionPerUnit, commissionItems, prevColl, received, notes
+            )
+            handleResult(res, "Calculator entry updated")
+            if (res.isSuccess) onSuccess()
         }
     }
 
@@ -512,6 +590,225 @@ class SarimViewModel(
         }
     }
 
+    fun editSaleOrCollection(
+        original: SalesRecord,
+        date: String,
+        supplyDate: String,
+        paymentType: String,
+        customerName: String,
+        store: StoreConfig?,
+        salesRep: String,
+        quantityKg: Double,
+        unitPrice: Double,
+        collectedAmount: Double,
+        expiredKg: Double,
+        expiredUnitPrice: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editSaleOrCollection(
+                snap, original, date, supplyDate, paymentType, customerName, store, salesRep,
+                quantityKg, unitPrice, collectedAmount, expiredKg, expiredUnitPrice, notes
+            )
+            handleResult(res, "Sales record updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun editRepRecord(
+        original: SalesRecord,
+        date: String,
+        paymentType: String,
+        customerName: String,
+        store: StoreConfig?,
+        quantityKg: Double,
+        unitPrice: Double,
+        collectedAmount: Double,
+        expiredKg: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editRepRecord(
+                snap, original, date, paymentType, customerName, store, quantityKg, unitPrice, collectedAmount, expiredKg, notes
+            )
+            handleResult(res, "Rep entry updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun editFactoryBatch(
+        original: FactoryRecord,
+        date: String,
+        formula: FormulaConfig,
+        units: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editFactoryBatch(snap, original, date, formula, units, notes)
+            handleResult(res, "Factory batch updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun editPurchaseLot(
+        lot: InventoryRecord,
+        date: String,
+        unitName: String,
+        conversionFactor: Double,
+        qtyUnits: Double,
+        costPerUnit: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editPurchaseLot(snap, lot, date, unitName, conversionFactor, qtyUnits, costPerUnit, notes)
+            handleResult(res, "Purchase lot updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun deletePurchaseLot(lot: InventoryRecord, onSuccess: () -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.deletePurchaseLot(snap, lot)
+            if (res.isSuccess) {
+                dispatcher.syncLedgerMirrorToStorage(calcAndRepairActions.removeDocFromSnapshot(snap, "inventory", lot.id))
+                onSuccess()
+            }
+            handleResult(res, "Purchase lot moved to Recycle Bin")
+        }
+    }
+
+    fun editPaymentTransaction(
+        original: PaymentTransaction,
+        date: String,
+        entity: EntityRecord?,
+        customName: String,
+        paymentMethod: String,
+        amount: Double,
+        description: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editPaymentTransaction(snap, original, date, entity, customName, paymentMethod, amount, description)
+            handleResult(res, "Payment updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun editExpenseRecord(
+        original: ExpenseRecord,
+        date: String,
+        name: String,
+        category: String,
+        paymentMethod: String,
+        amount: Double,
+        notes: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.editExpenseRecord(snap, original, date, name, category, paymentMethod, amount, notes)
+            handleResult(res, "Expense updated")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun saveEntityExtended(
+        existingId: String?,
+        name: String,
+        type: String,
+        phone: String,
+        wallet: String,
+        ledgerPage: String,
+        openingBalance: Double,
+        notes: String,
+        photoDataUri: String?,
+        clearPhoto: Boolean = false,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.saveEntityExtended(snap, existingId, name, type, phone, wallet, ledgerPage, openingBalance, notes, photoDataUri, clearPhoto)
+            handleResult(res, "Account saved")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun saveCustomerOrClientExtended(
+        existing: CustomerRecord?,
+        isRepClient: Boolean,
+        name: String,
+        phone: String,
+        address: String,
+        oldDebit: Double,
+        customSalePrice: Double,
+        salesRep: String,
+        ledgerPage: String,
+        notes: String,
+        lat: Double? = existing?.gpsLat,
+        lng: Double? = existing?.gpsLng,
+        photoDataUri: String?,
+        clearPhoto: Boolean = false,
+        onSuccess: () -> Unit = {}
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = editActions.saveCustomerOrClientExtended(
+                snap, existing, isRepClient, name, phone, address, oldDebit, customSalePrice, salesRep, ledgerPage, notes, lat, lng, photoDataUri, clearPhoto
+            )
+            handleResult(res, "Customer saved")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun deleteRecordEditHistory(collection: String, docId: String, index: Int) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            handleResult(editActions.deleteEditHistoryAt(snap, collection, docId, index), "History entry deleted")
+        }
+    }
+
+    fun repairSalesLinks(kind: String = "sales", onDone: (String) -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = calcAndRepairActions.repairSalesLinks(snap, kind)
+            if (res.isSuccess) {
+                val msg = res.getOrThrow().text
+                _snackbarMessage.emit(msg)
+                onDone(msg)
+            } else {
+                _snackbarMessage.emit(res.exceptionOrNull()?.localizedMessage ?: "Link repair failed")
+            }
+        }
+    }
+
+    fun applyOverviewFix(col: String, docId: String, codes: List<String>, rawValues: Map<String, Any?>, onSuccess: () -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = calcAndRepairActions.applyOverviewFix(snap, col, docId, codes, rawValues)
+            handleResult(res, res.getOrNull() ?: "Record fixed")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
+    fun deleteAuditFindingRecord(col: String, docId: String, onSuccess: () -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = calcAndRepairActions.deleteAuditFindingRecord(snap, col, docId)
+            handleResult(res, "Moved to Recycle Bin")
+            if (res.isSuccess) onSuccess()
+        }
+    }
+
     fun softDeleteRecord(
         collection: String,
         docId: String,
@@ -522,10 +819,11 @@ class SarimViewModel(
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            handleResult(
-                ops.softDeleteToRecycleBin(snap.profile, collection, docId, displayName, displayDetail, displayAmount, snapshotMap),
-                "Moved to Recycle Bin"
-            )
+            val res = ops.softDeleteToRecycleBin(snap.profile, collection, docId, displayName, displayDetail, displayAmount, snapshotMap)
+            if (res.isSuccess && collection in setOf("sales", "transactions", "expenses", "calculator", "inventory")) {
+                dispatcher.syncLedgerMirrorToStorage(calcAndRepairActions.removeDocFromSnapshot(snap, collection, docId))
+            }
+            handleResult(res, "Moved to Recycle Bin")
         }
     }
 
@@ -533,7 +831,11 @@ class SarimViewModel(
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
             if (pairId.isBlank()) {
-                handleResult(ops.softDeleteToRecycleBin(snap.profile, collection, fallbackDocId, displayName, "", "", emptyMap()), "Moved to Recycle Bin")
+                val res = ops.softDeleteToRecycleBin(snap.profile, collection, fallbackDocId, displayName, "", "", emptyMap())
+                if (res.isSuccess && collection == "transactions") {
+                    dispatcher.syncLedgerMirrorToStorage(calcAndRepairActions.removeDocFromSnapshot(snap, collection, fallbackDocId))
+                }
+                handleResult(res, "Moved to Recycle Bin")
                 return@launch
             }
             var last: Result<Unit> = Result.success(Unit)
@@ -541,8 +843,15 @@ class SarimViewModel(
                 "production" -> snap.production.filter { it.deletedAt == null && it.transferPairId == pairId }.forEach {
                     last = ops.softDeleteToRecycleBin(snap.profile, "production", it.id, displayName, it.date, "${it.net} kg", WorkspaceJsonCodec.productionToMap(it))
                 }
-                "transactions" -> snap.transactions.filter { it.deletedAt == null && it.transferPairId == pairId }.forEach {
-                    last = ops.softDeleteToRecycleBin(snap.profile, "transactions", it.id, displayName, it.date, "${it.amount}", WorkspaceJsonCodec.transactionToMap(it))
+                "transactions" -> {
+                    val goneIds = mutableSetOf<String>()
+                    snap.transactions.filter { it.deletedAt == null && it.transferPairId == pairId }.forEach {
+                        last = ops.softDeleteToRecycleBin(snap.profile, "transactions", it.id, displayName, it.date, "${it.amount}", WorkspaceJsonCodec.transactionToMap(it))
+                        if (last.isSuccess) goneIds.add(it.id)
+                    }
+                    if (goneIds.isNotEmpty()) {
+                        dispatcher.syncLedgerMirrorToStorage(snap.copy(transactions = snap.transactions.filterNot { it.id in goneIds }))
+                    }
                 }
             }
             handleResult(last, "Moved transfer pair to Recycle Bin")
@@ -559,7 +868,13 @@ class SarimViewModel(
     fun purgeTombstone(tombstone: DeletionTombstone) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            handleResult(ops.purgeDeletedForever(snap.profile, tombstone), "Deleted permanently")
+            val res = ops.purgeDeletedForever(snap.profile, tombstone)
+            if (res.isSuccess) {
+                dispatcher.syncLedgerMirrorToStorage(
+                    snap.copy(erasedIds = snap.erasedIds + tombstone.recordId.ifBlank { tombstone.id })
+                )
+            }
+            handleResult(res, "Deleted permanently")
         }
     }
 

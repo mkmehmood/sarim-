@@ -16,6 +16,7 @@ object OverviewEngine {
         val collection: String,
         val recordId: String,
         val code: String,
+        val codes: List<String> = listOf(code),
         val severity: String, // "error" | "warn"
         val title: String,
         val label: String,
@@ -66,7 +67,15 @@ object OverviewEngine {
         val net: Double,
         val avgPrice: Double,
         val avgCost: Double,
-        val worstLosses: List<WorstSaleLoss>
+        val worstLosses: List<WorstSaleLoss>,
+        val byCustomer: List<Pair<String, Double>> = emptyList(),
+        val byStore: List<Pair<String, Double>> = emptyList(),
+        val byMonth: List<Pair<String, Double>> = emptyList(),
+        val noCostCount: Int = 0,
+        val noCostValue: Double = 0.0,
+        val mismatchCount: Int = 0,
+        val mismatchSum: Double = 0.0,
+        val zeroQtyCount: Int = 0
     )
 
     data class WorstSaleLoss(
@@ -130,7 +139,13 @@ object OverviewEngine {
         val profitAnalysis: ProfitAnalysis,
         val owedAging: OwedAgingSummary,
         val audit: AuditReport,
-        val recentActivity: List<RecentActivityItem>
+        val recentActivity: List<RecentActivityItem>,
+        val salesByCustomerTrend: List<Pair<String, List<Double>>> = emptyList(),
+        val salesByStoreTrend: List<Pair<String, List<Double>>> = emptyList(),
+        val prodByFormulaTrend: List<Pair<String, List<Double>>> = emptyList(),
+        val prodByStoreTrend: List<Pair<String, List<Double>>> = emptyList(),
+        val moveFormulas: List<Pair<String, Double>> = emptyList(),
+        val moveStores: List<Pair<String, Double>> = emptyList()
     ) {
         val totalSalesRevenue: Double get() = salesValue
         val totalProducedKg: Double get() = prodKg
@@ -154,6 +169,7 @@ object OverviewEngine {
     private val CHECK_META: Map<String, Pair<String, String>> = mapOf(
         "duplicate_id" to ("Same record id used twice" to "error"),
         "duplicate_record" to ("Identical records entered twice" to "warn"),
+        "not_a_number" to ("Amount or quantity is not a number" to "error"),
         "bad_date" to ("Missing or invalid date" to "error"),
         "future_date" to ("Dated in the future" to "warn"),
         "sale_bad_qty" to ("Sale with zero or negative quantity" to "error"),
@@ -161,6 +177,7 @@ object OverviewEngine {
         "sale_total_mismatch" to ("Sale total differs from quantity x price" to "error"),
         "sale_profit_mismatch" to ("Sale profit differs from value minus cost" to "warn"),
         "sale_no_cost" to ("Sale with no cost recorded" to "warn"),
+        "sale_loss" to ("Sale recorded at a loss" to "warn"),
         "sale_cash_unreceived" to ("Cash sale not marked as received" to "warn"),
         "prod_no_formula" to ("Production with no formula (cost and profit are unreliable)" to "error"),
         "prod_bad_net" to ("Production with zero or negative weight" to "error"),
@@ -201,6 +218,8 @@ object OverviewEngine {
 
         val formulasMap = LinkedHashMap<String, Double>()
         val storesMap = LinkedHashMap<String, Double>()
+        val moveFormulasMap = LinkedHashMap<String, Double>()
+        val moveStoresMap = LinkedHashMap<String, Double>()
         val custValMap = LinkedHashMap<String, Double>()
         val custKgMap = LinkedHashMap<String, Double>()
         val expCatMap = LinkedHashMap<String, Double>()
@@ -208,8 +227,20 @@ object OverviewEngine {
         val factoryByFormula = LinkedHashMap<String, Double>()
         val recent = mutableListOf<RecentActivityItem>()
 
+        val idxOf = monthKeys.withIndex().associate { (i, k) -> k to i }
+        val fTrend = LinkedHashMap<String, DoubleArray>()
+        val sTrend = LinkedHashMap<String, DoubleArray>()
+        val cTrend = LinkedHashMap<String, DoubleArray>()
+        val ssTrend = LinkedHashMap<String, DoubleArray>()
+
         fun bump(map: MutableMap<String, Double>, k: String, v: Double) {
             map[k] = (map[k] ?: 0.0) + v
+        }
+
+        fun tadd(map: MutableMap<String, DoubleArray>, name: String, ym: String, v: Double) {
+            val idx = idxOf[ym] ?: return
+            val arr = map.getOrPut(name) { DoubleArray(monthKeys.size) }
+            arr[idx] += v
         }
 
         // Production
@@ -218,8 +249,12 @@ object OverviewEngine {
             val ym = d.take(7)
             val m = monthAcc[ym]
             if (p.isReturn || p.isTransfer) {
-                if (m != null && p.isReturn) {
-                    monthAcc[ym] = m.copy(returnsKg = m.returnsKg + p.net)
+                if (m != null) {
+                    val label = if (p.isTransfer) "Transfers" else "Returns"
+                    val stLabel = FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { "Unassigned" }
+                    bump(moveFormulasMap, label, abs(p.net))
+                    bump(moveStoresMap, "$stLabel – $label", abs(p.net))
+                    if (p.isReturn) monthAcc[ym] = m.copy(returnsKg = m.returnsKg + p.net)
                 }
                 return@forEach
             }
@@ -230,8 +265,12 @@ object OverviewEngine {
                     prodValue = m.prodValue + p.totalSale,
                     prodCost = m.prodCost + p.totalCost
                 )
-                bump(formulasMap, p.formulaName.ifBlank { "No formula" }, p.net)
-                bump(storesMap, FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { "Unassigned" }, p.net)
+                val fName = p.formulaName.ifBlank { "No formula" }
+                val sName = FormulaEngine.storeLabelFor(p.store, snapshot.stores).ifBlank { "Unassigned" }
+                bump(formulasMap, fName, p.net)
+                bump(storesMap, sName, p.net)
+                tadd(fTrend, fName, ym, p.net)
+                tadd(sTrend, sName, ym, p.net)
             }
             if (d == today) todayProdKg += p.net
             recent.add(
@@ -271,7 +310,11 @@ object OverviewEngine {
                     salesProfit = m.salesProfit + s.profit,
                     salesCount = m.salesCount + 1
                 )
-                bump(custValMap, s.customerName.ifBlank { "Walk-in" }, valAmt)
+                val cLabel = s.customerName.ifBlank { "Walk-in" }
+                val stLabel = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores).ifBlank { "Unassigned" }
+                bump(custValMap, cLabel, valAmt)
+                tadd(cTrend, cLabel, ym, valAmt)
+                tadd(ssTrend, stLabel, ym, valAmt)
             }
             if (!FinanceEngine.isLedgerRow(s)) {
                 val supplyYmd = s.supplyDate.ifBlank { s.date }.take(10)
@@ -475,7 +518,25 @@ object OverviewEngine {
                 topCustomers = topOwedCust
             ),
             audit = audit,
-            recentActivity = recent.sortedByDescending { it.timestamp }.take(10)
+            recentActivity = recent.sortedByDescending { it.timestamp }.take(10),
+            salesByCustomerTrend = cTrend.entries
+                .sortedByDescending { it.value.sum() }
+                .take(5)
+                .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
+            salesByStoreTrend = ssTrend.entries
+                .sortedByDescending { it.value.sum() }
+                .take(5)
+                .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
+            prodByFormulaTrend = fTrend.entries
+                .sortedByDescending { it.value.sum() }
+                .take(5)
+                .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
+            prodByStoreTrend = sTrend.entries
+                .sortedByDescending { it.value.sum() }
+                .take(5)
+                .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
+            moveFormulas = moveFormulasMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
+            moveStores = moveStoresMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) }
         )
     }
 
@@ -493,6 +554,15 @@ object OverviewEngine {
         var qty = 0.0
         var value = 0.0
         var cost = 0.0
+        var noCostCount = 0
+        var noCostValue = 0.0
+        var mismatchCount = 0
+        var mismatchSum = 0.0
+        var zeroQtyCount = 0
+        val byCust = LinkedHashMap<String, Double>()
+        val byStore = LinkedHashMap<String, Double>()
+        val byMonth = LinkedHashMap<String, Double>()
+
         inRange.forEach { x ->
             net += x.profit
             qty += x.quantity
@@ -505,6 +575,23 @@ object OverviewEngine {
                 gainingCount++
                 gainingSum += x.profit
             }
+            if (!FinanceEngine.isLedgerRow(x)) {
+                if (x.totalCost <= 0.0 && x.totalValue > 0.0) {
+                    noCostCount++
+                    noCostValue += x.totalValue
+                }
+                if (abs(x.profit - (x.totalValue - x.totalCost)) > 1.0) {
+                    mismatchCount++
+                    mismatchSum += x.profit - (x.totalValue - x.totalCost)
+                }
+                if (x.quantity <= 0.0) zeroQtyCount++
+            }
+            val custName = x.customerName.ifBlank { "Walk-in" }
+            val storeName = FormulaEngine.storeLabelFor(x.supplyStore, snapshot.stores).ifBlank { "Unassigned" }
+            val ym = x.date.take(7)
+            byCust[custName] = (byCust[custName] ?: 0.0) + x.profit
+            byStore[storeName] = (byStore[storeName] ?: 0.0) + x.profit
+            if (ym.length == 7) byMonth[ym] = (byMonth[ym] ?: 0.0) + x.profit
         }
         val worst = inRange.filter { it.profit < 0.0 }.sortedBy { it.profit }.take(8).map { x ->
             WorstSaleLoss(
@@ -527,7 +614,15 @@ object OverviewEngine {
             net = InputGuards.round2(net),
             avgPrice = if (qty > 0.0) value / qty else 0.0,
             avgCost = if (qty > 0.0) cost / qty else 0.0,
-            worstLosses = worst
+            worstLosses = worst,
+            byCustomer = byCust.entries.filter { it.value < 0.0 }.sortedBy { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
+            byStore = byStore.entries.filter { it.value < 0.0 }.sortedBy { it.value }.take(5).map { it.key to InputGuards.round2(it.value) },
+            byMonth = byMonth.entries.sortedBy { it.key }.map { monthLabel(it.key) to InputGuards.round2(it.value) },
+            noCostCount = noCostCount,
+            noCostValue = InputGuards.round2(noCostValue),
+            mismatchCount = mismatchCount,
+            mismatchSum = InputGuards.round2(mismatchSum),
+            zeroQtyCount = zeroQtyCount
         )
     }
 
@@ -556,6 +651,7 @@ object OverviewEngine {
             if (existing >= 0) {
                 val cur = findings[existing]
                 findings[existing] = cur.copy(
+                    codes = if (code in cur.codes) cur.codes else cur.codes + code,
                     severity = if (severity == "error") "error" else cur.severity,
                     reasons = cur.reasons + reason,
                     impact = if (abs(impact) > abs(cur.impact)) impact else cur.impact
@@ -567,6 +663,7 @@ object OverviewEngine {
                         collection = col,
                         recordId = id,
                         code = code,
+                        codes = listOf(code),
                         severity = severity,
                         title = title,
                         label = label,

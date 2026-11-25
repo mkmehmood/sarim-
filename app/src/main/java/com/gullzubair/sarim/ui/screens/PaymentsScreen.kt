@@ -1,5 +1,6 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,21 +43,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.EntityRecord
 import com.gullzubair.sarim.data.model.ExpenseRecord
 import com.gullzubair.sarim.data.model.PaymentTransaction
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
-import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
+import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
+import com.gullzubair.sarim.ui.components.DiscardEditDialog
+import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
+import com.gullzubair.sarim.ui.components.ExpenseTxDetailSheet
+import com.gullzubair.sarim.ui.components.PaymentTxDetailSheet
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimDangerButton
-import com.gullzubair.sarim.ui.components.SarimDetailBottomSheet
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
@@ -94,14 +96,16 @@ fun PaymentsScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val hidesHistory = remember(session) { FinanceEngine.hidesPaymentHistory(session) }
+    val masked = hidesHistory || session.restrictMoney || snapshot.settings.hideSensitiveMoney
     val activeEntities = remember(snapshot.entities) { snapshot.entities.filter { it.deletedAt == null } }
     val activeTx = remember(snapshot.transactions) { snapshot.transactions.filter { it.deletedAt == null } }
     val activeExpenses = remember(snapshot.expenses) { snapshot.expenses.filter { it.deletedAt == null } }
     val channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
 
-    var subTab by remember { mutableIntStateOf(0) }
-    var txKind by remember { mutableStateOf("EXPENSE") } // EXPENSE | IN | OUT
+    var subTab by remember(hidesHistory) { mutableIntStateOf(0) }
+    var txKind by remember { mutableStateOf("EXPENSE") }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedEntity by remember { mutableStateOf<EntityRecord?>(null) }
     var customName by remember { mutableStateOf("") }
@@ -115,6 +119,50 @@ fun PaymentsScreen(
     var selectedTx by remember { mutableStateOf<PaymentTransaction?>(null) }
     var selectedExpense by remember { mutableStateOf<ExpenseRecord?>(null) }
 
+    var editingTx by remember { mutableStateOf<PaymentTransaction?>(null) }
+    var editingExp by remember { mutableStateOf<ExpenseRecord?>(null) }
+    var showEditDiff by remember { mutableStateOf(false) }
+    var showDiscardEdit by remember { mutableStateOf(false) }
+
+    fun resetForm() {
+        editingTx = null
+        editingExp = null
+        date = todayIso
+        amountStr = ""
+        notes = ""
+    }
+
+    fun startEditTx(tx: PaymentTransaction) {
+        editingExp = null
+        editingTx = tx
+        txKind = if (tx.type.equals("IN", true)) "IN" else "OUT"
+        date = tx.date.ifBlank { todayIso }
+        customName = tx.entityName
+        selectedEntity = activeEntities.firstOrNull { it.id == tx.entityId || it.name.equals(tx.entityName, true) }
+        channel = tx.paymentMethod.ifBlank { channels.first() }
+        amountStr = InputGuards.fmtNum(tx.amount).replace(",", "")
+        notes = tx.description
+        subTab = 0
+    }
+
+    fun startEditExp(exp: ExpenseRecord) {
+        editingTx = null
+        editingExp = exp
+        txKind = "EXPENSE"
+        date = exp.date.ifBlank { todayIso }
+        expCategory = exp.category.ifBlank { snapshot.settings.expenseCategories.firstOrNull() ?: "Other" }
+        customName = exp.name
+        selectedEntity = activeEntities.firstOrNull { it.id == exp.entityId }
+        channel = exp.paymentMethod.ifBlank { channels.first() }
+        amountStr = InputGuards.fmtNum(exp.amount).replace(",", "")
+        notes = exp.notes.ifBlank { exp.description }
+        subTab = 0
+    }
+
+    BackHandler(enabled = editingTx != null || editingExp != null) {
+        showDiscardEdit = true
+    }
+
     val health = remember(snapshot) { FinanceEngine.calculateEconomicHealth(snapshot) }
     val totalExpenses = remember(activeExpenses) { activeExpenses.sumOf { it.amount } }
     val netPayBalance = remember(health) {
@@ -122,34 +170,32 @@ fun PaymentsScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("Pay / Exp", "Entities", "Health", "History").forEachIndexed { idx, label ->
-                val selected = subTab == idx
-                Surface(
-                    onClick = { subTab = idx },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (selected) accents.softPillFill else accents.inputFill,
-                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.weight(1f).testTag("pay_subtab_$idx")
-                ) {
-                    Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (selected) accents.emerald else accents.textMuted,
-                            maxLines = 1
-                        )
+        if (!hidesHistory) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Pay / Exp", "Entities", "Health", "History").forEachIndexed { idx, label ->
+                    val selected = subTab == idx
+                    Surface(
+                        onClick = { subTab = idx },
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (selected) accents.softPillFill else accents.inputFill,
+                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                        modifier = Modifier.weight(1f).testTag("pay_subtab_$idx")
+                    ) {
+                        Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                            Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+                        }
                     }
                 }
             }
         }
 
-        when (subTab) {
+        val activeTab = if (hidesHistory) 0 else subTab
+        when (activeTab) {
             0 -> {
                 val amount = amountStr.toDoubleOrNull() ?: 0.0
                 val availCash = remember(snapshot) { FinanceEngine.computeAvailableCashInHand(snapshot) }
@@ -159,32 +205,48 @@ fun PaymentsScreen(
                         FinanceEngine.previewSupplierFifoAllocation(supplierNeedle, amount, snapshot.inventory)
                     } else emptyList()
                 }
-                val cashShort = (txKind == "OUT" || txKind == "EXPENSE") &&
+                val cashShort = !hidesHistory && (txKind == "OUT" || txKind == "EXPENSE") &&
                     FinanceEngine.isCashMode(channel) && amount > availCash + 0.01
+                val isEditing = editingTx != null || editingExp != null
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (hidesHistory) item { Spacer(Modifier.height(6.dp)) }
                     item {
                         SarimCard {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("EXPENSE" to "Expense", "IN" to "Payment IN", "OUT" to "Payment OUT").forEach { (key, title) ->
-                                    val selected = txKind == key
+                            if (isEditing) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (editingExp != null) "Editing Expense" else "Editing Payment", style = MaterialTheme.typography.titleMedium, color = accents.cyan)
                                     Surface(
-                                        onClick = { txKind = key },
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = if (selected) accents.softPillFill else accents.inputFill,
-                                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                                        modifier = Modifier.weight(1f).testTag("pay_type_${key.lowercase()}")
+                                        onClick = { showDiscardEdit = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = accents.danger.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                        modifier = Modifier.testTag("pay_cancel_edit_btn")
                                     ) {
-                                        Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                                            Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted)
+                                        Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                            }
+                            if (!isEditing) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("EXPENSE" to "Expense", "IN" to "Payment IN", "OUT" to "Payment OUT").forEach { (key, title) ->
+                                        val selected = txKind == key
+                                        Surface(
+                                            onClick = { txKind = key },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (selected) accents.softPillFill else accents.inputFill,
+                                            border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                            modifier = Modifier.weight(1f).testTag("pay_type_${key.lowercase()}")
+                                        ) {
+                                            Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                                                Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted)
+                                            }
                                         }
                                     }
                                 }
+                                Spacer(Modifier.height(10.dp))
                             }
-                            Spacer(Modifier.height(10.dp))
                             DatePickerField("Date", date, { date = it }, "pay_date")
                             Spacer(Modifier.height(10.dp))
                             if (txKind == "EXPENSE") {
@@ -201,7 +263,7 @@ fun PaymentsScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                             }
-                            if (activeEntities.isNotEmpty()) {
+                            if (activeEntities.isNotEmpty() && editingExp == null) {
                                 PickerField(
                                     label = if (txKind == "EXPENSE") "Optional Linked Entity" else "Select Entity (${activeEntities.size})",
                                     selectedLabel = selectedEntity?.let { "${it.name} (${it.type})" } ?: "Pick Party / Supplier / Staff",
@@ -228,7 +290,7 @@ fun PaymentsScreen(
                                 Spacer(Modifier.height(6.dp))
                                 Text("Warning: Cash in hand is ${InputGuards.formatMoney(availCash, currency, masked)}", color = accents.gold, style = MaterialTheme.typography.bodySmall)
                             }
-                            if (fifoPreview.isNotEmpty()) {
+                            if (!hidesHistory && fifoPreview.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 Text("Supplier FIFO Payable Settlement", style = MaterialTheme.typography.titleSmall, color = accents.cyan)
                                 fifoPreview.forEach { lot ->
@@ -239,35 +301,38 @@ fun PaymentsScreen(
                                     )
                                 }
                             }
-                            Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Mirror in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
-                                Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("pay_ledger_switch"))
+                            if (!isEditing) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Mirror in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
+                                    Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("pay_ledger_switch"))
+                                }
                             }
-                            SarimPillInput(
-                                value = notes,
-                                onValueChange = { notes = it.take(500) },
-                                label = "NOTES",
-                                placeholder = "Optional description",
-                                testTag = "pay_notes_input"
-                            )
+                            SarimPillInput(notes, { notes = it.take(500) }, label = "NOTES", placeholder = "Optional description", testTag = "pay_notes_input")
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
-                                text = "Save $txKind",
+                                text = when {
+                                    editingExp != null -> "Update Expense"
+                                    editingTx != null -> "Update Payment"
+                                    else -> "Save $txKind"
+                                },
                                 onClick = {
-                                    vm.submitPaymentOrExpense(
-                                        date = date,
-                                        kind = txKind,
-                                        entity = selectedEntity,
-                                        name = customName,
-                                        category = if (txKind == "EXPENSE") expCategory else (selectedEntity?.type ?: "party"),
-                                        channel = channel,
-                                        amount = amount,
-                                        addToLedger = addToLedger,
-                                        notes = notes
-                                    )
-                                    amountStr = ""
-                                    notes = ""
+                                    if (isEditing) {
+                                        showEditDiff = true
+                                    } else {
+                                        vm.submitPaymentOrExpense(
+                                            date = date,
+                                            kind = txKind,
+                                            entity = selectedEntity,
+                                            name = customName,
+                                            category = if (txKind == "EXPENSE") expCategory else (selectedEntity?.type ?: "party"),
+                                            channel = channel,
+                                            amount = amount,
+                                            addToLedger = addToLedger,
+                                            notes = notes
+                                        )
+                                        resetForm()
+                                    }
                                 },
                                 enabled = (customName.isNotBlank() || selectedEntity != null) && amount > 0.0,
                                 testTag = "pay_save_btn"
@@ -275,24 +340,21 @@ fun PaymentsScreen(
                         }
                     }
 
-                    item {
-                        SarimCard {
-                            Text("Net Balance:", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                            Text(
-                                InputGuards.formatMoney(netPayBalance, currency, masked),
-                                fontFamily = JakartaFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Total Receivable", InputGuards.formatMoney(health.entityReceivables, currency, masked), accents.emerald, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Expenses", InputGuards.formatMoney(totalExpenses, currency, masked), accents.gold, Modifier.weight(1f))
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Supplies Payable", InputGuards.formatMoney(health.supplierPayables, currency, masked), accents.danger, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Entity Payable", InputGuards.formatMoney(health.entityPayables, currency, masked), accents.purple, Modifier.weight(1f))
+                    if (!hidesHistory) {
+                        item {
+                            SarimCard {
+                                Text("Net Balance:", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                Text(InputGuards.formatMoney(netPayBalance, currency, masked), fontFamily = JakartaFont, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    SarimHalfRingKpiBox("Total Receivable", InputGuards.formatMoney(health.entityReceivables, currency, masked), accents.emerald, Modifier.weight(1f))
+                                    SarimHalfRingKpiBox("Expenses", InputGuards.formatMoney(totalExpenses, currency, masked), accents.gold, Modifier.weight(1f))
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    SarimHalfRingKpiBox("Supplies Payable", InputGuards.formatMoney(health.supplierPayables, currency, masked), accents.danger, Modifier.weight(1f))
+                                    SarimHalfRingKpiBox("Entity Payable", InputGuards.formatMoney(health.entityPayables, currency, masked), accents.purple, Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -302,10 +364,7 @@ fun PaymentsScreen(
 
             1 -> {
                 val avatarColors = listOf(Color(0xFFDCD3B2), Color(0xFFD6C8D3), Color(0xFFD1CFD8), Color(0xFFC5BDD0))
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Surface(
@@ -341,6 +400,7 @@ fun PaymentsScreen(
                     } else {
                         items(activeEntities, key = { it.id }) { ent ->
                             val bal = FinanceEngine.computeEntityBalance(ent, snapshot.transactions, snapshot.inventory)
+                            val entPhoto = snapshot.photos["entity:${ent.id}"]?.takeIf { !it.deleted }?.dataUri
                             val initials = ent.name.split(" ").filter { it.isNotBlank() }.take(2)
                                 .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "E" }
                             val bgTint = avatarColors[kotlin.math.abs(ent.name.hashCode()) % avatarColors.size]
@@ -350,11 +410,12 @@ fun PaymentsScreen(
                                 contentPadding = PaddingValues(14.dp)
                             ) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier.size(44.dp).clip(CircleShape).background(bgTint),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(initials, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFF1F2937))
+                                    if (!entPhoto.isNullOrBlank()) {
+                                        DecodedDataUrlImage(dataUrl = entPhoto, contentDescription = "${ent.name} photo", modifier = Modifier.size(44.dp).clip(CircleShape))
+                                    } else {
+                                        Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(bgTint), contentAlignment = Alignment.Center) {
+                                            Text(initials, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFF1F2937))
+                                        }
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
@@ -381,10 +442,7 @@ fun PaymentsScreen(
 
             2 -> {
                 val channelBals = remember(snapshot) { FinanceEngine.computeChannelBalances(snapshot) }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item {
                         SarimCard {
                             Text("Net Working Capital:", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
@@ -418,17 +476,14 @@ fun PaymentsScreen(
             }
 
             else -> {
-                var historyFilter by remember { mutableStateOf("ALL") } // ALL | PAYMENTS | EXPENSES
+                var historyFilter by remember { mutableStateOf("ALL") }
                 val historyItems = remember(activeTx, activeExpenses, historyFilter) {
                     val txList = if (historyFilter == "EXPENSES") emptyList() else activeTx.map { PaymentHistoryItem.TxItem(it) }
                     val expList = if (historyFilter == "PAYMENTS") emptyList() else activeExpenses.map { PaymentHistoryItem.ExpItem(it) }
                     (txList + expList).sortedWith(compareByDescending<PaymentHistoryItem> { it.date }.thenByDescending { it.timestamp })
                 }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("ALL" to "All", "PAYMENTS" to "Payments", "EXPENSES" to "Expenses").forEach { (k, label) ->
@@ -455,12 +510,8 @@ fun PaymentsScreen(
                                 items = historyItems,
                                 dateOf = { it.date },
                                 summaryLabel = { list ->
-                                    val tIn = list.filterIsInstance<PaymentHistoryItem.TxItem>()
-                                        .filter { it.tx.type.equals("IN", true) }
-                                        .sumOf { it.tx.amount }
-                                    val tOut = list.filterIsInstance<PaymentHistoryItem.TxItem>()
-                                        .filter { !it.tx.type.equals("IN", true) }
-                                        .sumOf { it.tx.amount } +
+                                    val tIn = list.filterIsInstance<PaymentHistoryItem.TxItem>().filter { it.tx.type.equals("IN", true) }.sumOf { it.tx.amount }
+                                    val tOut = list.filterIsInstance<PaymentHistoryItem.TxItem>().filter { !it.tx.type.equals("IN", true) }.sumOf { it.tx.amount } +
                                         list.filterIsInstance<PaymentHistoryItem.ExpItem>().sumOf { it.exp.amount }
                                     "In ${InputGuards.formatMoney(tIn, currency, masked)} • Out ${InputGuards.formatMoney(tOut, currency, masked)}"
                                 },
@@ -470,12 +521,7 @@ fun PaymentsScreen(
                                             val tx = item.tx
                                             val isIn = tx.type.equals("IN", true)
                                             Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .clickable { selectedTx = tx }
-                                                    .padding(vertical = 8.dp, horizontal = 4.dp)
-                                                    .testTag("pay_row_${tx.id}"),
+                                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { selectedTx = tx }.padding(vertical = 8.dp, horizontal = 4.dp).testTag("pay_row_${tx.id}"),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
@@ -483,12 +529,11 @@ fun PaymentsScreen(
                                                     Box(Modifier.size(8.dp).clip(CircleShape).background(if (isIn) accents.emerald else accents.cyan))
                                                     Spacer(Modifier.width(8.dp))
                                                     Column {
-                                                        Text(tx.entityName.uppercase(), style = MaterialTheme.typography.titleSmall)
-                                                        Text(
-                                                            "${tx.type} • ${tx.paymentMethod}${if (tx.isTransfer) " • Transfer" else ""}",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = accents.textMuted
-                                                        )
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(tx.entityName.uppercase(), style = MaterialTheme.typography.titleSmall)
+                                                            EditedBadge(tx.isEdited)
+                                                        }
+                                                        Text("${tx.type} • ${tx.paymentMethod}${if (tx.isTransfer) " • Transfer" else ""}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                                     }
                                                 }
                                                 Text(
@@ -501,12 +546,7 @@ fun PaymentsScreen(
                                         is PaymentHistoryItem.ExpItem -> {
                                             val exp = item.exp
                                             Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .clickable { selectedExpense = exp }
-                                                    .padding(vertical = 8.dp, horizontal = 4.dp)
-                                                    .testTag("exp_row_${exp.id}"),
+                                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { selectedExpense = exp }.padding(vertical = 8.dp, horizontal = 4.dp).testTag("exp_row_${exp.id}"),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
@@ -514,15 +554,14 @@ fun PaymentsScreen(
                                                     Box(Modifier.size(8.dp).clip(CircleShape).background(accents.gold))
                                                     Spacer(Modifier.width(8.dp))
                                                     Column {
-                                                        Text(exp.name.uppercase(), style = MaterialTheme.typography.titleSmall)
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(exp.name.uppercase(), style = MaterialTheme.typography.titleSmall)
+                                                            EditedBadge(exp.isEdited)
+                                                        }
                                                         Text("EXPENSE • ${exp.category} • ${exp.paymentMethod}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                                     }
                                                 }
-                                                Text(
-                                                    "- ${InputGuards.formatMoney(exp.amount, currency, masked)}",
-                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                                    color = accents.danger
-                                                )
+                                                Text("- ${InputGuards.formatMoney(exp.amount, currency, masked)}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.danger)
                                             }
                                         }
                                     }
@@ -537,139 +576,94 @@ fun PaymentsScreen(
     }
 
     selectedTx?.let { tx ->
-        SarimDetailBottomSheet(
-            title = tx.entityName.uppercase(),
-            rightTitle = InputGuards.formatMoney(tx.amount, currency, masked),
-            subtitle = "${DateUtils.formatPretty(tx.date).uppercase()} • ${tx.type} • ${tx.entityType}",
-            onDismiss = { selectedTx = null },
-            content = {
-                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Channel", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(tx.paymentMethod, style = MaterialTheme.typography.titleSmall)
-                }
-                if (tx.description.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Description", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                        Text(tx.description, style = MaterialTheme.typography.titleSmall)
-                    }
-                }
+        PaymentTxDetailSheet(
+            tx = tx,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onEditEntry = { startEditTx(it) },
+            onCopyToForm = {
+                txKind = if (it.type.equals("IN", true)) "IN" else "OUT"
+                date = it.date
+                customName = it.entityName
+                selectedEntity = activeEntities.firstOrNull { e -> e.id == it.entityId || e.name.equals(it.entityName, true) }
+                channel = it.paymentMethod
+                amountStr = it.amount.toString()
+                notes = it.description
+                subTab = 0
             },
-            footer = {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SarimDangerButton(
-                        text = "Delete",
-                        onClick = {
-                            if (tx.isTransfer && tx.transferPairId.isNotBlank()) {
-                                vm.recyclePair("transactions", tx.transferPairId, tx.id, tx.entityName)
-                            } else {
-                                vm.softDeleteRecord(
-                                    collection = "transactions",
-                                    docId = tx.id,
-                                    displayName = tx.entityName,
-                                    displayDetail = "${tx.date} • ${tx.type}",
-                                    displayAmount = InputGuards.formatMoney(tx.amount, currency, masked),
-                                    snapshotMap = WorkspaceJsonCodec.transactionToMap(tx)
-                                )
-                            }
-                            selectedTx = null
-                        },
-                        modifier = Modifier.weight(0.38f),
-                        testTag = "pay_delete_${tx.id}"
-                    )
-                    SarimGradientButton(
-                        text = "Copy to Form",
-                        onClick = {
-                            txKind = if (tx.type.equals("IN", true)) "IN" else "OUT"
-                            date = tx.date
-                            customName = tx.entityName
-                            selectedEntity = activeEntities.firstOrNull { it.id == tx.entityId || it.name.equals(tx.entityName, true) }
-                            channel = tx.paymentMethod
-                            amountStr = tx.amount.toString()
-                            notes = tx.description
-                            selectedTx = null
-                            subTab = 0
-                        },
-                        modifier = Modifier.weight(0.62f)
-                    )
-                }
-            }
+            onDismiss = { selectedTx = null }
         )
     }
 
     selectedExpense?.let { exp ->
-        SarimDetailBottomSheet(
-            title = exp.name.uppercase(),
-            rightTitle = InputGuards.formatMoney(exp.amount, currency, masked),
-            subtitle = "${DateUtils.formatPretty(exp.date).uppercase()} • EXPENSE • ${exp.category}",
-            onDismiss = { selectedExpense = null },
-            content = {
-                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Channel", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(exp.paymentMethod, style = MaterialTheme.typography.titleSmall)
-                }
-                if (exp.description.isNotBlank() || exp.notes.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Notes", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                        Text(exp.notes.ifBlank { exp.description }, style = MaterialTheme.typography.titleSmall)
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "View all \"${exp.name}\" records",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = accents.emerald,
-                    modifier = Modifier
-                        .clickable {
-                            val n = exp.name
-                            selectedExpense = null
-                            onOpenExpenseDetail(n)
-                        }
-                        .padding(vertical = 6.dp)
-                        .testTag("pay_view_expense_${exp.id}")
-                )
+        ExpenseTxDetailSheet(
+            exp = exp,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onOpenExpenseDetail = onOpenExpenseDetail,
+            onEditEntry = { startEditExp(it) },
+            onCopyToForm = {
+                txKind = "EXPENSE"
+                date = it.date
+                expCategory = it.category
+                customName = it.name
+                selectedEntity = activeEntities.firstOrNull { e -> e.id == it.entityId }
+                channel = it.paymentMethod
+                amountStr = it.amount.toString()
+                notes = it.notes.ifBlank { it.description }
+                subTab = 0
             },
-            footer = {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SarimDangerButton(
-                        text = "Delete",
-                        onClick = {
-                            vm.softDeleteRecord(
-                                collection = "expenses",
-                                docId = exp.id,
-                                displayName = exp.name,
-                                displayDetail = "${exp.date} • ${exp.category}",
-                                displayAmount = InputGuards.formatMoney(exp.amount, currency, masked),
-                                snapshotMap = WorkspaceJsonCodec.expenseToMap(exp)
-                            )
-                            selectedExpense = null
-                        },
-                        modifier = Modifier.weight(0.38f),
-                        testTag = "exp_delete_${exp.id}"
-                    )
-                    SarimGradientButton(
-                        text = "Copy to Form",
-                        onClick = {
-                            txKind = "EXPENSE"
-                            date = exp.date
-                            expCategory = exp.category
-                            customName = exp.name
-                            selectedEntity = activeEntities.firstOrNull { it.id == exp.entityId }
-                            channel = exp.paymentMethod
-                            amountStr = exp.amount.toString()
-                            notes = exp.notes.ifBlank { exp.description }
-                            selectedExpense = null
-                            subTab = 0
-                        },
-                        modifier = Modifier.weight(0.62f)
-                    )
+            onDismiss = { selectedExpense = null }
+        )
+    }
+
+    if (showEditDiff && (editingTx != null || editingExp != null)) {
+        val amt = amountStr.toDoubleOrNull() ?: 0.0
+        val rows = editingTx?.let { orig ->
+            listOf(
+                Triple("Date", orig.date, date),
+                Triple("Account", orig.entityName, selectedEntity?.name ?: customName.trim()),
+                Triple("Channel", orig.paymentMethod, channel),
+                Triple("Amount", InputGuards.formatMoney(orig.amount, currency, masked), InputGuards.formatMoney(amt, currency, masked)),
+                Triple("Notes", orig.description, notes.trim())
+            )
+        } ?: editingExp!!.let { orig ->
+            listOf(
+                Triple("Date", orig.date, date),
+                Triple("Title", orig.name, customName.trim()),
+                Triple("Category", orig.category, expCategory),
+                Triple("Channel", orig.paymentMethod, channel),
+                Triple("Amount", InputGuards.formatMoney(orig.amount, currency, masked), InputGuards.formatMoney(amt, currency, masked)),
+                Triple("Notes", orig.notes.ifBlank { orig.description }, notes.trim())
+            )
+        }
+        EditDiffConfirmDialog(
+            title = if (editingExp != null) "Confirm Expense Edit" else "Confirm Payment Edit",
+            rows = rows,
+            onConfirm = {
+                showEditDiff = false
+                editingTx?.let { orig ->
+                    vm.editPaymentTransaction(orig, date, selectedEntity, customName, channel, amt, notes) { resetForm() }
                 }
-            }
+                editingExp?.let { orig ->
+                    vm.editExpenseRecord(orig, date, customName, expCategory, channel, amt, notes) { resetForm() }
+                }
+            },
+            onDismiss = { showEditDiff = false }
+        )
+    }
+
+    if (showDiscardEdit) {
+        DiscardEditDialog(
+            onDiscard = {
+                showDiscardEdit = false
+                resetForm()
+            },
+            onDismiss = { showDiscardEdit = false }
         )
     }
 }

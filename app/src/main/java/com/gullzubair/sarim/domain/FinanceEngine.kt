@@ -94,6 +94,46 @@ object FinanceEngine {
         return SessionInfo(mode = mode, tabs = tabs, roles = cur, restrictMoney = rolesRestrictMoney(cur))
     }
 
+    // --- Money Privacy & Recycle Scoping (money-privacy.js) ---
+
+    private val RECYCLE_SCOPE: Map<String, Pair<String, Set<String>>> = mapOf(
+        "prod" to ("tab_production" to setOf("production")),
+        "factory" to ("tab_factory" to setOf("factory")),
+        "sales" to ("tab_sales" to setOf("sales")),
+        "payments" to ("tab_payments" to setOf("transactions", "expenses"))
+    )
+
+    fun isMoneyRestricted(session: SessionInfo): Boolean = session.mode == "userrole"
+
+    fun hasOwnRepAccess(session: SessionInfo): Boolean = "rep" in session.tabs
+
+    fun hidesPaymentHistory(session: SessionInfo): Boolean =
+        isMoneyRestricted(session) && "payments" in session.tabs
+
+    fun recycleCollections(session: SessionInfo): Set<String>? {
+        if (!isMoneyRestricted(session)) return null
+        return session.tabs.mapNotNull { RECYCLE_SCOPE[it]?.second }.flatten().toSet()
+    }
+
+    fun recycleFilters(session: SessionInfo): Set<String>? {
+        if (!isMoneyRestricted(session)) return null
+        val filters = session.tabs.mapNotNull { RECYCLE_SCOPE[it]?.first }.toSet()
+        return setOf("all") + filters
+    }
+
+    fun isRecycleRecordAllowed(collection: String, session: SessionInfo): Boolean {
+        val allowed = recycleCollections(session) ?: return true
+        return collection in allowed
+    }
+
+    private val WEIGHT_OR_UNITS_REGEX = Regex("^[\\d.,\\s-]+\\s*(kg|units?)$", RegexOption.IGNORE_CASE)
+
+    fun recycleAmountText(text: String?, session: SessionInfo): String? {
+        if (text.isNullOrBlank()) return null
+        if (!isMoneyRestricted(session)) return text
+        return if (WEIGHT_OR_UNITS_REGEX.matches(text.trim())) text else null
+    }
+
     // --- Finance & FIFO Debt / Collection Math (finance.js) ---
 
     private val LEDGER_PAYMENT_TYPES = setOf("COLLECTION", "PARTIAL_PAYMENT", "MONEY_OUT", "REP_RETURN")
@@ -816,5 +856,178 @@ object FinanceEngine {
                     DateUtils.isInRange(it.date, dateFrom, dateTo)
             }.sumOf { it.quantity }
         )
+    }
+
+    // --- Edit History Helpers (edit-history.js) ---
+
+    const val EDIT_HISTORY_LIMIT = 100
+
+    fun buildEditDiff(
+        fields: List<Pair<String, String>>,
+        before: Map<String, Any?>,
+        after: Map<String, Any?>
+    ): List<Map<String, Any>> {
+        val out = mutableListOf<Map<String, Any>>()
+        for ((key, label) in fields) {
+            val a = before[key] ?: ""
+            val b = after[key] ?: ""
+            val aNorm = if (a is Number) InputGuards.fmtNum(a.toDouble()) else a.toString().trim()
+            val bNorm = if (b is Number) InputGuards.fmtNum(b.toDouble()) else b.toString().trim()
+            if (aNorm != bNorm) {
+                out.add(
+                    mapOf(
+                        "f" to key,
+                        "label" to label,
+                        "from" to a,
+                        "to" to b
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    fun pushEditHistory(
+        existing: List<Map<String, Any>>,
+        actor: String,
+        changes: List<Map<String, Any>>,
+        isoNow: String = java.time.Instant.now().toString()
+    ): List<Map<String, Any>> {
+        if (changes.isEmpty()) return existing
+        val entry = mapOf(
+            "at" to isoNow,
+            "by" to actor.ifBlank { "Admin" },
+            "changes" to changes
+        )
+        return (existing + entry).takeLast(EDIT_HISTORY_LIMIT)
+    }
+
+    fun deleteEditHistoryAt(
+        existing: List<Map<String, Any>>,
+        index: Int
+    ): List<Map<String, Any>> {
+        if (index !in existing.indices) return existing
+        return existing.filterIndexed { i, _ -> i != index }
+    }
+
+    // --- Daily Ledger Mirror Drift & Orphan Sync (ledger-core.js + ledger-mirror.js) ---
+
+    data class LedgerSyncResult(
+        val nextEntries: List<DailyLedgerEntry>,
+        val removedEntries: List<DailyLedgerEntry>,
+        val updatedCount: Int
+    )
+
+    fun syncLedgerEntriesWithSnapshot(snapshot: WorkspaceSnapshot): LedgerSyncResult {
+        val deletedIds = snapshot.deletions.map { it.recordId.ifBlank { it.id } }.toSet() + snapshot.erasedIds
+        val liveTx = snapshot.transactions.filter { it.deletedAt == null }.associateBy { it.id }
+        val liveExp = snapshot.expenses.filter { it.deletedAt == null }.associateBy { it.id }
+        val liveSales = snapshot.sales.filter { it.deletedAt == null }.associateBy { it.id }
+        val liveCalc = snapshot.calculator.filter { it.deletedAt == null }.associateBy { it.id }
+        val liveEntities = snapshot.entities.filter { it.deletedAt == null }.associateBy { it.id }
+
+        val nextEntries = mutableListOf<DailyLedgerEntry>()
+        val removedEntries = mutableListOf<DailyLedgerEntry>()
+        var updatedCount = 0
+        val now = System.currentTimeMillis()
+
+        for (t in snapshot.ledgerEntries) {
+            if (!t.isTabMirror) {
+                nextEntries.add(t)
+                continue
+            }
+            val mainId = t.linkDocId.orEmpty()
+            if (mainId.isNotBlank() && mainId in deletedIds) {
+                removedEntries.add(t)
+                continue
+            }
+
+            var nextAmt: Double? = null
+            var nextDate = ""
+            var nextParty = ""
+            var shouldRemove = false
+
+            when {
+                t.linkKind == "calc" || t.linkCollection == "calculator" -> {
+                    val c = liveCalc[mainId]
+                    if (c == null) {
+                        if (mainId.isNotBlank()) shouldRemove = true
+                    } else {
+                        val amt = when (t.linkPart) {
+                            "expense" -> c.fieldExpenses
+                            "commission" -> c.commissionPaid
+                            else -> c.received
+                        }
+                        if (amt <= 0.0) {
+                            shouldRemove = true
+                        } else {
+                            nextAmt = amt
+                            nextDate = c.date
+                            nextParty = c.seller.trim()
+                        }
+                    }
+                }
+                t.linkKind == "customer" || t.linkCollection == "sales" -> {
+                    val s = liveSales[mainId]
+                    if (s == null) {
+                        if (mainId.isNotBlank()) shouldRemove = true
+                    } else {
+                        if (t.linkPart == "sale" && s.paymentType.isNotBlank() && s.paymentType != "CASH") {
+                            shouldRemove = true
+                        } else {
+                            nextAmt = if (s.collectedAmount > 0.0 || s.isCollection) s.collectedAmount else s.totalValue
+                            nextDate = s.date
+                            nextParty = s.customerName.trim()
+                        }
+                    }
+                }
+                else -> {
+                    val tx = liveTx[mainId]
+                    val exp = if (tx == null) liveExp[mainId] else null
+                    when {
+                        tx != null -> {
+                            nextAmt = tx.amount
+                            nextDate = tx.date
+                            val ent = liveEntities[t.linkEntityId ?: tx.entityId]
+                            nextParty = (ent?.name ?: tx.entityName).trim()
+                        }
+                        exp != null -> {
+                            nextAmt = exp.amount
+                            nextDate = exp.date
+                            val ent = liveEntities[t.linkEntityId ?: exp.entityId]
+                            nextParty = (ent?.name ?: exp.entityName.ifBlank { exp.name }).trim()
+                        }
+                        mainId.isNotBlank() -> shouldRemove = true
+                    }
+                }
+            }
+
+            if (shouldRemove) {
+                removedEntries.add(t)
+                continue
+            }
+
+            var updated = t
+            var changed = false
+            if (nextAmt != null && nextAmt > 0.0 && abs(nextAmt - t.amount) > 0.004) {
+                updated = updated.copy(amount = InputGuards.round2(nextAmt))
+                changed = true
+            }
+            if (nextDate.length == 10 && nextDate != t.date) {
+                updated = updated.copy(date = nextDate)
+                changed = true
+            }
+            if (nextParty.isNotBlank() && nextParty != t.party) {
+                updated = updated.copy(party = nextParty)
+                changed = true
+            }
+            if (changed) {
+                updated = updated.copy(updatedAt = now)
+                updatedCount++
+            }
+            nextEntries.add(updated)
+        }
+
+        return LedgerSyncResult(nextEntries = nextEntries, removedEntries = removedEntries, updatedCount = updatedCount)
     }
 }

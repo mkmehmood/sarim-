@@ -102,6 +102,7 @@ import com.gullzubair.sarim.data.model.AppRoute
 import com.gullzubair.sarim.data.model.MainTab
 import com.gullzubair.sarim.data.model.UiState
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
+import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
@@ -231,6 +232,9 @@ private fun WorkspaceNavContainer(
     val currentRouteName = backStackEntry?.destination?.route ?: ""
     val isHome = currentRouteName.contains("WorkspaceHome") || currentRouteName.isEmpty()
 
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val isAdminSession = session.mode == "admin"
+    val moneyRestricted = FinanceEngine.isMoneyRestricted(session)
     val visibleTabs = remember(snapshot.profile) { vm.visibleTabsFor(snapshot.profile) }
     val effectiveTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.firstOrNull() ?: MainTab.OVERVIEW
     val pendingCount = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.count { it.status == "pending" } }
@@ -317,19 +321,19 @@ private fun WorkspaceNavContainer(
                             )
                         }
 
-                        Spacer(Modifier.height(14.dp))
-                        DrawerSectionLabel("DAILY WORK")
-                        Spacer(Modifier.height(4.dp))
-                        DrawerRowItem(
-                            label = "APPROVALS",
-                            icon = Icons.Outlined.CheckCircle,
-                            iconTint = accents.emerald,
-                            selected = currentRouteName.contains("Approvals"),
-                            badgeCount = pendingCount,
-                            testTag = "drawer_approvals",
-                            onClick = { navigateTo(AppRoute.Approvals) }
-                        )
-                        if (snapshot.profile.isAdmin) {
+                        if (isAdminSession) {
+                            Spacer(Modifier.height(14.dp))
+                            DrawerSectionLabel("DAILY WORK")
+                            Spacer(Modifier.height(4.dp))
+                            DrawerRowItem(
+                                label = "APPROVALS",
+                                icon = Icons.Outlined.CheckCircle,
+                                iconTint = accents.emerald,
+                                selected = currentRouteName.contains("Approvals"),
+                                badgeCount = pendingCount,
+                                testTag = "drawer_approvals",
+                                onClick = { navigateTo(AppRoute.Approvals) }
+                            )
                             DrawerRowItem(
                                 label = "DAILY LEDGER",
                                 icon = Icons.Outlined.MenuBook,
@@ -338,51 +342,51 @@ private fun WorkspaceNavContainer(
                                 testTag = "drawer_daily_ledger",
                                 onClick = { navigateTo(AppRoute.DailyLedger) }
                             )
-                        }
-                        DrawerRowItem(
-                            label = "STOCK TRANSFER",
-                            icon = Icons.Outlined.SwapHoriz,
-                            iconTint = accents.gold,
-                            selected = currentRouteName.contains("StockTransfer"),
-                            testTag = "drawer_stock_transfer",
-                            onClick = { navigateTo(AppRoute.StockTransfer) }
-                        )
-                        DrawerRowItem(
-                            label = "PAYMENT TRANSFER",
-                            icon = Icons.Outlined.CurrencyExchange,
-                            iconTint = Color(0xFF059669),
-                            selected = currentRouteName.contains("PaymentTransfer"),
-                            testTag = "drawer_payment_transfer",
-                            onClick = { navigateTo(AppRoute.PaymentTransfer) }
-                        )
+                            DrawerRowItem(
+                                label = "STOCK TRANSFER",
+                                icon = Icons.Outlined.SwapHoriz,
+                                iconTint = accents.gold,
+                                selected = currentRouteName.contains("StockTransfer"),
+                                testTag = "drawer_stock_transfer",
+                                onClick = { navigateTo(AppRoute.StockTransfer) }
+                            )
+                            DrawerRowItem(
+                                label = "PAYMENT TRANSFER",
+                                icon = Icons.Outlined.CurrencyExchange,
+                                iconTint = Color(0xFF059669),
+                                selected = currentRouteName.contains("PaymentTransfer"),
+                                testTag = "drawer_payment_transfer",
+                                onClick = { navigateTo(AppRoute.PaymentTransfer) }
+                            )
 
-                        Spacer(Modifier.height(14.dp))
-                        DrawerSectionLabel("RECORDS")
-                        Spacer(Modifier.height(4.dp))
-                        DrawerRowItem(
-                            label = "ADD ENTITY",
-                            icon = Icons.Outlined.PersonAdd,
-                            iconTint = accents.cyan,
-                            selected = currentRouteName.contains("AddEntity"),
-                            testTag = "drawer_add_entity",
-                            onClick = { navigateTo(AppRoute.AddEntity) }
-                        )
-                        DrawerRowItem(
-                            label = "ADD RAW MATERIALS",
-                            icon = Icons.Outlined.Eco,
-                            iconTint = Color(0xFF16A34A),
-                            selected = currentRouteName.contains("RawMaterialPurchase"),
-                            testTag = "drawer_add_raw_materials",
-                            onClick = { navigateTo(AppRoute.RawMaterialPurchase) }
-                        )
-                        DrawerRowItem(
-                            label = "FORMULA STORE",
-                            icon = Icons.Outlined.Science,
-                            iconTint = accents.gold,
-                            selected = currentRouteName.contains("FormulaStore"),
-                            testTag = "drawer_formula_store",
-                            onClick = { navigateTo(AppRoute.FormulaStore) }
-                        )
+                            Spacer(Modifier.height(14.dp))
+                            DrawerSectionLabel("RECORDS")
+                            Spacer(Modifier.height(4.dp))
+                            DrawerRowItem(
+                                label = "ADD ENTITY",
+                                icon = Icons.Outlined.PersonAdd,
+                                iconTint = accents.cyan,
+                                selected = currentRouteName.contains("AddEntity"),
+                                testTag = "drawer_add_entity",
+                                onClick = { navigateTo(AppRoute.AddEntity) }
+                            )
+                            DrawerRowItem(
+                                label = "ADD RAW MATERIALS",
+                                icon = Icons.Outlined.Eco,
+                                iconTint = Color(0xFF16A34A),
+                                selected = currentRouteName.contains("RawMaterialPurchase"),
+                                testTag = "drawer_add_raw_materials",
+                                onClick = { navigateTo(AppRoute.RawMaterialPurchase) }
+                            )
+                            DrawerRowItem(
+                                label = "FORMULA STORE",
+                                icon = Icons.Outlined.Science,
+                                iconTint = accents.gold,
+                                selected = currentRouteName.contains("FormulaStore"),
+                                testTag = "drawer_formula_store",
+                                onClick = { navigateTo(AppRoute.FormulaStore) }
+                            )
+                        }
                     }
 
                     // Sticky Footer (SETTINGS & LOGOUT)
@@ -497,7 +501,7 @@ private fun WorkspaceNavContainer(
                             }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (pendingCount > 0) {
+                                if (isAdminSession && pendingCount > 0) {
                                     IconButton(
                                         onClick = { navigateTo(AppRoute.Approvals) },
                                         modifier = Modifier.size(48.dp).testTag("topbar_approvals_btn")
@@ -507,15 +511,17 @@ private fun WorkspaceNavContainer(
                                         }
                                     }
                                 }
-                                IconButton(
-                                    onClick = { vm.togglePrivacyMask() },
-                                    modifier = Modifier.size(48.dp).testTag("topbar_privacy_btn")
-                                ) {
-                                    Icon(
-                                        imageVector = if (snapshot.settings.hideSensitiveMoney) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = "Toggle money privacy",
-                                        tint = accents.textMuted
-                                    )
+                                if (!moneyRestricted) {
+                                    IconButton(
+                                        onClick = { vm.togglePrivacyMask() },
+                                        modifier = Modifier.size(48.dp).testTag("topbar_privacy_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (snapshot.settings.hideSensitiveMoney) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = "Toggle money privacy",
+                                            tint = accents.textMuted
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -113,6 +113,12 @@ fun SettingsScreen(
     onSignOut: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val isAdminSession = session.mode == "admin"
+    val canSeeRecycleBin = isAdminSession || (FinanceEngine.recycleCollections(session)?.isNotEmpty() == true)
+    val allowedBinCount = remember(snapshot.deletions, session) {
+        snapshot.deletions.count { FinanceEngine.isRecycleRecordAllowed(it.collection, session) }
+    }
     var currency by remember(snapshot.settings) { mutableStateOf(snapshot.settings.currencySymbol) }
     var fyMonth by remember(snapshot.settings) { mutableStateOf(snapshot.settings.financialYearStartMonth.toString()) }
     var repProfile by remember(snapshot.settings) { mutableStateOf(snapshot.settings.repProfile) }
@@ -140,28 +146,34 @@ fun SettingsScreen(
                 Text("WORKSPACE TOOLS", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
                 Spacer(Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) {
-                        onNavigateRoute(AppRoute.StoreManager)
-                    }
-                    SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) {
-                        onNavigateRoute(AppRoute.AppAccounts)
+                    if (isAdminSession) {
+                        SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) {
+                            onNavigateRoute(AppRoute.StoreManager)
+                        }
+                        SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) {
+                            onNavigateRoute(AppRoute.AppAccounts)
+                        }
                     }
                     SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Outlined.VolumeUp, accents.emerald) {
                         onNavigateRoute(AppRoute.SoundHaptics)
                     }
-                    SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Outlined.Backup, accents.gold) {
-                        onNavigateRoute(AppRoute.BackupRestore)
+                    if (isAdminSession) {
+                        SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Outlined.Backup, accents.gold) {
+                            onNavigateRoute(AppRoute.BackupRestore)
+                        }
                     }
-                    SettingsNavTile(
-                        title = "Recycle Bin",
-                        subtitle = if (snapshot.deletions.isEmpty()) "Restore deleted records or empty permanently" else "${snapshot.deletions.size} deleted item(s)",
-                        icon = Icons.Outlined.DeleteOutline,
-                        tint = accents.danger
-                    ) { onNavigateRoute(AppRoute.RecycleBin) }
-                    SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Outlined.Storage, accents.purple) {
-                        onNavigateRoute(AppRoute.DbStructure)
+                    if (canSeeRecycleBin) {
+                        SettingsNavTile(
+                            title = "Recycle Bin",
+                            subtitle = if (allowedBinCount == 0) "Restore deleted records or empty permanently" else "$allowedBinCount deleted item(s)",
+                            icon = Icons.Outlined.DeleteOutline,
+                            tint = accents.danger
+                        ) { onNavigateRoute(AppRoute.RecycleBin) }
                     }
-                    if (snapshot.profile.isAdmin) {
+                    if (isAdminSession) {
+                        SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Outlined.Storage, accents.purple) {
+                            onNavigateRoute(AppRoute.DbStructure)
+                        }
                         SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Outlined.EventBusy, accents.danger) {
                             onNavigateRoute(AppRoute.CloseFinancialYear)
                         }
@@ -169,110 +181,143 @@ fun SettingsScreen(
                 }
             }
 
-            item {
-                SarimCard {
-                    Text("Workspace Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = currency,
-                        onValueChange = { currency = it.take(12) },
-                        label = "Currency Symbol",
-                        testTag = "settings_currency_input"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = fyMonth,
-                        onValueChange = { fyMonth = it.filter(Char::isDigit).take(2) },
-                        label = "Financial Year Start Month (1-12)"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = repProfile,
-                        onValueChange = { repProfile = it.take(60) },
-                        label = "Default Rep Profile",
-                        placeholder = "Optional active rep name"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("light", "dark", "system").forEach { m ->
-                            FilterChip(
-                                selected = theme == m,
-                                onClick = { theme = m },
-                                label = { Text(m.replaceFirstChar { it.uppercase() }) }
+            if (isAdminSession) {
+                item {
+                    SarimCard {
+                        Text("Workspace Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Spacer(Modifier.height(10.dp))
+                        SarimPillInput(
+                            value = currency,
+                            onValueChange = { currency = it.take(12) },
+                            label = "Currency Symbol",
+                            testTag = "settings_currency_input"
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        SarimPillInput(
+                            value = fyMonth,
+                            onValueChange = { fyMonth = it.filter(Char::isDigit).take(2) },
+                            label = "Financial Year Start Month (1-12)"
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        SarimPillInput(
+                            value = repProfile,
+                            onValueChange = { repProfile = it.take(60) },
+                            label = "Default Rep Profile",
+                            placeholder = "Optional active rep name"
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("light", "dark", "system").forEach { m ->
+                                FilterChip(
+                                    selected = theme == m,
+                                    onClick = { theme = m },
+                                    label = { Text(m.replaceFirstChar { it.uppercase() }) }
+                                )
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Biometric App Lock", style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = bio, onCheckedChange = { bio = it }, modifier = Modifier.testTag("settings_bio_switch"))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Privacy Mask Monetary Totals", style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = hideMoney, onCheckedChange = { hideMoney = it }, modifier = Modifier.testTag("settings_privacy_switch"))
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clickable { listsExpanded = !listsExpanded }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Reps, Payment Modes & Categories",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = accents.emerald
+                            )
+                            Icon(
+                                if (listsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle category lists",
+                                tint = accents.emerald
                             )
                         }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Biometric App Lock", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = bio, onCheckedChange = { bio = it }, modifier = Modifier.testTag("settings_bio_switch"))
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Privacy Mask Monetary Totals", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = hideMoney, onCheckedChange = { hideMoney = it }, modifier = Modifier.testTag("settings_privacy_switch"))
-                    }
 
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 48.dp)
-                            .clickable { listsExpanded = !listsExpanded }
-                            .padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Reps, Payment Modes & Categories",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = accents.emerald
-                        )
-                        Icon(
-                            if (listsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Toggle category lists",
-                            tint = accents.emerald
-                        )
-                    }
-
-                    AnimatedVisibility(visible = listsExpanded) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
-                            EditableTagList("Sales Reps", reps, "Add rep name")
-                            EditableTagList("Payment Modes", paymentModes, "Add payment mode")
-                            EditableTagList("Expense Categories", expCats, "Add expense category")
-                            EditableTagList("Field Expense Categories", fieldExpCats, "Add field expense category")
-                            EditableTagList("Commission Categories", commCats, "Add commission category")
+                        AnimatedVisibility(visible = listsExpanded) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
+                                EditableTagList("Sales Reps", reps, "Add rep name")
+                                EditableTagList("Payment Modes", paymentModes, "Add payment mode")
+                                EditableTagList("Expense Categories", expCats, "Add expense category")
+                                EditableTagList("Field Expense Categories", fieldExpCats, "Add field expense category")
+                                EditableTagList("Commission Categories", commCats, "Add commission category")
+                            }
                         }
-                    }
 
-                    if (snapshot.profile.isAdmin) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = { vm.auditRepriceZeroCostSales() }, modifier = Modifier.fillMaxWidth()) {
                             Text("Audit & Reprice Zero-Cost Sales")
                         }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    SarimGradientButton(
-                        text = "Save Settings",
-                        onClick = {
-                            vm.updateSettings(
-                                snapshot.settings.copy(
-                                    currencySymbol = currency.ifBlank { "Rs" },
-                                    financialYearStartMonth = (fyMonth.toIntOrNull() ?: 7).coerceIn(1, 12),
-                                    repProfile = repProfile.trim(),
-                                    themeMode = theme,
-                                    biometricLockEnabled = bio,
-                                    hideSensitiveMoney = hideMoney,
-                                    reps = reps.toList(),
-                                    paymentModes = paymentModes.toList().ifEmpty { listOf("Cash", "Bank") },
-                                    expenseCategories = expCats.toList().ifEmpty { listOf("Other") },
-                                    fieldExpenseCategories = fieldExpCats.toList().ifEmpty { listOf("Other") },
-                                    commissionCategories = commCats.toList().ifEmpty { listOf("Sales Commission") }
+                        Spacer(Modifier.height(10.dp))
+                        SarimGradientButton(
+                            text = "Save Settings",
+                            onClick = {
+                                vm.updateSettings(
+                                    snapshot.settings.copy(
+                                        currencySymbol = currency.ifBlank { "Rs" },
+                                        financialYearStartMonth = (fyMonth.toIntOrNull() ?: 7).coerceIn(1, 12),
+                                        repProfile = repProfile.trim(),
+                                        themeMode = theme,
+                                        biometricLockEnabled = bio,
+                                        hideSensitiveMoney = hideMoney,
+                                        reps = reps.toList(),
+                                        paymentModes = paymentModes.toList().ifEmpty { listOf("Cash", "Bank") },
+                                        expenseCategories = expCats.toList().ifEmpty { listOf("Other") },
+                                        fieldExpenseCategories = fieldExpCats.toList().ifEmpty { listOf("Other") },
+                                        commissionCategories = commCats.toList().ifEmpty { listOf("Sales Commission") }
+                                    )
                                 )
+                            },
+                            testTag = "settings_save_btn"
+                        )
+                    }
+                }
+            } else {
+                item {
+                    SarimCard {
+                        Text("Device Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Spacer(Modifier.height(10.dp))
+                        Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("light", "dark", "system").forEach { m ->
+                                FilterChip(
+                                    selected = theme == m,
+                                    onClick = {
+                                        theme = m
+                                        vm.updateSettings(snapshot.settings.copy(themeMode = m))
+                                    },
+                                    label = { Text(m.replaceFirstChar { it.uppercase() }) }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Biometric App Lock", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = bio,
+                                onCheckedChange = {
+                                    bio = it
+                                    vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = it))
+                                },
+                                modifier = Modifier.testTag("settings_bio_switch")
                             )
-                        },
-                        testTag = "settings_save_btn"
-                    )
+                        }
+                    }
                 }
             }
 
@@ -1134,13 +1179,16 @@ private fun CloseFySkippedCard(title: String) {
 fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
-    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    val moneyRestricted = FinanceEngine.isMoneyRestricted(session)
+    val hideAllMoney = snapshot.settings.hideSensitiveMoney
 
     var colFilter by remember { mutableStateOf("all") }
     var confirmPurgeItem by remember { mutableStateOf<DeletionTombstone?>(null) }
 
-    val sortedDeletions = remember(snapshot.deletions) {
-        snapshot.deletions.sortedByDescending { it.deletedAt }
+    val sortedDeletions = remember(snapshot.deletions, session) {
+        snapshot.deletions
+            .filter { FinanceEngine.isRecycleRecordAllowed(it.collection, session) }
+            .sortedByDescending { it.deletedAt }
     }
     val collections = remember(sortedDeletions) {
         listOf("all") + sortedDeletions.map { it.collection.lowercase(Locale.ROOT) }.filter { it.isNotBlank() }.distinct()
@@ -1184,6 +1232,10 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                     val daysLeft = remember(t.expiresAt) {
                         if (t.expiresAt > 0L) max(0L, (t.expiresAt - System.currentTimeMillis()) / (24L * 60L * 60L * 1000L)) else 30L
                     }
+                    val safeAmount = remember(t.displayAmount, session, moneyRestricted, hideAllMoney) {
+                        if (hideAllMoney) null
+                        else FinanceEngine.recycleAmountText(t.displayAmount, session)
+                    }
                     SarimCard {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -1194,7 +1246,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                                 val subtitleParts = listOfNotNull(
                                     t.collection.uppercase(Locale.ROOT),
                                     t.displayDetail.takeIf { it.isNotBlank() },
-                                    if (!masked && t.displayAmount.isNotBlank()) t.displayAmount else null,
+                                    safeAmount,
                                     deletedDate.takeIf { it.isNotBlank() },
                                     "${daysLeft}d left"
                                 )
@@ -1212,7 +1264,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                             ) {
                                 Icon(Icons.Default.Restore, contentDescription = "Restore record", tint = accents.emerald)
                             }
-                            if (snapshot.profile.isAdmin) {
+                            if (session.mode == "admin") {
                                 IconButton(
                                     onClick = { confirmPurgeItem = t },
                                     modifier = Modifier

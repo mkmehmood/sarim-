@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimGradientButton
@@ -154,7 +157,28 @@ fun CustomerDetailScreen(
         ) {
             item { Spacer(Modifier.height(4.dp)) }
             item {
+                val custPhotoKey = customer?.let { "${if (isRepClient) "client" else "cust"}:${it.id}" }
+                val custPhotoUri = custPhotoKey?.let { snapshot.photos[it]?.takeIf { b -> !b.deleted }?.dataUri }
                 SarimCard {
+                    if (!custPhotoUri.isNullOrBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            DecodedDataUrlImage(
+                                dataUrl = custPhotoUri,
+                                contentDescription = "$customerName photo",
+                                modifier = Modifier.size(52.dp).clip(CircleShape)
+                            )
+                            Column {
+                                Text(customerName, style = MaterialTheme.typography.titleMedium)
+                                if (!customer.ledgerPage.isBlank()) {
+                                    Text("Ledger Page: ${customer.ledgerPage}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                }
+                            }
+                        }
+                    }
                     SarimHalfRingKpiBox(
                         label = "CUSTOMER BALANCE",
                         value = InputGuards.formatMoney(balance, currency, masked),
@@ -164,6 +188,10 @@ fun CustomerDetailScreen(
                     if (!customer?.address.isNullOrBlank()) {
                         Spacer(Modifier.height(8.dp))
                         Text("Address: ${customer?.address}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    }
+                    if (custPhotoUri.isNullOrBlank() && !customer?.ledgerPage.isNullOrBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Ledger Page: ${customer?.ledgerPage}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     }
                     Spacer(Modifier.height(12.dp))
                     SarimGradientButton(
@@ -281,13 +309,51 @@ fun EntityDetailScreen(
         ) {
             item { Spacer(Modifier.height(4.dp)) }
             item {
+                val entPhotoUri = entity?.id?.let { eid -> snapshot.photos["entity:$eid"]?.takeIf { !it.deleted }?.dataUri }
                 SarimCard {
+                    if (!entPhotoUri.isNullOrBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            DecodedDataUrlImage(
+                                dataUrl = entPhotoUri,
+                                contentDescription = "$entityName photo",
+                                modifier = Modifier.size(52.dp).clip(CircleShape)
+                            )
+                            Column {
+                                Text(entityName, style = MaterialTheme.typography.titleMedium)
+                                if (entity.wallet.isNotBlank() || entity.ledgerPage.isNotBlank()) {
+                                    Text(
+                                        listOfNotNull(
+                                            entity.wallet.takeIf { it.isNotBlank() },
+                                            entity.ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
+                                        ).joinToString(" • "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = accents.textMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
                     SarimHalfRingKpiBox(
                         label = "ENTITY BALANCE",
                         value = InputGuards.formatMoney(balance, currency, masked),
                         ringColor = if (balance >= 0) accents.emerald else accents.danger,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (entPhotoUri.isNullOrBlank() && entity != null && (entity.wallet.isNotBlank() || entity.ledgerPage.isNotBlank())) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            listOfNotNull(
+                                entity.wallet.takeIf { it.isNotBlank() },
+                                entity.ledgerPage.takeIf { it.isNotBlank() }?.let { "Ledger Page: $it" }
+                            ).joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.textMuted
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     SarimGradientButton(
                         text = "Export Statement PDF",

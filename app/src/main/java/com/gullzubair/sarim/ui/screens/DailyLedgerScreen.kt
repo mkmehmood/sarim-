@@ -1,5 +1,6 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -116,6 +117,11 @@ fun DailyLedgerScreen(
     }
     val totalIn = remember(filteredEntries) { filteredEntries.filter { it.type.equals("IN", true) }.sumOf { it.amount } }
     val totalOut = remember(filteredEntries) { filteredEntries.filter { it.type.equals("OUT", true) }.sumOf { it.amount } }
+
+    BackHandler(enabled = showComposer && editingId != null) {
+        editingId = null
+        showComposer = false
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
@@ -364,7 +370,23 @@ fun DailyLedgerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(item.category.ifBlank { item.type }, style = MaterialTheme.typography.titleSmall)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(item.category.ifBlank { item.type }, style = MaterialTheme.typography.titleSmall)
+                                        if (item.isTabMirror) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = accents.cyan.copy(alpha = 0.14f),
+                                                border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.35f))
+                                            ) {
+                                                Text(
+                                                    "SYNCED",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                    color = accents.cyan,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
                                         listOfNotNull(
                                             item.party.ifBlank { item.mode },

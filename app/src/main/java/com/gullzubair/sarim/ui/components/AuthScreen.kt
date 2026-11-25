@@ -119,6 +119,69 @@ private val SplashTrackGray = Color(0xFF94A3B8)
 private val InkPrimary = Color(0xFF0F172A)
 private val InkSecondary = Color(0xFF475569)
 
+private val SPLASH_QUOTES = listOf(
+    "The details are not the details. They make the design." to "Charles Eames",
+    "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." to "Antoine de Saint-Exupéry",
+    "Price is what you pay. Value is what you get." to "Warren Buffett",
+    "It is not the strongest of the species that survives, but the one most adaptable to change." to "Leon C. Megginson",
+    "An investment in knowledge pays the best interest." to "Benjamin Franklin",
+    "What gets measured gets managed." to "Peter Drucker",
+    "The purpose of a business is to create a customer who creates customers." to "Shiv Singh",
+    "Simplicity is the ultimate sophistication." to "Leonardo da Vinci",
+    "Opportunities don't happen. You create them." to "Chris Grosser",
+    "The best way to predict the future is to create it." to "Peter Drucker",
+    "Chase the vision, not the money. The money will end up following you." to "Tony Hsieh",
+    "Build something 100 people love, not something 1 million people kind of like." to "Brian Chesky",
+    "Excellence is not an act but a habit." to "Will Durant",
+    "Your most unhappy customers are your greatest source of learning." to "Bill Gates",
+    "Well done is better than well said." to "Benjamin Franklin",
+    "Honesty is the first chapter in the book of wisdom." to "Thomas Jefferson",
+    "It takes twenty years to build a reputation and five minutes to ruin it." to "Warren Buffett",
+    "Do not save what is left after spending; spend what is left after saving." to "Warren Buffett",
+    "Be fearful when others are greedy, and greedy when others are fearful." to "Warren Buffett",
+    "Risk comes from not knowing what you are doing." to "Warren Buffett",
+    "A penny saved is a penny earned." to "Benjamin Franklin",
+    "Beware of little expenses; a small leak will sink a great ship." to "Benjamin Franklin",
+    "The best advertisement is a satisfied customer." to "Philip Kotler",
+    "Efficiency is doing things right; effectiveness is doing the right things." to "Peter Drucker",
+    "Quality means doing it right when no one is looking." to "Henry Ford",
+    "Coming together is a beginning; keeping together is progress; working together is success." to "Henry Ford",
+    "Whether you think you can or you think you can't, you're right." to "Henry Ford",
+    "Genius is one percent inspiration and ninety-nine percent perspiration." to "Thomas Edison",
+    "There is no substitute for hard work." to "Thomas Edison",
+    "Success is the sum of small efforts, repeated day in and day out." to "Robert Collier",
+    "Small deeds done are better than great deeds planned." to "Peter Marshall",
+    "Start where you are. Use what you have. Do what you can." to "Arthur Ashe",
+    "The only way to do great work is to love what you do." to "Steve Jobs",
+    "Trust is the glue of life." to "Stephen Covey",
+    "Customers don't expect you to be perfect. They expect you to fix things when they go wrong." to "Donald Porter",
+    "A journey of a thousand miles begins with a single step." to "Lao Tzu",
+    "Do the difficult things while they are easy and the great things while they are small." to "Lao Tzu",
+    "Knowing is not enough; we must apply." to "Johann Wolfgang von Goethe",
+    "It always seems impossible until it is done." to "Nelson Mandela",
+    "Courage is not the absence of fear, but the triumph over it." to "Nelson Mandela",
+    "Discipline is the bridge between goals and accomplishment." to "Jim Rohn",
+    "Nothing will work unless you do." to "Maya Angelou",
+    "Make each day your masterpiece." to "John Wooden",
+    "Quality is never an accident; it is always the result of intelligent effort." to "John Ruskin",
+    "Little by little, one travels far." to "J.R.R. Tolkien",
+    "Slow and steady wins the race." to "Aesop",
+    "No act of kindness, no matter how small, is ever wasted." to "Aesop",
+    "Well begun is half done." to "Aristotle",
+    "The best time to plant a tree was twenty years ago. The second best time is now." to "Chinese Proverb",
+    "If you want to go fast, go alone. If you want to go far, go together." to "African Proverb",
+    "Fall seven times, stand up eight." to "Japanese Proverb",
+    "Never let the fear of striking out keep you from playing the game." to "Babe Ruth",
+    "The expert in anything was once a beginner." to "Helen Hayes",
+    "A smooth sea never made a skilled sailor." to "Franklin D. Roosevelt",
+    "Do what you can, with what you have, where you are." to "Theodore Roosevelt",
+    "Change your thoughts and you change your world." to "Norman Vincent Peale",
+    "Whoever is happy will make others happy too." to "Anne Frank",
+    "He who has a why to live can bear almost any how." to "Friedrich Nietzsche",
+    "Innovation distinguishes between a leader and a follower." to "Steve Jobs",
+    "The way to get started is to quit talking and begin doing." to "Walt Disney"
+)
+
 private val LoginMintTop = Color(0xFFEAF5F0)
 private val LoginMintMid = Color(0xFFD9EDE4)
 private val LoginBrandTeal = Color(0xFF0F766E)
@@ -137,13 +200,41 @@ fun SarimSplashScreen() {
     val cal = remember { Calendar.getInstance() }
     val hour24 = cal.get(Calendar.HOUR_OF_DAY)
     val minute = cal.get(Calendar.MINUTE)
-    val dayProgressTarget = remember(hour24, minute) {
-        (((hour24 + minute / 60f) - 6f) / 12f).coerceIn(0.05f, 0.95f)
+    val hourFloat = hour24 + minute / 60f
+    val isDay = hourFloat >= 6f && hourFloat < 18f
+    val dialTarget = remember(hourFloat, isDay) {
+        val raw = if (isDay) (hourFloat - 6f) / 12f else ((hourFloat - 18f + 24f) % 24f) / 12f
+        raw.coerceIn(0.05f, 0.95f)
     }
-    val greetingText = remember(hour24) {
+    val periodColors = remember(hourFloat) {
         when {
-            hour24 < 12 -> "GOOD MORNING"
-            hour24 < 17 -> "GOOD AFTERNOON"
+            hourFloat < 5f || hourFloat >= 18f -> Triple(
+                Color(0xFF6366F1).copy(alpha = 0.28f),
+                Color(0xFF10B981).copy(alpha = 0.14f),
+                Color(0xFFE2E8F0)
+            )
+            hourFloat < 8f -> Triple(
+                Color(0xFFFBBF24).copy(alpha = 0.34f),
+                Color(0xFF10B981).copy(alpha = 0.18f),
+                Color(0xFFF59E0B)
+            )
+            hourFloat < 16f -> Triple(
+                Color(0xFF10B981).copy(alpha = 0.28f),
+                Color(0xFF0891B2).copy(alpha = 0.15f),
+                Color(0xFFF59E0B)
+            )
+            else -> Triple(
+                Color(0xFFFB923C).copy(alpha = 0.32f),
+                Color(0xFF0891B2).copy(alpha = 0.16f),
+                Color(0xFFF97316)
+            )
+        }
+    }
+    val greetingText = remember(hourFloat) {
+        when {
+            hourFloat < 5f -> "EARLY HOURS"
+            hourFloat < 12f -> "GOOD MORNING"
+            hourFloat < 17f -> "GOOD AFTERNOON"
             else -> "GOOD EVENING"
         }
     }
@@ -158,9 +249,10 @@ fun SarimSplashScreen() {
     val dateHeader = remember(cal.timeInMillis) {
         SimpleDateFormat("EEEE · d MMMM", Locale.ENGLISH).format(cal.time).uppercase(Locale.ENGLISH)
     }
+    val quotePair = remember { SPLASH_QUOTES.random() }
 
     val animatedProgress by animateFloatAsState(
-        targetValue = if (appeared) dayProgressTarget else 0.05f,
+        targetValue = if (appeared) dialTarget else 0.05f,
         animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
         label = "sun_dial_progress"
     )
@@ -184,13 +276,13 @@ fun SarimSplashScreen() {
             .testTag("sarim_splash_screen")
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val glowCenter = Offset(size.width * 0.5f, size.height * 0.45f)
-            val glowRadius = size.maxDimension * 0.46f
+            val glowCenter = Offset(size.width * 0.5f, size.height * 0.43f)
+            val glowRadius = size.maxDimension * 0.48f
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        SplashMintHalo.copy(alpha = 0.85f),
-                        SplashMintHalo.copy(alpha = 0.35f),
+                        periodColors.first,
+                        periodColors.second,
                         Color.Transparent
                     ),
                     center = glowCenter,
@@ -298,7 +390,7 @@ fun SarimSplashScreen() {
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    SplashSunGold.copy(alpha = 0.42f),
+                                    periodColors.third.copy(alpha = 0.45f),
                                     Color.Transparent
                                 ),
                                 center = orbCenter,
@@ -307,16 +399,29 @@ fun SarimSplashScreen() {
                             radius = 19.dp.toPx(),
                             center = orbCenter
                         )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 9.5.dp.toPx(),
-                            center = orbCenter
-                        )
-                        drawCircle(
-                            color = SplashSunGold,
-                            radius = 6.5.dp.toPx(),
-                            center = orbCenter
-                        )
+                        if (isDay) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = 9.5.dp.toPx(),
+                                center = orbCenter
+                            )
+                            drawCircle(
+                                color = periodColors.third,
+                                radius = 6.5.dp.toPx(),
+                                center = orbCenter
+                            )
+                        } else {
+                            drawCircle(
+                                color = Color(0xFF475569),
+                                radius = 8.5.dp.toPx(),
+                                center = orbCenter
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 7.dp.toPx(),
+                                center = Offset(orbCenter.x + 3.2.dp.toPx(), orbCenter.y - 2.2.dp.toPx())
+                            )
+                        }
                     }
 
                     Column(
@@ -376,14 +481,14 @@ fun SarimSplashScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "06",
+                            text = if (isDay) "06" else "18",
                             fontFamily = JetBrainsMonoFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
                             color = InkPrimary
                         )
                         Text(
-                            text = "18",
+                            text = if (isDay) "18" else "06",
                             fontFamily = JetBrainsMonoFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
@@ -453,7 +558,7 @@ fun SarimSplashScreen() {
                 Spacer(Modifier.height(20.dp))
 
                 Text(
-                    text = "\"Great dreams of great dreamers are always transcended.\"",
+                    text = "\"${quotePair.first}\"",
                     fontFamily = PlayfairFont,
                     fontStyle = FontStyle.Italic,
                     fontWeight = FontWeight.Normal,
@@ -465,7 +570,7 @@ fun SarimSplashScreen() {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "— ABDUL KALAM",
+                    text = "— ${quotePair.second.uppercase(Locale.ENGLISH)}",
                     fontFamily = JakartaFont,
                     fontWeight = FontWeight.Medium,
                     fontSize = 10.sp,

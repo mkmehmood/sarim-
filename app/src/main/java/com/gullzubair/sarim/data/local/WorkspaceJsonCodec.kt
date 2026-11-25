@@ -194,6 +194,53 @@ object WorkspaceJsonCodec {
         }
     }
 
+    private fun parseAllocPairs(v: Any?, idKey: String): Pair<Map<String, Double>, Map<String, Boolean>> {
+        val amounts = LinkedHashMap<String, Double>()
+        val fullFlags = LinkedHashMap<String, Boolean>()
+        when (v) {
+            is Iterable<*> -> {
+                v.forEach { item ->
+                    val m = item as? Map<*, *> ?: return@forEach
+                    val id = asNullableStr(m[idKey])
+                        ?: asNullableStr(m["id"])
+                        ?: return@forEach
+                    val amt = asNullableDouble(m["amount"]) ?: 0.0
+                    amounts[id] = amt
+                    fullFlags[id] = asBool(m["full"], false)
+                }
+            }
+            is Map<*, *> -> {
+                v.forEach { (k, rawVal) ->
+                    val id = asNullableStr(k) ?: return@forEach
+                    when (rawVal) {
+                        is Map<*, *> -> {
+                            amounts[id] = asNullableDouble(rawVal["amount"]) ?: 0.0
+                            fullFlags[id] = asBool(rawVal["full"], false)
+                        }
+                        else -> {
+                            amounts[id] = asNullableDouble(rawVal) ?: 0.0
+                        }
+                    }
+                }
+            }
+        }
+        return amounts to fullFlags
+    }
+
+    private fun allocsToWebList(
+        amounts: Map<String, Double>,
+        fullFlags: Map<String, Boolean>,
+        idKey: String
+    ): List<Map<String, Any>> = amounts.entries.map { (id, amt) ->
+        mapOf(
+            idKey to id,
+            "amount" to amt,
+            "full" to (fullFlags[id] == true)
+        )
+    }
+
+    private fun asEditHistory(v: Any?): List<Map<String, Any>> = asMapList(v).takeLast(100)
+
     fun snapshotToMap(snap: DocumentSnapshot): Map<String, Any> {
         val data = snap.data ?: return emptyMap()
         val out = LinkedHashMap<String, Any>(data.size + 1)
@@ -440,7 +487,10 @@ object WorkspaceJsonCodec {
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         createdAt = asLong(data["createdAt"], 0L),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun productionToMap(p: ProductionRecord): Map<String, Any> = buildMap {
@@ -482,6 +532,9 @@ object WorkspaceJsonCodec {
         put("timestamp", if (p.timestamp > 0L) p.timestamp else System.currentTimeMillis())
         put("createdAt", if (p.createdAt > 0L) p.createdAt else System.currentTimeMillis())
         p.deletedAt?.let { put("deletedAt", it) }
+        if (p.isEdited) put("isEdited", true)
+        if (p.editedAt.isNotBlank()) put("editedAt", p.editedAt)
+        if (p.editHistory.isNotEmpty()) put("editHistory", p.editHistory)
     }
 
     fun mapToSale(docId: String, data: Map<String, Any>): SalesRecord {
@@ -495,6 +548,17 @@ object WorkspaceJsonCodec {
                 else -> if (asDouble(data["creditAmount"], 0.0) > 0.0) "CREDIT" else "CASH"
             }
         }
+        val (collAllocs, collAllocFull) = parseAllocPairs(data["collectionAllocs"], "cid")
+        val (allocs, allocFull) = parseAllocPairs(data["allocations"], "saleId")
+        val legacyCollFull = data["collectionAllocFull"] as? Map<*, *>
+        val resolvedCollFull = if (legacyCollFull != null) {
+            legacyCollFull.entries.mapNotNull { (k, v) -> k?.toString()?.let { it to asBool(v, false) } }.toMap() + collAllocFull
+        } else collAllocFull
+        val legacyAllocFull = data["allocationFull"] as? Map<*, *>
+        val resolvedAllocFull = if (legacyAllocFull != null) {
+            legacyAllocFull.entries.mapNotNull { (k, v) -> k?.toString()?.let { it to asBool(v, false) } }.toMap() + allocFull
+        } else allocFull
+
         return SalesRecord(
             id = asStr(data["id"], docId).ifBlank { docId },
             date = asStr(data["date"]),
@@ -513,11 +577,16 @@ object WorkspaceJsonCodec {
             profit = asDouble(data["profit"], 0.0),
             costSource = asStr(data["costSource"]),
             creditReceived = asBool(data["creditReceived"], rawPayType == "CASH"),
+            creditReceivedDate = asStr(data["creditReceivedDate"]),
+            creditReceivedTime = asStr(data["creditReceivedTime"]),
+            creditReceivedManually = asBool(data["creditReceivedManually"], false),
             partialPaymentReceived = asDouble(data["partialPaymentReceived"], 0.0),
-            collectionAllocs = asDoubleMap(data["collectionAllocs"]),
+            collectionAllocs = collAllocs,
+            collectionAllocFull = resolvedCollFull,
             isCollection = isColl,
             collectedAmount = asDouble(data["collectedAmount"], asDouble(data["cashReceived"], 0.0)),
-            allocations = asDoubleMap(data["allocations"]),
+            allocations = allocs,
+            allocationFull = resolvedAllocFull,
             expiredQty = asDouble(data["expiredQty"], asDouble(data["expiredKg"], 0.0)),
             expiredValue = asDouble(data["expiredValue"], asDouble(data["choraValue"], 0.0)),
             expiredUnitPrice = asDouble(data["expiredUnitPrice"], 0.0),
@@ -544,7 +613,10 @@ object WorkspaceJsonCodec {
             timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
             createdAt = asLong(data["createdAt"], 0L),
             updatedAtEpoch = asLong(data["updatedAt"], 0L),
-            deletedAt = asNullableLong(data["deletedAt"])
+            deletedAt = asNullableLong(data["deletedAt"]),
+            isEdited = asBool(data["isEdited"], false),
+            editedAt = asStr(data["editedAt"]),
+            editHistory = asEditHistory(data["editHistory"])
         )
     }
 
@@ -566,11 +638,14 @@ object WorkspaceJsonCodec {
         put("profit", s.profit)
         if (s.costSource.isNotBlank()) put("costSource", s.costSource)
         put("creditReceived", s.creditReceived)
+        if (s.creditReceivedDate.isNotBlank()) put("creditReceivedDate", s.creditReceivedDate)
+        if (s.creditReceivedTime.isNotBlank()) put("creditReceivedTime", s.creditReceivedTime)
+        if (s.creditReceivedManually) put("creditReceivedManually", true)
         if (s.partialPaymentReceived != 0.0) put("partialPaymentReceived", s.partialPaymentReceived)
-        if (s.collectionAllocs.isNotEmpty()) put("collectionAllocs", s.collectionAllocs)
+        if (s.collectionAllocs.isNotEmpty()) put("collectionAllocs", allocsToWebList(s.collectionAllocs, s.collectionAllocFull, "cid"))
         if (s.isCollection) put("isCollection", true)
         if (s.collectedAmount != 0.0) put("collectedAmount", s.collectedAmount)
-        if (s.allocations.isNotEmpty()) put("allocations", s.allocations)
+        if (s.allocations.isNotEmpty()) put("allocations", allocsToWebList(s.allocations, s.allocationFull, "saleId"))
         if (s.expiredQty != 0.0) put("expiredQty", s.expiredQty)
         if (s.expiredValue != 0.0) put("expiredValue", s.expiredValue)
         if (s.expiredUnitPrice != 0.0) put("expiredUnitPrice", s.expiredUnitPrice)
@@ -601,6 +676,9 @@ object WorkspaceJsonCodec {
         put("timestamp", if (s.timestamp > 0L) s.timestamp else System.currentTimeMillis())
         put("createdAt", if (s.createdAt > 0L) s.createdAt else System.currentTimeMillis())
         s.deletedAt?.let { put("deletedAt", it) }
+        if (s.isEdited) put("isEdited", true)
+        if (s.editedAt.isNotBlank()) put("editedAt", s.editedAt)
+        if (s.editHistory.isNotEmpty()) put("editHistory", s.editHistory)
     }
 
     fun mapToCustomer(docId: String, data: Map<String, Any>): CustomerRecord {
@@ -616,11 +694,15 @@ object WorkspaceJsonCodec {
             gpsLat = asNullableDouble(gps?.get("lat")) ?: asNullableDouble(data["routeLat"]),
             gpsLng = asNullableDouble(gps?.get("lng")) ?: asNullableDouble(data["routeLng"]),
             visitCount = asLong(data["visitCount"], 0L),
+            ledgerPage = asStr(data["ledgerPage"]),
             notes = asStr(data["notes"]),
             createdAt = asLong(data["createdAt"], 0L),
             updatedAt = asLong(data["updatedAt"], 0L),
             timestamp = asLong(data["timestamp"], 0L),
-            deletedAt = asNullableLong(data["deletedAt"])
+            deletedAt = asNullableLong(data["deletedAt"]),
+            isEdited = asBool(data["isEdited"], false),
+            editedAt = asStr(data["editedAt"]),
+            editHistory = asEditHistory(data["editHistory"])
         )
     }
 
@@ -636,16 +718,21 @@ object WorkspaceJsonCodec {
             put("gps", mapOf("lat" to c.gpsLat, "lng" to c.gpsLng))
         }
         if (c.visitCount > 0L) put("visitCount", c.visitCount)
+        if (c.ledgerPage.isNotBlank()) put("ledgerPage", c.ledgerPage)
         if (c.notes.isNotBlank()) put("notes", c.notes)
         put("createdAt", if (c.createdAt > 0L) c.createdAt else System.currentTimeMillis())
         put("timestamp", if (c.timestamp > 0L) c.timestamp else System.currentTimeMillis())
         c.deletedAt?.let { put("deletedAt", it) }
+        if (c.isEdited) put("isEdited", true)
+        if (c.editedAt.isNotBlank()) put("editedAt", c.editedAt)
+        if (c.editHistory.isNotEmpty()) put("editHistory", c.editHistory)
     }
 
     fun mapToCalculator(docId: String, data: Map<String, Any>): CalculatorRecord = CalculatorRecord(
         id = asStr(data["id"], docId).ifBlank { docId },
         seller = asStr(data["seller"], asStr(data["repName"])),
         date = asStr(data["date"], asStr(data["dateTo"])),
+        dateFrom = asStr(data["dateFrom"]),
         unitPrice = asDouble(data["unitPrice"], asDouble(data["ratePerKg"], 0.0)),
         costPrice = asDouble(data["costPrice"], 0.0),
         revenue = asDouble(data["revenue"], 0.0),
@@ -684,13 +771,17 @@ object WorkspaceJsonCodec {
         isMerged = asBool(data["isMerged"], false),
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun calculatorToMap(c: CalculatorRecord): Map<String, Any> = buildMap {
         put("id", c.id)
         put("seller", c.seller)
         put("date", c.date)
+        if (c.dateFrom.isNotBlank()) put("dateFrom", c.dateFrom)
         put("unitPrice", c.unitPrice)
         put("costPrice", c.costPrice)
         put("revenue", c.revenue)
@@ -729,6 +820,9 @@ object WorkspaceJsonCodec {
         if (c.isMerged) put("isMerged", true)
         put("timestamp", if (c.timestamp > 0L) c.timestamp else System.currentTimeMillis())
         c.deletedAt?.let { put("deletedAt", it) }
+        if (c.isEdited) put("isEdited", true)
+        if (c.editedAt.isNotBlank()) put("editedAt", c.editedAt)
+        if (c.editHistory.isNotEmpty()) put("editHistory", c.editHistory)
     }
 
     fun mapToInventory(docId: String, data: Map<String, Any>): InventoryRecord = InventoryRecord(
@@ -759,7 +853,10 @@ object WorkspaceJsonCodec {
         notes = asStr(data["notes"]),
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun inventoryToMap(i: InventoryRecord): Map<String, Any> = buildMap {
@@ -790,6 +887,9 @@ object WorkspaceJsonCodec {
         if (i.notes.isNotBlank()) put("notes", i.notes)
         put("timestamp", if (i.timestamp > 0L) i.timestamp else System.currentTimeMillis())
         i.deletedAt?.let { put("deletedAt", it) }
+        if (i.isEdited) put("isEdited", true)
+        if (i.editedAt.isNotBlank()) put("editedAt", i.editedAt)
+        if (i.editHistory.isNotEmpty()) put("editHistory", i.editHistory)
     }
 
     fun mapToFactory(docId: String, data: Map<String, Any>): FactoryRecord = FactoryRecord(
@@ -809,7 +909,10 @@ object WorkspaceJsonCodec {
         isMerged = asBool(data["isMerged"], false),
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun factoryToMap(f: FactoryRecord): Map<String, Any> = buildMap {
@@ -829,6 +932,9 @@ object WorkspaceJsonCodec {
         if (f.isMerged) put("isMerged", true)
         put("timestamp", if (f.timestamp > 0L) f.timestamp else System.currentTimeMillis())
         f.deletedAt?.let { put("deletedAt", it) }
+        if (f.isEdited) put("isEdited", true)
+        if (f.editedAt.isNotBlank()) put("editedAt", f.editedAt)
+        if (f.editHistory.isNotEmpty()) put("editHistory", f.editHistory)
     }
 
     fun mapToEntity(docId: String, data: Map<String, Any>): EntityRecord = EntityRecord(
@@ -837,13 +943,18 @@ object WorkspaceJsonCodec {
         type = asStr(data["type"], asStr(data["entityType"], "party")),
         contact = asStr(data["contact"], asStr(data["phone"])),
         phone = asStr(data["phone"], asStr(data["contact"])),
+        wallet = asStr(data["wallet"]),
+        ledgerPage = asStr(data["ledgerPage"]),
         isSupplier = asBool(data["isSupplier"], false),
         isExpenseEntity = asBool(data["isExpenseEntity"], false),
         openingBalance = asDouble(data["openingBalance"], 0.0),
         notes = asStr(data["notes"]),
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun entityToMap(e: EntityRecord): Map<String, Any> = buildMap {
@@ -852,12 +963,17 @@ object WorkspaceJsonCodec {
         put("type", e.type)
         if (e.contact.isNotBlank()) put("contact", e.contact)
         if (e.phone.isNotBlank()) put("phone", e.phone)
+        if (e.wallet.isNotBlank()) put("wallet", e.wallet)
+        if (e.ledgerPage.isNotBlank()) put("ledgerPage", e.ledgerPage)
         if (e.isSupplier) put("isSupplier", true)
         if (e.isExpenseEntity) put("isExpenseEntity", true)
         if (e.openingBalance != 0.0) put("openingBalance", e.openingBalance)
         if (e.notes.isNotBlank()) put("notes", e.notes)
         put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
         e.deletedAt?.let { put("deletedAt", it) }
+        if (e.isEdited) put("isEdited", true)
+        if (e.editedAt.isNotBlank()) put("editedAt", e.editedAt)
+        if (e.editHistory.isNotEmpty()) put("editHistory", e.editHistory)
     }
 
     fun mapToTransaction(docId: String, data: Map<String, Any>): PaymentTransaction {
@@ -875,6 +991,8 @@ object WorkspaceJsonCodec {
             description = asStr(data["description"], asStr(data["notes"])),
             paymentMethod = asStr(data["paymentMethod"], asStr(data["paymentChannel"], "Cash")),
             isPayable = asBool(data["isPayable"], false),
+            isExpense = asBool(data["isExpense"], false),
+            expenseId = asStr(data["expenseId"]),
             isTransfer = asBool(data["isTransfer"], rawType.startsWith("TRANSFER")),
             transferPairId = asStr(data["transferPairId"]),
             transferDirection = asStr(data["transferDirection"]),
@@ -883,7 +1001,10 @@ object WorkspaceJsonCodec {
             isMerged = asBool(data["isMerged"], false),
             timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
             updatedAtEpoch = asLong(data["updatedAt"], 0L),
-            deletedAt = asNullableLong(data["deletedAt"])
+            deletedAt = asNullableLong(data["deletedAt"]),
+            isEdited = asBool(data["isEdited"], false),
+            editedAt = asStr(data["editedAt"]),
+            editHistory = asEditHistory(data["editHistory"])
         )
     }
 
@@ -899,6 +1020,8 @@ object WorkspaceJsonCodec {
         if (t.description.isNotBlank()) put("description", t.description)
         put("paymentMethod", t.paymentMethod)
         if (t.isPayable) put("isPayable", true)
+        if (t.isExpense) put("isExpense", true)
+        if (t.expenseId.isNotBlank()) put("expenseId", t.expenseId)
         if (t.isTransfer) {
             put("isTransfer", true)
             if (t.transferPairId.isNotBlank()) put("transferPairId", t.transferPairId)
@@ -909,6 +1032,9 @@ object WorkspaceJsonCodec {
         if (t.isMerged) put("isMerged", true)
         put("timestamp", if (t.timestamp > 0L) t.timestamp else System.currentTimeMillis())
         t.deletedAt?.let { put("deletedAt", it) }
+        if (t.isEdited) put("isEdited", true)
+        if (t.editedAt.isNotBlank()) put("editedAt", t.editedAt)
+        if (t.editHistory.isNotEmpty()) put("editHistory", t.editHistory)
     }
 
     fun mapToExpense(docId: String, data: Map<String, Any>): ExpenseRecord = ExpenseRecord(
@@ -922,10 +1048,14 @@ object WorkspaceJsonCodec {
         entityId = asStr(data["entityId"]),
         entityName = asStr(data["entityName"]),
         paymentMethod = asStr(data["paymentMethod"], "Cash"),
+        linkedTxId = asStr(data["linkedTxId"]),
         isMerged = asBool(data["isMerged"], false),
         timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
         updatedAtEpoch = asLong(data["updatedAt"], 0L),
-        deletedAt = asNullableLong(data["deletedAt"])
+        deletedAt = asNullableLong(data["deletedAt"]),
+        isEdited = asBool(data["isEdited"], false),
+        editedAt = asStr(data["editedAt"]),
+        editHistory = asEditHistory(data["editHistory"])
     )
 
     fun expenseToMap(e: ExpenseRecord): Map<String, Any> = buildMap {
@@ -939,9 +1069,13 @@ object WorkspaceJsonCodec {
         if (e.entityId.isNotBlank()) put("entityId", e.entityId)
         if (e.entityName.isNotBlank()) put("entityName", e.entityName)
         if (e.paymentMethod.isNotBlank()) put("paymentMethod", e.paymentMethod)
+        if (e.linkedTxId.isNotBlank()) put("linkedTxId", e.linkedTxId)
         if (e.isMerged) put("isMerged", true)
         put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
         e.deletedAt?.let { put("deletedAt", it) }
+        if (e.isEdited) put("isEdited", true)
+        if (e.editedAt.isNotBlank()) put("editedAt", e.editedAt)
+        if (e.editHistory.isNotEmpty()) put("editHistory", e.editHistory)
     }
 
     fun mapToReturn(docId: String, data: Map<String, Any>): ReturnRecord = ReturnRecord(
@@ -985,6 +1119,27 @@ object WorkspaceJsonCodec {
 
     fun mapToDailyLedgerEntry(data: Map<String, Any>): DailyLedgerEntry {
         val link = data["link"] as? Map<*, *>
+        val kind = asNullableStr(link?.get("kind"))
+        val origin = asNullableStr(link?.get("origin"))
+        val part = asNullableStr(link?.get("part"))
+        val linkName = asNullableStr(link?.get("name"))
+        val linkEntityId = asNullableStr(link?.get("entityId"))
+        val inferredCol = asNullableStr(link?.get("col"))
+            ?: asNullableStr(data["sourceCollection"])
+            ?: when (kind) {
+                "customer" -> "sales"
+                "calc" -> "calculator"
+                "expense" -> "expenses"
+                "entity" -> if (asNullableStr(link?.get("expenseId")) != null) "expenses" else "transactions"
+                else -> null
+            }
+        val inferredDocId = asNullableStr(link?.get("id"))
+            ?: asNullableStr(data["sourceDocId"])
+            ?: asNullableStr(link?.get("saleId"))
+            ?: asNullableStr(link?.get("calcId"))
+            ?: asNullableStr(link?.get("txId"))
+            ?: asNullableStr(link?.get("expenseId"))
+
         return DailyLedgerEntry(
             id = asStr(data["id"]),
             type = asStr(data["type"], asStr(data["entryType"], "IN")).uppercase(),
@@ -1001,8 +1156,13 @@ object WorkspaceJsonCodec {
             date = asStr(data["date"]),
             timestamp = asLong(data["timestamp"], 0L),
             updatedAt = asLong(data["updatedAt"], 0L),
-            linkCollection = asNullableStr(link?.get("col")) ?: asNullableStr(data["sourceCollection"]),
-            linkDocId = asNullableStr(link?.get("id")) ?: asNullableStr(data["sourceDocId"])
+            linkCollection = inferredCol,
+            linkDocId = inferredDocId,
+            linkKind = kind,
+            linkOrigin = origin,
+            linkPart = part,
+            linkName = linkName,
+            linkEntityId = linkEntityId
         )
     }
 
@@ -1020,8 +1180,32 @@ object WorkspaceJsonCodec {
         put("date", e.date)
         put("timestamp", if (e.timestamp > 0L) e.timestamp else System.currentTimeMillis())
         put("updatedAt", if (e.updatedAt > 0L) e.updatedAt else System.currentTimeMillis())
-        if (!e.linkCollection.isNullOrBlank() && !e.linkDocId.isNullOrBlank()) {
-            put("link", mapOf("col" to e.linkCollection, "id" to e.linkDocId))
+        if (!e.linkCollection.isNullOrBlank() || !e.linkKind.isNullOrBlank()) {
+            val linkMap = buildMap<String, Any> {
+                val resolvedKind = e.linkKind ?: when (e.linkCollection) {
+                    "sales" -> "customer"
+                    "calculator" -> "calc"
+                    "expenses" -> "entity"
+                    "transactions" -> "entity"
+                    else -> "entity"
+                }
+                put("kind", resolvedKind)
+                put("origin", e.linkOrigin ?: "tab")
+                e.linkPart?.takeIf { it.isNotBlank() }?.let { put("part", it) }
+                val nm = e.linkName?.takeIf { it.isNotBlank() } ?: e.party.takeIf { it.isNotBlank() }
+                nm?.let { put("name", it) }
+                e.linkEntityId?.takeIf { it.isNotBlank() }?.let { put("entityId", it) }
+                if (!e.linkDocId.isNullOrBlank()) {
+                    when (resolvedKind) {
+                        "customer" -> put("saleId", e.linkDocId)
+                        "calc" -> put("calcId", e.linkDocId)
+                        else -> if (e.linkCollection == "expenses") put("expenseId", e.linkDocId) else put("txId", e.linkDocId)
+                    }
+                    put("id", e.linkDocId)
+                }
+                if (!e.linkCollection.isNullOrBlank()) put("col", e.linkCollection)
+            }
+            put("link", linkMap)
         }
     }
 

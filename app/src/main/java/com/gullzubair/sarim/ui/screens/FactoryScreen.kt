@@ -1,5 +1,6 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,20 +35,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.FactoryRecord
+import com.gullzubair.sarim.data.model.InventoryRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
-import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
+import com.gullzubair.sarim.ui.components.DiscardEditDialog
+import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
+import com.gullzubair.sarim.ui.components.FactoryBatchDetailSheet
+import com.gullzubair.sarim.ui.components.MaterialPurchaseLotsSheet
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimDangerButton
-import com.gullzubair.sarim.ui.components.SarimDetailBottomSheet
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
@@ -67,40 +69,71 @@ fun FactoryScreen(
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
-    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    val isEntryOnlyFactory = remember(session) {
+        session.mode == "factory" || (FinanceEngine.isMoneyRestricted(session) && "factory" in session.tabs)
+    }
+    val masked = isEntryOnlyFactory || session.restrictMoney || snapshot.settings.hideSensitiveMoney
 
-    var subTab by remember { mutableIntStateOf(0) }
+    var subTab by remember(isEntryOnlyFactory) { mutableIntStateOf(0) }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedFormula by remember(snapshot.formulas) { mutableStateOf(snapshot.formulas.firstOrNull()) }
     var unitsStr by remember { mutableStateOf("1") }
     var notes by remember { mutableStateOf("") }
     var sortByQty by remember { mutableStateOf(false) }
+
+    var editingBatch by remember { mutableStateOf<FactoryRecord?>(null) }
+    var showEditDiff by remember { mutableStateOf(false) }
+    var showDiscardEdit by remember { mutableStateOf(false) }
     var selectedFactoryRec by remember { mutableStateOf<FactoryRecord?>(null) }
+    var selectedMaterialLots by remember { mutableStateOf<InventoryRecord?>(null) }
+
+    fun resetBatchForm() {
+        editingBatch = null
+        date = todayIso
+        unitsStr = "1"
+        notes = ""
+    }
+
+    fun startEditBatch(rec: FactoryRecord) {
+        editingBatch = rec
+        subTab = 0
+        date = rec.date.ifBlank { todayIso }
+        selectedFormula = snapshot.formulas.firstOrNull { it.id == rec.formulaId } ?: selectedFormula
+        unitsStr = InputGuards.fmtNum(rec.units).replace(",", "")
+        notes = rec.notes
+    }
+
+    BackHandler(enabled = editingBatch != null) {
+        showDiscardEdit = true
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("Produce", "Inventory", "Pools", "History").forEachIndexed { idx, title ->
-                val selected = subTab == idx
-                Surface(
-                    onClick = { subTab = idx },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (selected) accents.softPillFill else accents.inputFill,
-                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.weight(1f).testTag("factory_subtab_$idx")
-                ) {
-                    Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                        Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+        if (!isEntryOnlyFactory) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Produce", "Inventory", "Pools", "History").forEachIndexed { idx, title ->
+                    val selected = subTab == idx
+                    Surface(
+                        onClick = { subTab = idx },
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (selected) accents.softPillFill else accents.inputFill,
+                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                        modifier = Modifier.weight(1f).testTag("factory_subtab_$idx")
+                    ) {
+                        Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                            Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+                        }
                     }
                 }
             }
         }
 
-        when (subTab) {
+        val activeTab = if (isEntryOnlyFactory) 0 else subTab
+        when (activeTab) {
             0 -> {
                 val units = (unitsStr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
                 val desc = remember(selectedFormula, snapshot.formulas, snapshot.inventory) {
@@ -109,9 +142,21 @@ fun FactoryScreen(
                 val reqLines = desc?.items.orEmpty()
                 val estCost = if (desc != null && units > 0.0) InputGuards.round2(desc.perUnit * units) else 0.0
                 val materials = remember(snapshot.inventory) { FinanceEngine.materialRecords(snapshot.inventory) }
+                val restoredById = remember(editingBatch) {
+                    val map = mutableMapOf<String, Double>()
+                    editingBatch?.let { b ->
+                        b.materialsUsed.ifEmpty { b.rawMaterialsUsed }.forEach { m ->
+                            val mid = m["id"]?.toString().orEmpty()
+                            val qty = (m["qty"] as? Number)?.toDouble() ?: (m["quantity"] as? Number)?.toDouble() ?: 0.0
+                            if (mid.isNotBlank()) map[mid] = (map[mid] ?: 0.0) + qty
+                        }
+                    }
+                    map
+                }
                 val allInStock = reqLines.isNotEmpty() && (desc?.problems.isNullOrEmpty()) && reqLines.all { line ->
-                    val have = (materials.firstOrNull { it.id == line.id }
-                        ?: materials.firstOrNull { it.name.trim().equals(line.name.trim(), ignoreCase = true) })?.quantity ?: 0.0
+                    val mat = materials.firstOrNull { it.id == line.id }
+                        ?: materials.firstOrNull { it.name.trim().equals(line.name.trim(), ignoreCase = true) }
+                    val have = (mat?.quantity ?: 0.0) + (mat?.id?.let { restoredById[it] } ?: 0.0)
                     have + 0.001 >= (line.quantity * units)
                 }
 
@@ -119,18 +164,34 @@ fun FactoryScreen(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (isEntryOnlyFactory) item { Spacer(Modifier.height(6.dp)) }
                     item {
                         SarimCard {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Formula Batch Production", style = MaterialTheme.typography.titleMedium)
-                                Surface(
-                                    onClick = onOpenFormulas,
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = accents.softPillFill,
-                                    border = BorderStroke(1.dp, accents.emerald),
-                                    modifier = Modifier.testTag("factory_manage_formulas_btn")
-                                ) {
-                                    Text("Formulas", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                                Text(
+                                    if (editingBatch != null) "Edit Factory Batch" else "Formula Batch Production",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                if (editingBatch != null) {
+                                    Surface(
+                                        onClick = { showDiscardEdit = true },
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = accents.danger.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                        modifier = Modifier.testTag("factory_cancel_edit_btn")
+                                    ) {
+                                        Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                    }
+                                } else if (!isEntryOnlyFactory) {
+                                    Surface(
+                                        onClick = onOpenFormulas,
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = accents.softPillFill,
+                                        border = BorderStroke(1.dp, accents.emerald),
+                                        modifier = Modifier.testTag("factory_manage_formulas_btn")
+                                    ) {
+                                        Text("Formulas", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
@@ -165,8 +226,9 @@ fun FactoryScreen(
                                 Spacer(Modifier.height(6.dp))
                                 reqLines.forEach { line ->
                                     val need = InputGuards.round4(line.quantity * units)
-                                    val have = (materials.firstOrNull { it.id == line.id }
-                                        ?: materials.firstOrNull { it.name.trim().equals(line.name.trim(), ignoreCase = true) })?.quantity ?: 0.0
+                                    val mat = materials.firstOrNull { it.id == line.id }
+                                        ?: materials.firstOrNull { it.name.trim().equals(line.name.trim(), ignoreCase = true) }
+                                    val have = (mat?.quantity ?: 0.0) + (mat?.id?.let { restoredById[it] } ?: 0.0)
                                     val ok = have + 0.001 >= need
                                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text(line.name, style = MaterialTheme.typography.bodyMedium)
@@ -178,18 +240,28 @@ fun FactoryScreen(
                                     }
                                 }
                             }
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimHalfRingKpiBox("Est. Batch Cost", InputGuards.formatMoney(estCost, currency, masked), accents.gold, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Cost / Unit", InputGuards.formatMoney(desc?.perUnit ?: 0.0, currency, masked), accents.cyan, Modifier.weight(1f))
+                            if (!isEntryOnlyFactory) {
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    SarimHalfRingKpiBox("Est. Batch Cost", InputGuards.formatMoney(estCost, currency, masked), accents.gold, Modifier.weight(1f))
+                                    SarimHalfRingKpiBox("Cost / Unit", InputGuards.formatMoney(desc?.perUnit ?: 0.0, currency, masked), accents.cyan, Modifier.weight(1f))
+                                }
                             }
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
-                                text = if (allInStock || reqLines.isEmpty()) "Produce Units & Deduct Stock" else "Insufficient Raw Material",
+                                text = when {
+                                    !allInStock && reqLines.isNotEmpty() -> "Insufficient Raw Material"
+                                    editingBatch != null -> "Update Batch"
+                                    else -> "Produce Units & Deduct Stock"
+                                },
                                 onClick = {
-                                    selectedFormula?.let { f ->
-                                        vm.submitFactoryBatch(date, f, units, notes)
-                                        notes = ""
+                                    if (editingBatch != null) {
+                                        showEditDiff = true
+                                    } else {
+                                        selectedFormula?.let { f ->
+                                            vm.submitFactoryBatch(date, f, units, notes)
+                                            notes = ""
+                                        }
                                     }
                                 },
                                 enabled = selectedFormula != null && units > 0.0 && allInStock,
@@ -206,10 +278,7 @@ fun FactoryScreen(
                     val base = FinanceEngine.materialRecords(snapshot.inventory)
                     if (sortByQty) base.sortedByDescending { it.quantity } else base.sortedBy { it.name.lowercase() }
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -247,13 +316,16 @@ fun FactoryScreen(
                             val lots = remember(snapshot.inventory, item.id) { FinanceEngine.purchasesOf(snapshot.inventory, item.id) }
                             val pending = remember(item, lots) { FinanceEngine.materialPending(item, lots) }
                             val low = item.quantity <= 0.0
-                            SarimCard(accentBorder = if (low) accents.gold else null) {
+                            SarimCard(
+                                accentBorder = if (low) accents.gold else null,
+                                modifier = Modifier.clickable { selectedMaterialLots = item }.testTag("factory_mat_${item.id}")
+                            ) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Column(Modifier.weight(1f)) {
                                         Text(item.name, style = MaterialTheme.typography.titleMedium)
                                         val unitDesc = if (item.purchaseUnitName.isNotBlank()) "Unit: ${item.purchaseUnitName} (1 = ${InputGuards.fmtNum(item.conversionFactor)} kg) • " else ""
                                         Text(
-                                            "${unitDesc}Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg" +
+                                            "${unitDesc}Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg • ${lots.size} lots" +
                                                 if (pending > 0.01) " • Pending ${InputGuards.formatMoney(pending, currency, masked)}" else "",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = accents.textMuted
@@ -276,10 +348,7 @@ fun FactoryScreen(
                 val pools = remember(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production) {
                     FormulaEngine.buildUnitPools(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production)
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (pools.isEmpty()) {
                         item { EmptyStateCard("No unit pools yet", "Create formulas and produce factory batches.") }
                     } else {
@@ -305,10 +374,7 @@ fun FactoryScreen(
                 val activeFactory = remember(snapshot.factory) {
                     snapshot.factory.filter { it.deletedAt == null }.sortedByDescending { it.date }
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (activeFactory.isEmpty()) {
                         item { EmptyStateCard("No factory batches", "Batches recorded on the Produce tab will appear here.") }
                     } else {
@@ -328,7 +394,10 @@ fun FactoryScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { "Factory Batch" } }, style = MaterialTheme.typography.titleSmall)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { "Factory Batch" } }, style = MaterialTheme.typography.titleSmall)
+                                                EditedBadge(rec.isEdited)
+                                            }
                                             Text("${InputGuards.fmtNum(rec.units)} units", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                         }
                                         Text(
@@ -348,48 +417,60 @@ fun FactoryScreen(
     }
 
     selectedFactoryRec?.let { rec ->
-        SarimDetailBottomSheet(
-            title = rec.formulaName.ifBlank { "Factory Batch" },
-            rightTitle = InputGuards.formatMoney(rec.totalCost, currency, masked),
-            subtitle = "${DateUtils.formatPretty(rec.date).uppercase()} • ${InputGuards.fmtNum(rec.units)} UNITS",
-            onDismiss = { selectedFactoryRec = null },
-            content = {
-                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Materials Cost", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(rec.materialsCost, currency, masked), style = MaterialTheme.typography.titleSmall)
-                }
-                if (rec.additionalCost > 0.0) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Additional Cost", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                        Text(InputGuards.formatMoney(rec.additionalCost, currency, masked), style = MaterialTheme.typography.titleSmall)
-                    }
-                }
-                if (rec.notes.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(rec.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                }
+        FactoryBatchDetailSheet(
+            rec = rec,
+            stores = snapshot.stores,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onEdit = { startEditBatch(it) },
+            onDismiss = { selectedFactoryRec = null }
+        )
+    }
+
+    selectedMaterialLots?.let { mat ->
+        val lots = remember(snapshot.inventory, mat.id) {
+            FinanceEngine.purchasesOf(snapshot.inventory, mat.id).sortedByDescending { it.purchaseDate }
+        }
+        MaterialPurchaseLotsSheet(
+            material = mat,
+            lots = lots,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onDismiss = { selectedMaterialLots = null }
+        )
+    }
+
+    if (showEditDiff && editingBatch != null && selectedFormula != null) {
+        val orig = editingBatch!!
+        val f = selectedFormula!!
+        val units = (unitsStr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        EditDiffConfirmDialog(
+            title = "Confirm Factory Batch Edit",
+            rows = listOf(
+                Triple("Date", orig.date, date),
+                Triple("Formula", orig.formulaName, f.name),
+                Triple("Units", InputGuards.fmtNum(orig.units), InputGuards.fmtNum(units)),
+                Triple("Notes", orig.notes, notes.trim())
+            ),
+            onConfirm = {
+                showEditDiff = false
+                vm.editFactoryBatch(orig, date, f, units, notes) { resetBatchForm() }
             },
-            footer = {
-                SarimDangerButton(
-                    text = "Move to Recycle Bin",
-                    onClick = {
-                        vm.softDeleteRecord(
-                            collection = "factory",
-                            docId = rec.id,
-                            displayName = rec.formulaName.ifBlank { "Factory Batch" },
-                            displayDetail = "${rec.date} • ${InputGuards.fmtNum(rec.units)} units",
-                            displayAmount = InputGuards.formatMoney(rec.totalCost, currency, masked),
-                            snapshotMap = WorkspaceJsonCodec.factoryToMap(rec)
-                        )
-                        selectedFactoryRec = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "factory_delete_${rec.id}"
-                )
-            }
+            onDismiss = { showEditDiff = false }
+        )
+    }
+
+    if (showDiscardEdit) {
+        DiscardEditDialog(
+            onDiscard = {
+                showDiscardEdit = false
+                resetBatchForm()
+            },
+            onDismiss = { showDiscardEdit = false }
         )
     }
 }

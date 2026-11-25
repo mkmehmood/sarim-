@@ -137,7 +137,10 @@ data class ProductionRecord(
     val timestamp: Long = 0L,
     val createdAt: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -159,11 +162,16 @@ data class SalesRecord(
     val profit: Double = 0.0,
     val costSource: String = "", // production-day | store-average | none
     val creditReceived: Boolean = true,
+    val creditReceivedDate: String = "",
+    val creditReceivedTime: String = "",
+    val creditReceivedManually: Boolean = false,
     val partialPaymentReceived: Double = 0.0,
     val collectionAllocs: Map<String, Double> = emptyMap(),
+    val collectionAllocFull: Map<String, Boolean> = emptyMap(),
     val isCollection: Boolean = false,
     val collectedAmount: Double = 0.0,
     val allocations: Map<String, Double> = emptyMap(),
+    val allocationFull: Map<String, Boolean> = emptyMap(),
     val expiredQty: Double = 0.0,
     val expiredValue: Double = 0.0,
     val expiredUnitPrice: Double = 0.0,
@@ -190,7 +198,10 @@ data class SalesRecord(
     val timestamp: Long = 0L,
     val createdAt: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -205,11 +216,15 @@ data class CustomerRecord(
     val gpsLat: Double? = null,
     val gpsLng: Double? = null,
     val visitCount: Long = 0L,
+    val ledgerPage: String = "",
     val notes: String = "",
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,
     val timestamp: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -217,6 +232,7 @@ data class CalculatorRecord(
     val id: String = "",
     val seller: String = "",
     val date: String = "",
+    val dateFrom: String = "",
     val unitPrice: Double = 0.0,
     val costPrice: Double = 0.0,
     val revenue: Double = 0.0,
@@ -255,7 +271,10 @@ data class CalculatorRecord(
     val isMerged: Boolean = false,
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -287,7 +306,10 @@ data class InventoryRecord(
     val notes: String = "",
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -308,7 +330,10 @@ data class FactoryRecord(
     val isMerged: Boolean = false,
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -318,13 +343,18 @@ data class EntityRecord(
     val type: String = "party", // party | supplier | staff | expense | bank | payee | employee
     val contact: String = "",
     val phone: String = "",
+    val wallet: String = "",
+    val ledgerPage: String = "",
     val isSupplier: Boolean = false,
     val isExpenseEntity: Boolean = false,
     val openingBalance: Double = 0.0,
     val notes: String = "",
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -340,6 +370,8 @@ data class PaymentTransaction(
     val description: String = "",
     val paymentMethod: String = "Cash",
     val isPayable: Boolean = false,
+    val isExpense: Boolean = false,
+    val expenseId: String = "",
     val isTransfer: Boolean = false,
     val transferPairId: String = "",
     val transferDirection: String = "",
@@ -348,7 +380,10 @@ data class PaymentTransaction(
     val isMerged: Boolean = false,
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -363,10 +398,14 @@ data class ExpenseRecord(
     val entityId: String = "",
     val entityName: String = "",
     val paymentMethod: String = "Cash",
+    val linkedTxId: String = "",
     val isMerged: Boolean = false,
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val isEdited: Boolean = false,
+    val editedAt: String = "",
+    val editHistory: List<Map<String, Any>> = emptyList()
 )
 
 @Keep
@@ -406,9 +445,17 @@ data class DailyLedgerEntry(
     val timestamp: Long = 0L,
     val updatedAt: Long = 0L,
     val linkCollection: String? = null,
-    val linkDocId: String? = null
+    val linkDocId: String? = null,
+    val linkKind: String? = null,
+    val linkOrigin: String? = null,
+    val linkPart: String? = null,
+    val linkName: String? = null,
+    val linkEntityId: String? = null
 ) {
-    val isTabMirror: Boolean get() = !linkCollection.isNullOrBlank() && !linkDocId.isNullOrBlank()
+    val isTabMirror: Boolean
+        get() = (!linkCollection.isNullOrBlank() && !linkDocId.isNullOrBlank()) ||
+            linkOrigin == "tab" ||
+            linkKind == "calc"
 }
 
 @Keep

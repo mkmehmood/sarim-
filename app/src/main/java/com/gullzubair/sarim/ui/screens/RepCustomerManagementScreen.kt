@@ -2,7 +2,9 @@ package com.gullzubair.sarim.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
@@ -35,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +50,9 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
+import com.gullzubair.sarim.ui.components.EditHistorySection
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimDangerButton
@@ -56,11 +63,6 @@ import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import java.util.Locale
 
-/**
- * 1:1 port of the web app's `rep-customer-management-screen`: one rep client's header
- * (name, phone, address, assigned rep, ledger page), balance and totals, search,
- * mode filter, GPS coordinates, and full rep history.
- */
 private val REP_MODE_FILTERS = listOf(
     "all" to "All",
     "sale" to "Sales",
@@ -82,17 +84,25 @@ fun RepCustomerManagementScreen(
     val currency = snapshot.settings.currencySymbol
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
     val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    val isAdmin = session.mode == "admin"
 
     var query by remember { mutableStateOf("") }
     var modeFilter by remember { mutableStateOf("all") }
     var confirmDelete by remember { mutableStateOf(false) }
+    var expandedHistoryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val client = remember(snapshot.clients, snapshot.customers, customerName) {
         snapshot.clients.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
             ?: snapshot.customers.firstOrNull { it.deletedAt == null && it.name.equals(customerName, ignoreCase = true) }
     }
+    val clientPhotoUri = remember(client, snapshot.photos) {
+        client?.id?.let { cid ->
+            (snapshot.photos["client:$cid"] ?: snapshot.photos["cust:$cid"])?.takeIf { !it.deleted }?.dataUri
+        }
+    }
     val ledgerPage = remember(client) {
-        Regex("page:([^;\\n]+)").find(client?.notes ?: "")?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        client?.ledgerPage?.takeIf { it.isNotBlank() }
+            ?: Regex("page:([^;\\n]+)").find(client?.notes ?: "")?.groupValues?.getOrNull(1)?.trim().orEmpty()
     }
     val records = remember(snapshot.repRecords, customerName) {
         snapshot.repRecords
@@ -204,6 +214,25 @@ fun RepCustomerManagementScreen(
 
             item {
                 SarimCard {
+                    if (!clientPhotoUri.isNullOrBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            DecodedDataUrlImage(
+                                dataUrl = clientPhotoUri,
+                                contentDescription = "$customerName photo",
+                                modifier = Modifier.size(52.dp).clip(CircleShape)
+                            )
+                            Column {
+                                Text(customerName, style = MaterialTheme.typography.titleMedium)
+                                if (ledgerPage.isNotBlank()) {
+                                    Text("Ledger Page: $ledgerPage", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                }
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SarimHalfRingKpiBox(
                             label = "BALANCE DUE",
@@ -309,25 +338,33 @@ fun RepCustomerManagementScreen(
                         else -> effectiveVal
                     }
                     val storeLabel = FormulaEngine.storeLabelFor(r.supplyStore, snapshot.stores)
-                    val kgShown = when {
-                        isReturn -> r.returnedQty
-                        else -> r.quantity
-                    }
+                    val kgShown = if (isReturn) r.returnedQty else r.quantity
+                    val historyOpen = r.id in expandedHistoryIds
+                    val hasHistory = r.editHistory.isNotEmpty() || r.timestamp > 0L
 
-                    SarimCard(modifier = Modifier.testTag("rep_cust_row_${r.id}")) {
+                    SarimCard(
+                        modifier = Modifier
+                            .clickable(enabled = hasHistory) {
+                                expandedHistoryIds = if (historyOpen) expandedHistoryIds - r.id else expandedHistoryIds + r.id
+                            }
+                            .testTag("rep_cust_row_${r.id}")
+                    ) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = buildString {
-                                        append(r.paymentType.uppercase(Locale.ROOT))
-                                        if (r.salesRep.isNotBlank()) append(" • ${r.salesRep}")
-                                    },
-                                    style = MaterialTheme.typography.titleSmall
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = buildString {
+                                            append(r.paymentType.uppercase(Locale.ROOT))
+                                            if (r.salesRep.isNotBlank()) append(" • ${r.salesRep}")
+                                        },
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    EditedBadge(r.isEdited)
+                                }
                                 Text(
                                     text = buildString {
                                         append(DateUtils.formatPretty(r.date))
@@ -361,11 +398,7 @@ fun RepCustomerManagementScreen(
                         }
                         if (r.expiredQty > 0.0) {
                             Spacer(Modifier.height(4.dp))
-                            Text(
-                                "Expired / Chora: ${InputGuards.formatKg(r.expiredQty)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = accents.gold
-                            )
+                            Text("Expired / Chora: ${InputGuards.formatKg(r.expiredQty)}", style = MaterialTheme.typography.bodySmall, color = accents.gold)
                         }
                         if (r.gpsLat != null && r.gpsLng != null) {
                             Spacer(Modifier.height(4.dp))
@@ -379,11 +412,24 @@ fun RepCustomerManagementScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(r.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
+                        AnimatedVisibility(visible = historyOpen) {
+                            Column {
+                                Spacer(Modifier.height(10.dp))
+                                EditHistorySection(
+                                    editHistory = r.editHistory,
+                                    createdAtEpoch = r.timestamp,
+                                    addedLabel = "Recorded",
+                                    canDelete = isAdmin,
+                                    masked = masked,
+                                    onDeleteEntry = { idx -> vm.deleteRecordEditHistory("rep", r.id, idx) }
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            if (snapshot.profile.isAdmin) {
+            if (isAdmin) {
                 item {
                     SarimDangerButton(
                         text = "Delete Customer & Rep History",

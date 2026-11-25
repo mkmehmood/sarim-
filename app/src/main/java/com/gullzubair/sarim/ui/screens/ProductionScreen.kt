@@ -1,8 +1,7 @@
 package com.gullzubair.sarim.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,9 +24,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -47,7 +45,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.ProductionRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
@@ -56,21 +53,27 @@ import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
+import com.gullzubair.sarim.ui.components.DiscardEditDialog
+import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.PickerField
+import com.gullzubair.sarim.ui.components.ProdPhotoSlot
+import com.gullzubair.sarim.ui.components.ProductionDetailSheet
+import com.gullzubair.sarim.ui.components.ProductionMultiShareBar
+import com.gullzubair.sarim.ui.components.ProductionPhotoLightboxDialog
+import com.gullzubair.sarim.ui.components.ProductionPhotoPickerStrip
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimDangerButton
-import com.gullzubair.sarim.ui.components.SarimDetailBottomSheet
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.util.CaptionedPhotoSharer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 
 @Composable
 fun ProductionScreen(
@@ -84,10 +87,13 @@ fun ProductionScreen(
     val scope = rememberCoroutineScope()
     val currency = snapshot.settings.currencySymbol
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
-    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    val isEntryOnlyProd = remember(session) {
+        session.mode == "production" || (FinanceEngine.isMoneyRestricted(session) && "prod" in session.tabs)
+    }
+    val masked = isEntryOnlyProd || session.restrictMoney || snapshot.settings.hideSensitiveMoney
     val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
 
-    var subTab by remember { mutableIntStateOf(0) }
+    var subTab by remember(isEntryOnlyProd) { mutableIntStateOf(0) }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
     var grossStr by remember { mutableStateOf("") }
@@ -95,7 +101,12 @@ fun ProductionScreen(
     var unitsStr by remember { mutableStateOf("1") }
     var customCostStr by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var photoDataUri by remember { mutableStateOf<String?>(null) }
+    var photoSlots by remember { mutableStateOf<List<ProdPhotoSlot>>(emptyList()) }
+
+    // Edit state
+    var editingRecord by remember { mutableStateOf<ProductionRecord?>(null) }
+    var showEditDiffConfirm by remember { mutableStateOf(false) }
+    var showDiscardEditDialog by remember { mutableStateOf(false) }
 
     // Return stock form
     var retDate by remember(todayIso) { mutableStateOf(todayIso) }
@@ -105,27 +116,59 @@ fun ProductionScreen(
     var retBy by remember { mutableStateOf("") }
     var retNotes by remember { mutableStateOf("") }
 
+    // Detail, Lightbox & Multi-photo Share
     var selectedRecord by remember { mutableStateOf<ProductionRecord?>(null) }
+    var lightboxState by remember { mutableStateOf<Triple<List<String>, Int, ProductionRecord?>?>(null) }
+    var selectedPhotoRecIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
+    fun resetEntryForm() {
+        editingRecord = null
+        date = todayIso
+        grossStr = ""
+        containerStr = "0"
+        unitsStr = "1"
+        customCostStr = ""
+        notes = ""
+        photoSlots = emptyList()
+    }
+
+    fun startEditing(rec: ProductionRecord) {
+        editingRecord = rec
+        subTab = 0
+        date = rec.date.ifBlank { todayIso }
+        selectedStore = activeStores.firstOrNull {
+            it.key.equals(rec.store, true) || it.name.equals(rec.store, true)
+        } ?: activeStores.firstOrNull()
+        grossStr = if (rec.grossWt > 0.0) InputGuards.fmtNum(rec.grossWt).replace(",", "") else ""
+        containerStr = InputGuards.fmtNum(rec.contWt).replace(",", "")
+        unitsStr = InputGuards.fmtNum(rec.formulaUnits).replace(",", "")
+        customCostStr = if (rec.cp > 0.0) rec.cp.toString() else ""
+        notes = rec.returnNote
+        photoSlots = rec.photoKeys.mapNotNull { key ->
+            snapshot.photos[key]?.takeIf { !it.deleted && it.dataUri.isNotBlank() }?.let { blob ->
+                ProdPhotoSlot(existingKey = key, dataUrl = blob.dataUri)
+            }
+        }
+    }
+
+    BackHandler(enabled = editingRecord != null) {
+        showDiscardEditDialog = true
+    }
+
+    val multiPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(6)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             scope.launch {
+                val room = (6 - photoSlots.size).coerceAtLeast(0)
                 val encoded = withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.openInputStream(uri)?.use { stream ->
-                            val bmp = BitmapFactory.decodeStream(stream) ?: return@use null
-                            val maxDim = 900
-                            val scale = minOf(1f, maxDim.toFloat() / maxOf(bmp.width, bmp.height).coerceAtLeast(1))
-                            val resized = if (scale < 1f) {
-                                Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
-                            } else bmp
-                            val out = ByteArrayOutputStream()
-                            resized.compress(Bitmap.CompressFormat.JPEG, 76, out)
-                            "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                        }
-                    }.getOrNull()
+                    uris.take(room).mapNotNull { uri ->
+                        CaptionedPhotoSharer.compressUriToDataUrl(context, uri)?.let { ProdPhotoSlot(null, it) }
+                    }
                 }
-                if (!encoded.isNullOrBlank()) photoDataUri = encoded
+                if (encoded.isNotEmpty()) {
+                    photoSlots = (photoSlots + encoded).take(6)
+                }
             }
         }
     }
@@ -144,43 +187,46 @@ fun ProductionScreen(
             else (snapshot.settings.storeCosts[st.key] ?: 0.0) to "default"
         } ?: (0.0 to "none")
     }
-    LaunchedEffect(resolvedCost) {
-        if (customCostStr.isBlank() && resolvedCost.first > 0.0) {
+    LaunchedEffect(resolvedCost, editingRecord) {
+        if (editingRecord == null && customCostStr.isBlank() && resolvedCost.first > 0.0) {
             customCostStr = resolvedCost.first.toString()
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("Log Entry", "Return Stock", "Stores", "History").forEachIndexed { i, title ->
-                val selected = subTab == i
-                Surface(
-                    onClick = { subTab = i },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (selected) accents.softPillFill else accents.inputFill,
-                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.testTag("prod_subtab_$i")
-                ) {
-                    Box(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), contentAlignment = Alignment.Center) {
-                        Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+        if (!isEntryOnlyProd) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Log Entry", "Return Stock", "Stores", "History").forEachIndexed { i, title ->
+                    val selected = subTab == i
+                    Surface(
+                        onClick = { subTab = i },
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (selected) accents.softPillFill else accents.inputFill,
+                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                        modifier = Modifier.testTag("prod_subtab_$i")
+                    ) {
+                        Box(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), contentAlignment = Alignment.Center) {
+                            Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+                        }
                     }
                 }
             }
         }
 
-        when (subTab) {
+        val activeSubTab = if (isEntryOnlyProd) 0 else subTab
+        when (activeSubTab) {
             0 -> {
                 val gross = grossStr.toDoubleOrNull() ?: 0.0
                 val container = containerStr.toDoubleOrNull() ?: 0.0
                 val net = InputGuards.round2((gross - container).coerceAtLeast(0.0))
                 val units = unitsStr.toDoubleOrNull() ?: 0.0
-                val overrideCp = customCostStr.toDoubleOrNull() ?: 0.0
+                val overrideCp = if (isEntryOnlyProd) 0.0 else (customCostStr.toDoubleOrNull() ?: 0.0)
                 val formulaTotalCost = if (formulaDesc != null && units > 0.0) formulaDesc.perUnit * units else 0.0
                 val effectiveTotalCost = when {
                     overrideCp > 0.0 -> net * overrideCp
@@ -197,18 +243,34 @@ fun ProductionScreen(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (isEntryOnlyProd) item { Spacer(Modifier.height(6.dp)) }
                     item {
                         SarimCard {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Log Daily Production", style = MaterialTheme.typography.titleMedium)
-                                Surface(
-                                    onClick = onOpenStockTransfer,
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = accents.softPillFill,
-                                    border = BorderStroke(1.dp, accents.emerald),
-                                    modifier = Modifier.testTag("prod_open_transfer_btn")
-                                ) {
-                                    Text("Transfer Stock", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                Text(
+                                    text = if (editingRecord != null) "Edit Production Entry" else "Log Daily Production",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                if (editingRecord != null) {
+                                    Surface(
+                                        onClick = { showDiscardEditDialog = true },
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = accents.danger.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                        modifier = Modifier.testTag("prod_cancel_edit_btn")
+                                    ) {
+                                        Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                    }
+                                } else if (!isEntryOnlyProd) {
+                                    Surface(
+                                        onClick = onOpenStockTransfer,
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = accents.softPillFill,
+                                        border = BorderStroke(1.dp, accents.emerald),
+                                        modifier = Modifier.testTag("prod_open_transfer_btn")
+                                    ) {
+                                        Text("Transfer Stock", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
@@ -218,14 +280,17 @@ fun ProductionScreen(
                                 label = "Store",
                                 selectedLabel = selectedStore?.name ?: "Select Store",
                                 items = activeStores,
-                                itemLabel = { "${it.name} (${InputGuards.formatMoney(it.salePrice, currency, masked)}/kg)" },
+                                itemLabel = { st ->
+                                    if (isEntryOnlyProd) st.name
+                                    else "${st.name} (${InputGuards.formatMoney(st.salePrice, currency, masked)}/kg)"
+                                },
                                 onSelect = {
                                     selectedStore = it
-                                    customCostStr = ""
+                                    if (editingRecord == null) customCostStr = ""
                                 },
                                 testTag = "prod_store_picker"
                             )
-                            if (resolvedFormula != null && formulaDesc != null) {
+                            if (!isEntryOnlyProd && resolvedFormula != null && formulaDesc != null) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     "Linked formula: ${resolvedFormula.name} • ${InputGuards.formatMoney(formulaDesc.perUnit, currency, masked)}/unit",
@@ -241,7 +306,9 @@ fun ProductionScreen(
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 DecimalField("Formula Units", unitsStr, { unitsStr = it }, "prod_units_input", Modifier.weight(1f))
-                                DecimalField("Cost / kg (${resolvedCost.second})", customCostStr, { customCostStr = it }, "prod_cost_input", Modifier.weight(1f))
+                                if (!isEntryOnlyProd) {
+                                    DecimalField("Cost / kg (${resolvedCost.second})", customCostStr, { customCostStr = it }, "prod_cost_input", Modifier.weight(1f))
+                                }
                             }
                             Spacer(Modifier.height(10.dp))
                             SarimPillInput(
@@ -252,33 +319,39 @@ fun ProductionScreen(
                                 testTag = "prod_notes_input"
                             )
                             Spacer(Modifier.height(10.dp))
-                            Surface(
-                                onClick = { photoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.softPillFill,
-                                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
-                                modifier = Modifier.testTag("prod_attach_photo_btn")
-                            ) {
-                                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(if (photoDataUri != null) Icons.Default.Check else Icons.Default.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(if (photoDataUri != null) "Scale Photo Attached (Tap to change)" else "Attach Scale Photo (Optional)", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
-                                }
-                            }
+                            ProductionPhotoPickerStrip(
+                                slots = photoSlots,
+                                onAddClick = { multiPhotoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                onRemoveAt = { idx -> photoSlots = photoSlots.filterIndexed { i, _ -> i != idx } },
+                                onPreviewAt = { idx -> lightboxState = Triple(photoSlots.map { it.dataUrl }, idx, editingRecord) }
+                            )
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SarimHalfRingKpiBox("Net Produced", InputGuards.formatKg(net), accents.emerald, Modifier.weight(1f))
-                                SarimHalfRingKpiBox("Est. Profit", InputGuards.formatMoney(profit, currency, masked), accents.cyan, Modifier.weight(1f))
+                                if (!isEntryOnlyProd) {
+                                    SarimHalfRingKpiBox("Est. Profit", InputGuards.formatMoney(profit, currency, masked), accents.cyan, Modifier.weight(1f))
+                                }
                             }
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
-                                text = "Save Production Entry",
+                                text = if (editingRecord != null) "Update Production Entry" else "Save Production Entry",
                                 onClick = {
-                                    selectedStore?.let { store ->
-                                        vm.submitProduction(date, store, gross, container, units, overrideCp, notes, photoDataUri)
-                                        grossStr = ""
-                                        notes = ""
-                                        photoDataUri = null
+                                    if (editingRecord != null) {
+                                        showEditDiffConfirm = true
+                                    } else {
+                                        selectedStore?.let { store ->
+                                            vm.submitProduction(
+                                                date = date,
+                                                store = store,
+                                                gross = gross,
+                                                container = container,
+                                                units = units,
+                                                costPerKg = overrideCp,
+                                                notes = notes,
+                                                photoDataUris = photoSlots.map { it.dataUrl }
+                                            )
+                                            resetEntryForm()
+                                        }
                                     }
                                 },
                                 enabled = selectedStore != null && net > 0.0,
@@ -306,14 +379,7 @@ fun ProductionScreen(
                             Spacer(Modifier.height(10.dp))
                             DatePickerField("Return Date", retDate, { retDate = it }, "ret_date")
                             Spacer(Modifier.height(10.dp))
-                            PickerField(
-                                label = "Store",
-                                selectedLabel = retStore?.name ?: "Select Store",
-                                items = activeStores,
-                                itemLabel = { it.name },
-                                onSelect = { retStore = it },
-                                testTag = "ret_store_picker"
-                            )
+                            PickerField("Store", retStore?.name ?: "Select Store", activeStores, { it.name }, { retStore = it }, "ret_store_picker")
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 DecimalField("Good Return", retQtyStr, { retQtyStr = it }, "ret_qty_input", Modifier.weight(1f), "kg")
@@ -329,10 +395,7 @@ fun ProductionScreen(
                                 onClick = {
                                     retStore?.let { st ->
                                         vm.submitStockReturn(retDate, st, retQty, expQty, retBy, retNotes)
-                                        retQtyStr = ""
-                                        retExpStr = "0"
-                                        retBy = ""
-                                        retNotes = ""
+                                        retQtyStr = ""; retExpStr = "0"; retBy = ""; retNotes = ""
                                     }
                                 },
                                 enabled = retStore != null && (retQty > 0.0 || expQty > 0.0),
@@ -369,13 +432,7 @@ fun ProductionScreen(
 
             2 -> {
                 var period by remember { mutableStateOf("All") }
-                val periodKey = when (period) {
-                    "Day" -> "today"
-                    "Week" -> "week"
-                    "Month" -> "month"
-                    "Year" -> "fy"
-                    else -> "all"
-                }
+                val periodKey = when (period) { "Day" -> "today"; "Week" -> "week"; "Month" -> "month"; "Year" -> "fy"; else -> "all" }
                 val filteredProd = remember(snapshot.production, periodKey, snapshot.settings.financialYearStartMonth) {
                     snapshot.production.filter {
                         it.deletedAt == null && !it.isTransfer && !it.isReturn &&
@@ -385,10 +442,7 @@ fun ProductionScreen(
                 val stockByKey = remember(snapshot) {
                     FinanceEngine.computeStoreStockSnapshots(snapshot).associateBy { it.storeKey.lowercase() }
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Day", "Week", "Month", "Year", "All").forEach { p ->
@@ -406,9 +460,7 @@ fun ProductionScreen(
                         }
                     }
                     items(activeStores, key = { it.key }) { store ->
-                        val itemsForStore = filteredProd.filter {
-                            it.store.equals(store.key, ignoreCase = true) || it.store.equals(store.name, ignoreCase = true)
-                        }
+                        val itemsForStore = filteredProd.filter { it.store.equals(store.key, true) || it.store.equals(store.name, true) }
                         val kg = itemsForStore.sumOf { it.net }
                         val prof = itemsForStore.sumOf { it.profit }
                         val avail = stockByKey[store.key.lowercase()]?.availableKg ?: 0.0
@@ -432,121 +484,190 @@ fun ProductionScreen(
                 val activeList = remember(snapshot.production) {
                     snapshot.production.filter { it.deletedAt == null }.sortedByDescending { it.date }
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (activeList.isEmpty()) {
-                        item { EmptyStateCard("No production logs", "Log your first batch on the Entry tab.") }
-                    } else {
-                        item {
-                            SarimYearMonthDayTree(
-                                items = activeList,
-                                dateOf = { it.date },
-                                summaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.net) }) },
-                                itemRow = { rec ->
-                                    val storeLabel = FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { rec.store }
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable { selectedRecord = rec }
-                                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                when {
-                                                    rec.isTransfer -> "TRANSFER ${rec.transferDirection.uppercase()} • $storeLabel"
-                                                    rec.isReturn -> "RETURN • $storeLabel"
-                                                    else -> storeLabel
-                                                },
-                                                style = MaterialTheme.typography.titleSmall
-                                            )
-                                            val sub = buildString {
-                                                if (rec.formulaUnits > 0.0) append("Units ${InputGuards.fmtNum(rec.formulaUnits)}")
-                                                if (rec.formulaName.isNotBlank()) {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append(rec.formulaName)
-                                                }
-                                                if (rec.isReturn && rec.returnedBy.isNotBlank()) {
-                                                    if (isNotEmpty()) append(" • ")
-                                                    append(rec.returnedBy)
-                                                }
-                                            }
-                                            if (sub.isNotBlank()) {
-                                                Text(sub, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                                            }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (activeList.isEmpty()) {
+                            item { EmptyStateCard("No production logs", "Log your first batch on the Entry tab.") }
+                        } else {
+                            item {
+                                SarimYearMonthDayTree(
+                                    items = activeList,
+                                    dateOf = { it.date },
+                                    summaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.net) }) },
+                                    itemRow = { rec ->
+                                        val storeLabel = FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { rec.store }
+                                        val recPhotos = rec.photoKeys.mapNotNull { k ->
+                                            snapshot.photos[k]?.takeIf { !it.deleted && it.dataUri.isNotBlank() }?.dataUri
                                         }
-                                        Text(
-                                            InputGuards.formatKg(rec.net),
-                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = if (rec.net >= 0) accents.emerald else accents.gold
-                                        )
+                                        val hasPhotos = recPhotos.isNotEmpty() && !rec.isReturn && !rec.isTransfer
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { selectedRecord = rec }
+                                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (hasPhotos) {
+                                                Checkbox(
+                                                    checked = rec.id in selectedPhotoRecIds,
+                                                    onCheckedChange = { on ->
+                                                        selectedPhotoRecIds = if (on) selectedPhotoRecIds + rec.id else selectedPhotoRecIds - rec.id
+                                                    },
+                                                    modifier = Modifier.testTag("prod_photo_check_${rec.id}")
+                                                )
+                                            }
+                                            Column(Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Text(
+                                                        when {
+                                                            rec.isTransfer -> "TRANSFER ${rec.transferDirection.uppercase()} • $storeLabel"
+                                                            rec.isReturn -> "RETURN • $storeLabel"
+                                                            else -> storeLabel
+                                                        },
+                                                        style = MaterialTheme.typography.titleSmall
+                                                    )
+                                                    EditedBadge(rec.isEdited)
+                                                }
+                                                val sub = buildString {
+                                                    if (rec.formulaUnits > 0.0) append("Units ${InputGuards.fmtNum(rec.formulaUnits)}")
+                                                    if (rec.formulaName.isNotBlank()) {
+                                                        if (isNotEmpty()) append(" • ")
+                                                        append(rec.formulaName)
+                                                    }
+                                                    if (rec.isReturn && rec.returnedBy.isNotBlank()) {
+                                                        if (isNotEmpty()) append(" • ")
+                                                        append(rec.returnedBy)
+                                                    }
+                                                }
+                                                if (sub.isNotBlank()) {
+                                                    Text(sub, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                                }
+                                            }
+                                            if (hasPhotos) {
+                                                Surface(
+                                                    onClick = { lightboxState = Triple(recPhotos, 0, rec) },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = accents.softPillFill,
+                                                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.4f)),
+                                                    modifier = Modifier.padding(end = 8.dp).testTag("prod_row_photo_${rec.id}")
+                                                ) {
+                                                    Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.Default.PhotoLibrary, contentDescription = "View photos", tint = accents.emerald, modifier = Modifier.size(13.dp))
+                                                        Spacer(Modifier.width(3.dp))
+                                                        Text("${recPhotos.size}", style = MaterialTheme.typography.labelSmall, color = accents.emerald)
+                                                    }
+                                                }
+                                            }
+                                            Text(
+                                                InputGuards.formatKg(rec.net),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = if (rec.net >= 0) accents.emerald else accents.gold
+                                            )
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
+                        item { Spacer(Modifier.height(72.dp)) }
                     }
-                    item { Spacer(Modifier.height(24.dp)) }
+
+                    ProductionMultiShareBar(
+                        selectedCount = selectedPhotoRecIds.size,
+                        onClear = { selectedPhotoRecIds = emptySet() },
+                        onShare = {
+                            val chosen = activeList.filter { it.id in selectedPhotoRecIds }
+                            val res = CaptionedPhotoSharer.shareProductionPhotos(context, chosen, snapshot.photos, currency, masked)
+                            if (res.isSuccess) {
+                                selectedPhotoRecIds = emptySet()
+                            } else {
+                                Toast.makeText(context, res.exceptionOrNull()?.localizedMessage ?: "Share failed", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         }
     }
 
     selectedRecord?.let { rec ->
-        val storeLabel = FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { rec.store }
-        SarimDetailBottomSheet(
-            title = storeLabel,
-            rightTitle = InputGuards.formatKg(rec.net),
-            subtitle = DateUtils.formatPretty(rec.date).uppercase(),
-            onDismiss = { selectedRecord = null },
-            content = {
-                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Formula Units", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.fmtNum(rec.formulaUnits), style = MaterialTheme.typography.titleSmall)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cost / Sale", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text("${InputGuards.formatMoney(rec.totalCost, currency, masked)} / ${InputGuards.formatMoney(rec.totalSale, currency, masked)}", style = MaterialTheme.typography.titleSmall)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Profit", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(rec.profit, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
-                }
-                val note = rec.returnNote.ifBlank { rec.transferNote }
-                if (note.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(note, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+        ProductionDetailSheet(
+            rec = rec,
+            stores = snapshot.stores,
+            photoStore = snapshot.photos,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onOpenLightbox = { photos, idx, r -> lightboxState = Triple(photos, idx, r) },
+            onStartEdit = { startEditing(it) },
+            onDismiss = { selectedRecord = null }
+        )
+    }
+
+    lightboxState?.let { (photos, idx, rec) ->
+        ProductionPhotoLightboxDialog(
+            photos = photos,
+            initialIndex = idx,
+            record = rec,
+            currencySymbol = currency,
+            hideMoney = masked,
+            onShareRecord = rec?.let { r ->
+                {
+                    val res = CaptionedPhotoSharer.shareProductionPhotos(context, listOf(r), snapshot.photos, currency, masked)
+                    if (res.isFailure) {
+                        Toast.makeText(context, res.exceptionOrNull()?.localizedMessage ?: "Share failed", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
-            footer = {
-                SarimDangerButton(
-                    text = if (rec.isTransfer) "Recycle Transfer Pair" else "Move to Recycle Bin",
-                    onClick = {
-                        if (rec.isTransfer) {
-                            vm.recyclePair("production", rec.transferPairId, rec.id, "$storeLabel (${rec.date})")
-                        } else {
-                            vm.softDeleteRecord(
-                                collection = "production",
-                                docId = rec.id,
-                                displayName = storeLabel,
-                                displayDetail = rec.date,
-                                displayAmount = InputGuards.formatKg(rec.net),
-                                snapshotMap = WorkspaceJsonCodec.productionToMap(rec)
-                            )
-                        }
-                        selectedRecord = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "prod_delete_${rec.id}"
-                )
-            }
+            onDismiss = { lightboxState = null }
+        )
+    }
+
+    if (showEditDiffConfirm && editingRecord != null && selectedStore != null) {
+        val orig = editingRecord!!
+        val st = selectedStore!!
+        val gross = grossStr.toDoubleOrNull() ?: 0.0
+        val container = containerStr.toDoubleOrNull() ?: 0.0
+        val net = InputGuards.round2((gross - container).coerceAtLeast(0.0))
+        val units = unitsStr.toDoubleOrNull() ?: 0.0
+        val overrideCp = if (isEntryOnlyProd) 0.0 else (customCostStr.toDoubleOrNull() ?: 0.0)
+        EditDiffConfirmDialog(
+            title = "Confirm Production Edit",
+            rows = listOf(
+                Triple("Date", orig.date, date),
+                Triple("Store", FormulaEngine.storeLabelFor(orig.store, snapshot.stores), st.name),
+                Triple("Gross Wt", InputGuards.formatKg(orig.grossWt), InputGuards.formatKg(gross)),
+                Triple("Container", InputGuards.formatKg(orig.contWt), InputGuards.formatKg(container)),
+                Triple("Net Wt", InputGuards.formatKg(orig.net), InputGuards.formatKg(net)),
+                Triple("Units", InputGuards.fmtNum(orig.formulaUnits), InputGuards.fmtNum(units)),
+                Triple("Photos", "${orig.photoKeys.size}", "${photoSlots.size}"),
+                Triple("Notes", orig.returnNote, notes.trim())
+            ),
+            onConfirm = {
+                showEditDiffConfirm = false
+                val retainedKeys = photoSlots.mapNotNull { it.existingKey }
+                val newUris = photoSlots.filter { it.existingKey == null }.map { it.dataUrl }
+                vm.editProduction(orig, date, st, gross, container, units, overrideCp, notes, retainedKeys, newUris) {
+                    resetEntryForm()
+                }
+            },
+            onDismiss = { showEditDiffConfirm = false }
+        )
+    }
+
+    if (showDiscardEditDialog) {
+        DiscardEditDialog(
+            onDiscard = {
+                showDiscardEditDialog = false
+                resetEntryForm()
+            },
+            onDismiss = { showDiscardEditDialog = false }
         )
     }
 }

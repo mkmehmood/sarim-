@@ -1,9 +1,14 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,10 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,7 +42,13 @@ import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.ui.components.DatePickerField
+import com.gullzubair.sarim.ui.components.DecimalField
+import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
+import com.gullzubair.sarim.ui.components.EditHistorySection
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
+import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimDangerButton
 import com.gullzubair.sarim.ui.components.SarimGradientButton
@@ -74,7 +87,9 @@ fun ExpenseDetailsScreen(
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    val isAdmin = session.mode == "admin"
 
     var range by remember { mutableStateOf("all") }
     var query by remember { mutableStateOf("") }
@@ -83,6 +98,8 @@ fun ExpenseDetailsScreen(
     var formError by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<ExpenseRecord?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
+    var editingExpense by remember { mutableStateOf<ExpenseRecord?>(null) }
+    var expandedHistoryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val allRecords = remember(snapshot.expenses, expenseName) {
         snapshot.expenses
@@ -240,17 +257,26 @@ fun ExpenseDetailsScreen(
                 item { EmptyStateCard("No expense records", "No expense records found for the selected period.") }
             } else {
                 items(visible, key = { it.id }) { exp ->
+                    val historyOpen = exp.id in expandedHistoryIds
+                    val hasHistory = exp.editHistory.isNotEmpty() || exp.timestamp > 0L
                     SarimCard(modifier = Modifier.testTag("expense_row_${exp.id}")) {
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = hasHistory) {
+                                    expandedHistoryIds = if (historyOpen) expandedHistoryIds - exp.id else expandedHistoryIds + exp.id
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    exp.notes.ifBlank { exp.description }.ifBlank { "No description" },
-                                    style = MaterialTheme.typography.titleSmall
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        exp.notes.ifBlank { exp.description }.ifBlank { "No description" },
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    EditedBadge(exp.isEdited)
+                                }
                                 Text(
                                     "${DateUtils.formatPretty(exp.date)} • ${exp.category} • ${exp.paymentMethod}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -264,13 +290,44 @@ fun ExpenseDetailsScreen(
                                 color = accents.gold
                             )
                         }
+                        AnimatedVisibility(visible = historyOpen) {
+                            Column {
+                                Spacer(Modifier.height(10.dp))
+                                EditHistorySection(
+                                    editHistory = exp.editHistory,
+                                    createdAtEpoch = exp.timestamp,
+                                    addedLabel = "Recorded",
+                                    canDelete = isAdmin,
+                                    masked = masked,
+                                    onDeleteEntry = { idx -> vm.deleteRecordEditHistory("expenses", exp.id, idx) }
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(8.dp))
-                        SarimDangerButton(
-                            text = "Delete",
-                            onClick = { pendingDelete = exp },
-                            modifier = Modifier.fillMaxWidth(),
-                            testTag = "expense_delete_${exp.id}"
-                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (!exp.isMerged) {
+                                Surface(
+                                    onClick = { editingExpense = exp },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .testTag("expense_edit_${exp.id}")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 12.dp)) {
+                                        Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                                    }
+                                }
+                            }
+                            SarimDangerButton(
+                                text = "Delete",
+                                onClick = { pendingDelete = exp },
+                                modifier = Modifier.weight(1f),
+                                testTag = "expense_delete_${exp.id}"
+                            )
+                        }
                     }
                 }
             }
@@ -287,6 +344,20 @@ fun ExpenseDetailsScreen(
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    editingExpense?.let { orig ->
+        EditExpenseDialog(
+            original = orig,
+            categories = snapshot.settings.expenseCategories.ifEmpty { listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other") },
+            channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") },
+            currency = currency,
+            masked = masked,
+            onSave = { d, n, cat, ch, amt, nts ->
+                vm.editExpenseRecord(orig, d, n, cat, ch, amt, nts) { editingExpense = null }
+            },
+            onDismiss = { editingExpense = null }
+        )
     }
 
     pendingDelete?.let { exp ->
@@ -340,6 +411,68 @@ fun ExpenseDetailsScreen(
                 }) { Text("Delete All") }
             },
             dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun EditExpenseDialog(
+    original: ExpenseRecord,
+    categories: List<String>,
+    channels: List<String>,
+    currency: String,
+    masked: Boolean,
+    onSave: (String, String, String, String, Double, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var date by remember(original) { mutableStateOf(original.date) }
+    var name by remember(original) { mutableStateOf(original.name) }
+    var category by remember(original) { mutableStateOf(original.category.ifBlank { categories.first() }) }
+    var channel by remember(original) { mutableStateOf(original.paymentMethod.ifBlank { channels.first() }) }
+    var amountStr by remember(original) { mutableStateOf(InputGuards.fmtNum(original.amount).replace(",", "")) }
+    var notes by remember(original) { mutableStateOf(original.notes.ifBlank { original.description }) }
+    var confirmDiff by remember { mutableStateOf(false) }
+
+    val amt = amountStr.toDoubleOrNull() ?: 0.0
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Expense") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DatePickerField("Date", date, { date = it }, "edit_exp_date")
+                SarimPillInput(name, { name = it.take(80) }, label = "Title / Expense", testTag = "edit_exp_name")
+                PickerField("Category", category, (categories + category).distinct(), { it }, { category = it }, "edit_exp_cat")
+                PickerField("Channel", channel, (channels + channel).distinct(), { it }, { channel = it }, "edit_exp_ch")
+                DecimalField("Amount ($currency)", amountStr, { amountStr = it }, "edit_exp_amount")
+                SarimPillInput(notes, { notes = it.take(300) }, label = "Notes", testTag = "edit_exp_notes")
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { confirmDiff = true },
+                enabled = name.isNotBlank() && amt > 0.0,
+                modifier = Modifier.testTag("edit_exp_save_btn")
+            ) { Text("Review Changes") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+
+    if (confirmDiff) {
+        EditDiffConfirmDialog(
+            title = "Confirm Expense Edit",
+            rows = listOf(
+                Triple("Date", original.date, date),
+                Triple("Name", original.name, name.trim()),
+                Triple("Category", original.category, category),
+                Triple("Channel", original.paymentMethod, channel),
+                Triple("Amount", InputGuards.formatMoney(original.amount, currency, masked), InputGuards.formatMoney(amt, currency, masked)),
+                Triple("Notes", original.notes.ifBlank { original.description }, notes.trim())
+            ),
+            onConfirm = {
+                confirmDiff = false
+                onSave(date, name, category, channel, amt, notes)
+            },
+            onDismiss = { confirmDiff = false }
         )
     }
 }

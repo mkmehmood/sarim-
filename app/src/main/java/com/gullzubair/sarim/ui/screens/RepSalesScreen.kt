@@ -3,9 +3,11 @@ package com.gullzubair.sarim.ui.screens
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,13 +19,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,20 +46,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
-import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
-import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
+import com.gullzubair.sarim.ui.components.DecodedDataUrlImage
+import com.gullzubair.sarim.ui.components.DiscardEditDialog
+import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
+import com.gullzubair.sarim.ui.components.EditedBadge
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.PickerField
+import com.gullzubair.sarim.ui.components.RepDetailSheet
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimDangerButton
-import com.gullzubair.sarim.ui.components.SarimDetailBottomSheet
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
@@ -76,7 +79,14 @@ fun RepSalesScreen(
     val context = LocalContext.current
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
-    val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val isOwnRepOnly = remember(session) {
+        FinanceEngine.hasOwnRepAccess(session) && session.mode != "admin"
+    }
+    val lockedRepName = remember(snapshot.settings.repProfile, snapshot.profile.displayName) {
+        snapshot.settings.repProfile.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
+    }
+    val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
     val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
 
     val knownReps = remember(snapshot) {
@@ -88,9 +98,11 @@ fun RepSalesScreen(
             .filter { it.isNotBlank() }
             .distinctBy { it.lowercase() }
     }
-    val clientNames = remember(snapshot.clients, snapshot.repRecords) {
+    val clientNames = remember(snapshot.clients, snapshot.repRecords, isOwnRepOnly, lockedRepName) {
         (snapshot.clients.filter { it.deletedAt == null }.map { it.name } +
-            snapshot.repRecords.filter { it.deletedAt == null }.map { it.customerName })
+            snapshot.repRecords.filter {
+                it.deletedAt == null && (!isOwnRepOnly || it.salesRep.equals(lockedRepName, true))
+            }.map { it.customerName })
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinctBy { it.lowercase() }
@@ -99,9 +111,7 @@ fun RepSalesScreen(
 
     var subTab by remember { mutableIntStateOf(0) }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
-    var repName by remember(snapshot.profile) {
-        mutableStateOf(snapshot.settings.repProfile.ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } })
-    }
+    var repName by remember(lockedRepName) { mutableStateOf(lockedRepName) }
     var mode by remember { mutableStateOf("CASH") } // CASH | CREDIT | COLLECTION | REP_RETURN | MONEY_OUT
     var customerName by remember { mutableStateOf("") }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
@@ -113,6 +123,52 @@ fun RepSalesScreen(
     var capturedLatLng by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var gpsStatus by remember { mutableStateOf("GPS not captured") }
     var selectedRepRec by remember { mutableStateOf<SalesRecord?>(null) }
+
+    // In-place edit state
+    var editingRepRec by remember { mutableStateOf<SalesRecord?>(null) }
+    var showEditDiff by remember { mutableStateOf(false) }
+    var showDiscardEdit by remember { mutableStateOf(false) }
+
+    fun resetForm() {
+        editingRepRec = null
+        date = todayIso
+        qtyStr = ""
+        cashStr = ""
+        expiredStr = "0"
+        notes = ""
+        if (isOwnRepOnly) repName = lockedRepName
+    }
+
+    fun startEdit(r: SalesRecord) {
+        editingRepRec = r
+        subTab = 0
+        date = r.date.ifBlank { todayIso }
+        repName = if (isOwnRepOnly) lockedRepName else r.salesRep.ifBlank { lockedRepName }
+        mode = when {
+            r.isRepReturn || r.paymentType == "REP_RETURN" -> "REP_RETURN"
+            r.paymentType == "COLLECTION" || r.paymentType == "PARTIAL_PAYMENT" -> "COLLECTION"
+            r.paymentType == "MONEY_OUT" -> "MONEY_OUT"
+            r.paymentType == "CREDIT" -> "CREDIT"
+            else -> "CASH"
+        }
+        customerName = r.customerName
+        val st = activeStores.firstOrNull { it.key.equals(r.supplyStore, true) || it.name.equals(r.supplyStore, true) }
+        if (st != null) selectedStore = st
+        val shownQty = if (mode == "REP_RETURN") r.returnedQty else r.quantity
+        qtyStr = if (shownQty > 0.0) InputGuards.fmtNum(shownQty).replace(",", "") else ""
+        rateStr = if (r.unitPrice > 0.0) r.unitPrice.toString() else (st?.salePrice?.toString() ?: "")
+        val shownCash = when (mode) {
+            "COLLECTION", "MONEY_OUT" -> if (r.collectedAmount > 0.0) r.collectedAmount else r.totalValue
+            else -> r.collectedAmount
+        }
+        cashStr = if (shownCash > 0.0) InputGuards.fmtNum(shownCash).replace(",", "") else ""
+        expiredStr = if (r.expiredQty > 0.0) InputGuards.fmtNum(r.expiredQty).replace(",", "") else "0"
+        notes = r.notes
+    }
+
+    BackHandler(enabled = editingRepRec != null) {
+        showDiscardEdit = true
+    }
 
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -131,6 +187,16 @@ fun RepSalesScreen(
                 rec.customerName.equals(customerName.trim(), true) &&
                 rec.gpsLat != null && rec.gpsLng != null &&
                 LocationHelper.distanceMeters(loc.first, loc.second, rec.gpsLat, rec.gpsLng) <= 150.0
+        }
+    }
+
+    val scopedRepRecords = remember(snapshot.repRecords, isOwnRepOnly, lockedRepName) {
+        snapshot.repRecords.filter { rec ->
+            rec.deletedAt == null && (
+                !isOwnRepOnly ||
+                    rec.salesRep.equals(lockedRepName, ignoreCase = true) ||
+                    rec.currentRepProfile.equals(lockedRepName, ignoreCase = true)
+                )
         }
     }
 
@@ -177,6 +243,21 @@ fun RepSalesScreen(
                 ) {
                     item {
                         SarimCard {
+                            if (editingRepRec != null) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Editing ${editingRepRec?.paymentType}", style = MaterialTheme.typography.titleMedium, color = accents.cyan)
+                                    Surface(
+                                        onClick = { showDiscardEdit = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = accents.danger.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                        modifier = Modifier.testTag("rep_cancel_edit_btn")
+                                    ) {
+                                        Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf(
                                     "CASH" to "Cash",
@@ -202,10 +283,26 @@ fun RepSalesScreen(
                             Spacer(Modifier.height(10.dp))
                             DatePickerField("Date", date, { date = it }, "rep_date")
                             Spacer(Modifier.height(10.dp))
-                            SarimPillInput(repName, { repName = it.take(80) }, label = "REP NAME", testTag = "rep_name_input")
-                            if (knownReps.isNotEmpty()) {
-                                Spacer(Modifier.height(6.dp))
-                                PickerField("Or Pick Rep", repName, knownReps, { it }, { repName = it }, "rep_picker")
+                            if (isOwnRepOnly) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth().testTag("rep_locked_name")
+                                ) {
+                                    Text(
+                                        "REP: $lockedRepName (locked)",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = accents.emerald,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                                    )
+                                }
+                            } else {
+                                SarimPillInput(repName, { repName = it.take(80) }, label = "REP NAME", testTag = "rep_name_input")
+                                if (knownReps.isNotEmpty()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    PickerField("Or Pick Rep", repName, knownReps, { it }, { repName = it }, "rep_picker")
+                                }
                             }
                             Spacer(Modifier.height(10.dp))
                             SarimPillInput(customerName, { customerName = it.take(80) }, label = "CUSTOMER / SHOP", testTag = "rep_customer_input")
@@ -262,28 +359,30 @@ fun RepSalesScreen(
                                 Spacer(Modifier.height(10.dp))
                                 DecimalField("Expired -> CHORA (optional)", expiredStr, { expiredStr = it }, "rep_expired_input", suffix = "kg")
                             }
-                            Spacer(Modifier.height(10.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(gpsStatus, style = MaterialTheme.typography.bodySmall, color = accents.cyan)
-                                    if (confirmed) {
-                                        Text("Shop location verified (3+ visits <= 150m)", style = MaterialTheme.typography.labelSmall, color = accents.emerald)
-                                    }
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        if (LocationHelper.hasLocationPermission(context)) {
-                                            val coords = LocationHelper.getBestLastLocation(context)
-                                            capturedLatLng = coords
-                                            gpsStatus = if (coords != null) "GPS: ${"%.5f".format(coords.first)}, ${"%.5f".format(coords.second)}" else "Waiting for GPS fix"
-                                        } else {
-                                            locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (editingRepRec == null) {
+                                Spacer(Modifier.height(10.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(gpsStatus, style = MaterialTheme.typography.bodySmall, color = accents.cyan)
+                                        if (confirmed) {
+                                            Text("Shop location verified (3+ visits <= 150m)", style = MaterialTheme.typography.labelSmall, color = accents.emerald)
                                         }
-                                    },
-                                    modifier = Modifier.testTag("rep_gps_btn")
-                                ) {
-                                    Icon(Icons.Default.MyLocation, contentDescription = "Capture GPS")
-                                    Text(" Tag GPS")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (LocationHelper.hasLocationPermission(context)) {
+                                                val coords = LocationHelper.getBestLastLocation(context)
+                                                capturedLatLng = coords
+                                                gpsStatus = if (coords != null) "GPS: ${"%.5f".format(coords.first)}, ${"%.5f".format(coords.second)}" else "Waiting for GPS fix"
+                                            } else {
+                                                locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("rep_gps_btn")
+                                    ) {
+                                        Icon(Icons.Default.MyLocation, contentDescription = "Capture GPS")
+                                        Text(" Tag GPS")
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -310,28 +409,29 @@ fun RepSalesScreen(
                                 else -> qty > 0.0 && rate > 0.0
                             }
                             SarimGradientButton(
-                                text = "Save Field Entry",
+                                text = if (editingRepRec != null) "Update Entry" else "Save Field Entry",
                                 onClick = {
-                                    vm.submitRepRecord(
-                                        date = date,
-                                        repName = repName,
-                                        paymentType = mode,
-                                        customer = customerName,
-                                        store = selectedStore,
-                                        qty = qty,
-                                        rate = rate,
-                                        collectedAmount = if (mode == "CASH") total else cash,
-                                        expiredKg = expired,
-                                        lat = capturedLatLng?.first,
-                                        lng = capturedLatLng?.second,
-                                        accuracy = null,
-                                        confirmed = confirmed,
-                                        notes = notes
-                                    )
-                                    qtyStr = ""
-                                    cashStr = ""
-                                    expiredStr = "0"
-                                    notes = ""
+                                    if (editingRepRec != null) {
+                                        showEditDiff = true
+                                    } else {
+                                        vm.submitRepRecord(
+                                            date = date,
+                                            repName = if (isOwnRepOnly) lockedRepName else repName,
+                                            paymentType = mode,
+                                            customer = customerName,
+                                            store = selectedStore,
+                                            qty = qty,
+                                            rate = rate,
+                                            collectedAmount = if (mode == "CASH") total else cash,
+                                            expiredKg = expired,
+                                            lat = capturedLatLng?.first,
+                                            lng = capturedLatLng?.second,
+                                            accuracy = null,
+                                            confirmed = confirmed,
+                                            notes = notes
+                                        )
+                                        resetForm()
+                                    }
                                 },
                                 enabled = canSave,
                                 testTag = "rep_save_btn"
@@ -343,7 +443,11 @@ fun RepSalesScreen(
             }
 
             1 -> {
-                val activeClients = remember(snapshot.clients) { snapshot.clients.filter { it.deletedAt == null } }
+                val activeClients = remember(snapshot.clients, isOwnRepOnly, lockedRepName) {
+                    snapshot.clients.filter {
+                        it.deletedAt == null && (!isOwnRepOnly || it.salesRep.isBlank() || it.salesRep.equals(lockedRepName, true))
+                    }
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -362,12 +466,34 @@ fun RepSalesScreen(
                                 clients = snapshot.clients,
                                 includeClients = true
                             )
+                            val photoUri = snapshot.photos["client:${cust.id}"]?.takeIf { !it.deleted }?.dataUri
+                            val initials = cust.name.split(" ").filter { it.isNotBlank() }.take(2)
+                                .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "C" }
                             SarimCard(modifier = Modifier.clickable { onOpenCustomer(cust.name) }.testTag("rep_customer_card_${cust.id}")) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    if (!photoUri.isNullOrBlank()) {
+                                        DecodedDataUrlImage(
+                                            dataUrl = photoUri,
+                                            contentDescription = "${cust.name} photo",
+                                            modifier = Modifier.size(40.dp).clip(CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier.size(40.dp).clip(CircleShape).background(accents.softPillFill),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(initials, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(cust.name, style = MaterialTheme.typography.titleMedium)
                                         Text(
-                                            "${cust.address.ifBlank { "No address" }} • ${cust.visitCount} visits",
+                                            listOfNotNull(
+                                                cust.address.ifBlank { "No address" },
+                                                "${cust.visitCount} visits",
+                                                cust.ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
+                                            ).joinToString(" • "),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = accents.textMuted
                                         )
@@ -397,18 +523,17 @@ fun RepSalesScreen(
             }
 
             2 -> {
-                val activeRep = remember(snapshot.repRecords) { snapshot.repRecords.filter { it.deletedAt == null } }
-                val repTotals = remember(activeRep) {
-                    activeRep.filter { !FinanceEngine.isLedgerRow(it) }
+                val repTotals = remember(scopedRepRecords) {
+                    scopedRepRecords.filter { !FinanceEngine.isLedgerRow(it) }
                         .groupBy { it.salesRep.ifBlank { "Rep" } }
                         .mapValues { (_, list) -> InputGuards.round2(list.sumOf { it.totalValue }) }
                         .entries.sortedByDescending { it.value }.map { it.key to it.value }
                 }
-                val totalCollected = remember(activeRep) {
-                    activeRep.sumOf { it.collectedAmount }
+                val totalCollected = remember(scopedRepRecords) {
+                    scopedRepRecords.sumOf { it.collectedAmount }
                 }
-                val totalReturns = remember(activeRep) {
-                    activeRep.filter { it.isRepReturn || it.paymentType == "REP_RETURN" }.sumOf { it.returnValue }
+                val totalReturns = remember(scopedRepRecords) {
+                    scopedRepRecords.filter { it.isRepReturn || it.paymentType == "REP_RETURN" }.sumOf { it.returnValue }
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -432,9 +557,8 @@ fun RepSalesScreen(
             }
 
             else -> {
-                val activeRep = remember(snapshot.repRecords) {
-                    snapshot.repRecords.filter { it.deletedAt == null }
-                        .sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
+                val activeRep = remember(scopedRepRecords) {
+                    scopedRepRecords.sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -464,7 +588,10 @@ fun RepSalesScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text("${r.salesRep.ifBlank { "Rep" }} -> ${r.customerName}", style = MaterialTheme.typography.titleSmall)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("${r.salesRep.ifBlank { "Rep" }} -> ${r.customerName}", style = MaterialTheme.typography.titleSmall)
+                                                EditedBadge(r.isEdited)
+                                            }
                                             Text(
                                                 "${r.paymentType} • ${if (r.isRepReturn) InputGuards.formatKg(r.returnedQty) else InputGuards.formatKg(r.quantity)}",
                                                 style = MaterialTheme.typography.labelSmall,
@@ -488,66 +615,64 @@ fun RepSalesScreen(
     }
 
     selectedRepRec?.let { r ->
-        val storeLabel = FormulaEngine.storeLabelFor(r.supplyStore, snapshot.stores)
-        SarimDetailBottomSheet(
-            title = r.customerName.uppercase(),
-            rightTitle = InputGuards.formatMoney(r.totalValue.takeIf { it > 0 } ?: r.collectedAmount, currency, masked),
-            subtitle = "${DateUtils.formatPretty(r.date).uppercase()} • ${r.salesRep}",
-            onDismiss = { selectedRepRec = null },
-            content = {
-                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Type", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(r.paymentType, style = MaterialTheme.typography.titleSmall)
-                }
-                if (storeLabel.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Store", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                        Text(storeLabel, style = MaterialTheme.typography.titleSmall)
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(if (r.isRepReturn) "Returned Qty" else "Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatKg(if (r.isRepReturn) r.returnedQty else r.quantity), style = MaterialTheme.typography.titleSmall)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Collected", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(r.collectedAmount, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
-                }
-                if (r.gpsLat != null && r.gpsLng != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("GPS", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                        Text("${"%.5f".format(r.gpsLat)}, ${"%.5f".format(r.gpsLng)}", style = MaterialTheme.typography.bodySmall, color = accents.cyan)
-                    }
-                }
-                if (r.notes.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(r.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                }
+        RepDetailSheet(
+            r = r,
+            stores = snapshot.stores,
+            currency = currency,
+            masked = masked,
+            isAdmin = session.mode == "admin",
+            vm = vm,
+            onEditEntry = { startEdit(it) },
+            onDismiss = { selectedRepRec = null }
+        )
+    }
+
+    if (showEditDiff && editingRepRec != null) {
+        val orig = editingRepRec!!
+        val qty = qtyStr.toDoubleOrNull() ?: 0.0
+        val rate = rateStr.toDoubleOrNull() ?: (selectedStore?.salePrice ?: 0.0)
+        val cash = cashStr.toDoubleOrNull() ?: 0.0
+        val expired = expiredStr.toDoubleOrNull() ?: 0.0
+        val total = when (mode) {
+            "COLLECTION", "MONEY_OUT" -> InputGuards.round2(cash)
+            else -> InputGuards.round2(qty * rate)
+        }
+        EditDiffConfirmDialog(
+            title = "Confirm Rep Edit",
+            rows = listOf(
+                Triple("Date", orig.date, date),
+                Triple("Customer", orig.customerName, customerName.trim()),
+                Triple("Type", orig.paymentType, mode),
+                Triple("Qty", InputGuards.formatKg(if (orig.isRepReturn) orig.returnedQty else orig.quantity), InputGuards.formatKg(qty)),
+                Triple("Amount", InputGuards.formatMoney(orig.totalValue, currency, masked), InputGuards.formatMoney(total, currency, masked)),
+                Triple("Notes", orig.notes, notes.trim())
+            ),
+            onConfirm = {
+                showEditDiff = false
+                vm.editRepRecord(
+                    original = orig,
+                    date = date,
+                    paymentType = mode,
+                    customerName = customerName,
+                    store = selectedStore,
+                    quantityKg = qty,
+                    unitPrice = rate,
+                    collectedAmount = if (mode == "CASH") total else cash,
+                    expiredKg = expired,
+                    notes = notes
+                ) { resetForm() }
             },
-            footer = {
-                SarimDangerButton(
-                    text = "Move to Recycle Bin",
-                    onClick = {
-                        vm.softDeleteRecord(
-                            collection = "rep",
-                            docId = r.id,
-                            displayName = r.customerName,
-                            displayDetail = "${r.date} • ${r.salesRep}",
-                            displayAmount = InputGuards.formatMoney(r.totalValue, currency, masked),
-                            snapshotMap = WorkspaceJsonCodec.saleToMap(r)
-                        )
-                        selectedRepRec = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "rep_delete_${r.id}"
-                )
-            }
+            onDismiss = { showEditDiff = false }
+        )
+    }
+
+    if (showDiscardEdit) {
+        DiscardEditDialog(
+            onDiscard = {
+                showDiscardEdit = false
+                resetForm()
+            },
+            onDismiss = { showDiscardEdit = false }
         )
     }
 }

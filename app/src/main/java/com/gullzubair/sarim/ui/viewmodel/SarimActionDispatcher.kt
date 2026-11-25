@@ -36,14 +36,22 @@ class SarimActionDispatcher(
     private val repo: AppRepository,
     private val ops: WorkspaceOperations
 ) {
-    private fun resolvedStoreKey(store: StoreConfig): String = store.key.ifBlank { store.name }
+    internal fun resolvedStoreKey(store: StoreConfig): String = store.key.ifBlank { store.name }
 
-    private suspend fun appendDailyLedgerEntry(
+    internal suspend fun appendDailyLedgerEntry(
         snapshot: WorkspaceSnapshot,
         entry: DailyLedgerEntry
+    ): Result<Unit> = appendDailyLedgerEntries(snapshot, listOf(entry))
+
+    internal suspend fun appendDailyLedgerEntries(
+        snapshot: WorkspaceSnapshot,
+        entries: List<DailyLedgerEntry>
     ): Result<Unit> {
+        if (entries.isEmpty()) return Result.success(Unit)
         val ownerUid = snapshot.profile.effectiveOwnerUid
-        val nextList = (listOf(entry) + snapshot.ledgerEntries).sortedByDescending { it.date }
+        val ids = entries.map { it.id }.toSet()
+        val nextList = (entries + snapshot.ledgerEntries.filterNot { it.id in ids })
+            .sortedByDescending { it.date }
         val now = System.currentTimeMillis()
         val rawList = nextList.map(WorkspaceJsonCodec::dailyLedgerEntryToMap)
         return repo.saveSingleton(
@@ -59,6 +67,39 @@ class SarimActionDispatcher(
                 "daily_ledger_timestamp" to now.toString()
             )
         )
+    }
+
+    suspend fun syncLedgerMirrorToStorage(snapshot: WorkspaceSnapshot): FinanceEngine.LedgerSyncResult {
+        val syncRes = FinanceEngine.syncLedgerEntriesWithSnapshot(snapshot)
+        if (syncRes.removedEntries.isEmpty() && syncRes.updatedCount == 0) return syncRes
+        val ownerUid = snapshot.profile.effectiveOwnerUid
+        val now = System.currentTimeMillis()
+        syncRes.removedEntries.forEach { gone ->
+            ops.softDeleteToRecycleBin(
+                profile = snapshot.profile,
+                collection = "daily_ledger",
+                docId = gone.id,
+                displayName = gone.party.ifBlank { gone.category },
+                displayDetail = gone.date,
+                displayAmount = InputGuards.fmtNum(gone.amount),
+                snapshotMap = WorkspaceJsonCodec.dailyLedgerEntryToMap(gone)
+            )
+        }
+        val rawList = syncRes.nextEntries.sortedByDescending { it.date }.map(WorkspaceJsonCodec::dailyLedgerEntryToMap)
+        repo.saveSingleton(
+            ownerUid = ownerUid,
+            collection = "daily_ledger",
+            docId = "entries",
+            payload = mapOf(
+                "daily_ledger" to rawList,
+                "daily_ledger_timestamp" to now
+            ),
+            kvUpdates = mapOf(
+                "daily_ledger" to WorkspaceJsonCodec.mapListToJson(rawList),
+                "daily_ledger_timestamp" to now.toString()
+            )
+        )
+        return syncRes
     }
 
     suspend fun saveDailyLedgerEntry(
@@ -160,7 +201,8 @@ class SarimActionDispatcher(
         formulaUnits: Double,
         costPerKgOverride: Double,
         notes: String,
-        photoDataUri: String? = null
+        photoDataUri: String? = null,
+        photoDataUris: List<String> = emptyList()
     ): Result<String> {
         val net = InputGuards.round2(grossWt - contWt)
         if (net <= 0.0) return Result.failure(IllegalArgumentException("Net weight must be greater than 0 kg"))
@@ -183,10 +225,13 @@ class SarimActionDispatcher(
         val profit = InputGuards.round2(totalSale - totalCost)
         val storeKey = resolvedStoreKey(store)
 
+        val allPhotos = (photoDataUris + listOfNotNull(photoDataUri?.takeIf { it.isNotBlank() }))
+            .distinct()
+            .take(6)
         val photoKeys = mutableListOf<String>()
-        if (!photoDataUri.isNullOrBlank()) {
+        allPhotos.forEach { uri ->
             val pk = ops.newId("photo_prod")
-            ops.savePhoto(snapshot.profile, pk, photoDataUri)
+            ops.savePhoto(snapshot.profile, pk, uri)
             photoKeys.add(pk)
         }
 
@@ -325,20 +370,22 @@ class SarimActionDispatcher(
         )
     }
 
-    private suspend fun addChoraToInventory(snapshot: WorkspaceSnapshot, qtyKg: Double): Boolean {
-        if (qtyKg <= 0.0) return false
+    internal suspend fun addChoraToInventory(snapshot: WorkspaceSnapshot, qtyKg: Double): Boolean {
+        if (qtyKg == 0.0) return false
         val chora = FinanceEngine.findMaterialByName(snapshot.inventory, "CHORA") ?: return false
+        val nextQty = InputGuards.round6(max(0.0, chora.quantity + qtyKg))
+        val nextCollected = InputGuards.round6(max(0.0, FinanceEngine.collectedKg(chora) + qtyKg))
         val updated = chora.copy(
-            quantity = InputGuards.round6(chora.quantity + qtyKg),
-            collectedKg = InputGuards.round6(FinanceEngine.collectedKg(chora) + qtyKg),
-            totalValue = InputGuards.round2((chora.quantity + qtyKg) * chora.cost),
+            quantity = nextQty,
+            collectedKg = nextCollected,
+            totalValue = InputGuards.round2(nextQty * chora.cost),
             timestamp = System.currentTimeMillis()
         )
         ops.submitOrExecuteWrite(
             profile = snapshot.profile,
             targetCollection = "inventory",
             docId = chora.id,
-            summaryTitle = "CHORA +${InputGuards.formatKg(qtyKg)}",
+            summaryTitle = "CHORA ${if (qtyKg >= 0) "+" else ""}${InputGuards.formatKg(qtyKg)}",
             summaryDetail = "Recovered/Expired return",
             payload = WorkspaceJsonCodec.inventoryToMap(updated),
             isEdit = true
@@ -402,7 +449,8 @@ class SarimActionDispatcher(
                     val updatedSale = s.copy(
                         partialPaymentReceived = if (full) s.totalValue else nextPartial,
                         creditReceived = full,
-                        collectionAllocs = nextAllocs
+                        collectionAllocs = nextAllocs,
+                        collectionAllocFull = s.collectionAllocFull + (colId to full)
                     )
                     ops.submitOrExecuteWrite(
                         profile = snapshot.profile,
@@ -439,6 +487,7 @@ class SarimActionDispatcher(
                 isCollection = true,
                 collectedAmount = InputGuards.round2(collectedAmount),
                 allocations = plan.mapValues { it.value.first },
+                allocationFull = plan.mapValues { it.value.second },
                 expiredQty = InputGuards.round2(expiredKg),
                 expiredValue = expVal,
                 expiredUnitPrice = InputGuards.round2(expiredUnitPrice),
@@ -466,7 +515,10 @@ class SarimActionDispatcher(
                         timestamp = now,
                         updatedAt = now,
                         linkCollection = "sales",
-                        linkDocId = colId
+                        linkDocId = colId,
+                        linkKind = "customer",
+                        linkOrigin = "tab",
+                        linkPart = "collection"
                     )
                 )
             }
@@ -516,7 +568,10 @@ class SarimActionDispatcher(
                         timestamp = now,
                         updatedAt = now,
                         linkCollection = "sales",
-                        linkDocId = docId
+                        linkDocId = docId,
+                        linkKind = "customer",
+                        linkOrigin = "tab",
+                        linkPart = "payout"
                     )
                 )
             }
@@ -600,7 +655,10 @@ class SarimActionDispatcher(
                     timestamp = now,
                     updatedAt = now,
                     linkCollection = "sales",
-                    linkDocId = saleId
+                    linkDocId = saleId,
+                    linkKind = "customer",
+                    linkOrigin = "tab",
+                    linkPart = "sale"
                 )
             )
         }
@@ -939,7 +997,8 @@ class SarimActionDispatcher(
                     timestamp = now,
                     updatedAt = now,
                     linkCollection = "inventory",
-                    linkDocId = lotId
+                    linkDocId = lotId,
+                    linkOrigin = "tab"
                 )
             )
         }
@@ -1003,7 +1062,9 @@ class SarimActionDispatcher(
                         timestamp = now,
                         updatedAt = now,
                         linkCollection = "expenses",
-                        linkDocId = expId
+                        linkDocId = expId,
+                        linkOrigin = "tab",
+                        linkEntityId = entity?.id
                     )
                 )
             }
@@ -1075,7 +1136,9 @@ class SarimActionDispatcher(
                     timestamp = now,
                     updatedAt = now,
                     linkCollection = "transactions",
-                    linkDocId = txId
+                    linkDocId = txId,
+                    linkOrigin = "tab",
+                    linkEntityId = entity?.id
                 )
             )
         }
@@ -1093,100 +1156,288 @@ class SarimActionDispatcher(
     suspend fun saveCalculatorSettlement(
         snapshot: WorkspaceSnapshot,
         date: String,
+        dateFrom: String = date,
         seller: String,
         store: StoreConfig,
         totalSold: Double,
         returned: Double,
-        returnType: String, // "" | "store" | "rep"
+        returnType: String, // "" | "store" | "rep" | "RETURN" | "TRANSFER"
         returnTargetRep: String,
         expired: Double,
         shared: Double,
-        cashQty: Double,
         creditQty: Double,
         unitPrice: Double,
         fieldExpenseItems: List<Map<String, Any>>,
+        commissionPerUnit: Double = 0.0,
         commissionItems: List<Map<String, Any>>,
         prevColl: Double,
         received: Double,
         addToLedger: Boolean,
         notes: String
     ): Result<String> {
+        val effDateFrom = dateFrom.ifBlank { date }
+        if (totalSold <= 0.0) return Result.failure(IllegalArgumentException("Enter valid units sold (> 0)"))
+        if (unitPrice <= 0.0) return Result.failure(IllegalArgumentException("Set a sale price for this store first"))
+        if (returned < 0.0 || expired < 0.0 || shared < 0.0 || creditQty < 0.0 || prevColl < 0.0 || received < 0.0) {
+            return Result.failure(IllegalArgumentException("Quantities and cash amounts cannot be negative"))
+        }
+        if (returned + expired + shared > totalSold + 0.0001) {
+            return Result.failure(IllegalArgumentException("Combined returned + expired + shared cannot exceed total sold"))
+        }
+        if (commissionPerUnit < 0.0 || commissionPerUnit > 100_000.0) {
+            return Result.failure(IllegalArgumentException("Commission per unit must be between 0 and 100,000"))
+        }
+        val netSold = InputGuards.round2(max(0.0, totalSold - returned - expired - shared))
+        if (creditQty > netSold + 0.0001) {
+            return Result.failure(IllegalArgumentException("Credit sales cannot exceed net sold quantity"))
+        }
+
         val now = System.currentTimeMillis()
         val storeKey = resolvedStoreKey(store)
         val fieldExpensesTotal = InputGuards.round2(fieldExpenseItems.sumOf { (it["amount"] as? Number)?.toDouble() ?: 0.0 })
-        val commissionTotal = InputGuards.round2(commissionItems.sumOf { (it["amount"] as? Number)?.toDouble() ?: 0.0 })
-        val cashRevenue = InputGuards.round2(cashQty * unitPrice)
+        val commissionPaid = InputGuards.round2(commissionItems.sumOf { (it["amount"] as? Number)?.toDouble() ?: 0.0 })
+        val cashQty = InputGuards.round2(max(0.0, netSold - creditQty))
         val creditValue = InputGuards.round2(creditQty * unitPrice)
-        val netRevenue = InputGuards.round2((totalSold - returned - expired).coerceAtLeast(0.0) * unitPrice)
-        val expected = InputGuards.round2(cashRevenue + prevColl - shared - fieldExpensesTotal - commissionTotal)
+        val revenue = InputGuards.round2(netSold * unitPrice)
+        val costPerKg = FormulaEngine.costSourceFromIndex(FormulaEngine.buildCostIndex(snapshot.production), storeKey, date).cp
+        val totalCost = InputGuards.round2(netSold * costPerKg)
+        val profit = InputGuards.round2(revenue - totalCost)
+        val expected = InputGuards.round2((cashQty * unitPrice) + prevColl - fieldExpensesTotal - commissionPaid)
         val diff = InputGuards.round2(received - expected)
+        val grossCommission = InputGuards.round2(commissionPerUnit * netSold)
+        val commissionPayable = InputGuards.round2(max(0.0, grossCommission - commissionPaid))
         val statusText = when {
-            abs(diff) <= 1.0 -> "Balanced"
-            diff > 0.0 -> "Excess ${InputGuards.fmtNum(diff)}"
-            else -> "Short ${InputGuards.fmtNum(-diff)}"
+            abs(diff) <= 0.01 -> "PERFECT MATCH"
+            diff < 0.0 -> "SHORT: ${InputGuards.fmtNum(abs(diff))}"
+            else -> "OVER: ${InputGuards.fmtNum(diff)}"
         }
-        val statusClass = if (abs(diff) <= 1.0) "good" else if (diff > 0.0) "info" else "bad"
-        val calcId = ops.newId("calc")
+        val statusClass = if (diff < -0.01) "bad" else "good"
 
-        if (returned > 0.0 && returnType == "store") {
-            saveStockReturn(snapshot, date, store, returned, 0.0, seller, "Calculator settlement return")
+        val normRetType = returnType.trim().lowercase(Locale.ROOT)
+        val isRepTransferReturn = returned > 0.0 && (normRetType == "rep" || normRetType == "transfer") &&
+            returnTargetRep.isNotBlank() && !returnTargetRep.equals(seller, ignoreCase = true)
+        val isStoreReturn = returned > 0.0 && !isRepTransferReturn
+        if (returned > 0.0 && isRepTransferReturn) {
+            val repContact = snapshot.customers.firstOrNull {
+                it.deletedAt == null && it.name.equals(returnTargetRep, ignoreCase = true)
+            }
+            if ((repContact?.customSalePrice ?: 0.0) <= 0.0) {
+                return Result.failure(IllegalArgumentException("Set a custom sale price for $returnTargetRep before transferring stock"))
+            }
         }
+
+        val calcId = ops.newId("calc")
+        var returnEntryId = ""
+        var returnLogId = ""
+        var transferSaleId = ""
+
+        if (isStoreReturn) {
+            val retIds = createCalcStoreReturn(snapshot, date, store, returned, seller)
+            returnEntryId = retIds.first
+            returnLogId = retIds.second
+        } else if (isRepTransferReturn) {
+            transferSaleId = createCalcRepTransfer(snapshot, returnTargetRep, returned, date, seller)
+        }
+
+        var choraApplied = 0.0
         if (expired > 0.0 && snapshot.profile.isAdmin) {
-            addChoraToInventory(snapshot, expired)
+            if (addChoraToInventory(snapshot, expired)) choraApplied = expired
+        }
+
+        // Link sales and rep records in active cycle
+        val linkedSalesIds = mutableListOf<String>()
+        val linkedRepSalesIds = mutableListOf<String>()
+        val linkedRepReturnIds = mutableListOf<String>()
+
+        if (!seller.equals("COMBINED", ignoreCase = true)) {
+            val alreadyClaimedSales = snapshot.calculator
+                .filter { it.deletedAt == null }
+                .flatMap { it.linkedSalesIds }
+                .toSet()
+            val timeNow = DateUtils.nowTimeStr()
+            val pendingSales = snapshot.sales.filter { s ->
+                s.deletedAt == null &&
+                    (s.currentRepProfile == "admin" || s.currentRepProfile.isBlank()) &&
+                    s.customerName.equals(seller, ignoreCase = true) &&
+                    s.paymentType == "CREDIT" &&
+                    !s.creditReceived &&
+                    s.transactionType != "OLD_DEBT" &&
+                    s.id !in alreadyClaimedSales &&
+                    DateUtils.isInRange(s.supplyDate.ifBlank { s.date }.take(10), effDateFrom, date)
+            }
+            pendingSales.forEach { s ->
+                val patched = s.copy(
+                    creditReceived = true,
+                    creditReceivedManually = true,
+                    creditReceivedDate = DateUtils.todayIso(),
+                    creditReceivedTime = timeNow
+                )
+                ops.submitOrExecuteWrite(
+                    profile = snapshot.profile,
+                    targetCollection = "sales",
+                    docId = s.id,
+                    summaryTitle = "Calc Settle: ${s.customerName}",
+                    summaryDetail = "$date • Linked to $calcId",
+                    payload = WorkspaceJsonCodec.saleToMap(patched),
+                    isEdit = true
+                )
+                linkedSalesIds.add(s.id)
+            }
+
+            val pendingRep = snapshot.repRecords.filter { r ->
+                r.deletedAt == null &&
+                    r.salesRep.equals(seller, ignoreCase = true) &&
+                    r.usedInCalcId.isBlank() &&
+                    (r.paymentType == "CREDIT" || r.paymentType == "COLLECTION") &&
+                    DateUtils.isInRange(r.date.take(10), effDateFrom, date)
+            }
+            pendingRep.forEach { r ->
+                val patched = r.copy(usedInCalcId = calcId)
+                ops.submitOrExecuteWrite(
+                    profile = snapshot.profile,
+                    targetCollection = "rep",
+                    docId = r.id,
+                    summaryTitle = "Calc Use Rep Sale: ${r.customerName}",
+                    summaryDetail = "$date • $calcId",
+                    payload = WorkspaceJsonCodec.saleToMap(patched),
+                    isEdit = true
+                )
+                linkedRepSalesIds.add(r.id)
+            }
+
+            val alreadyCoveredReturns = snapshot.calculator
+                .filter { it.deletedAt == null }
+                .flatMap { it.linkedRepReturnIds }
+                .toSet()
+            val pendingReturns = snapshot.sales.filter { s ->
+                s.deletedAt == null &&
+                    s.isRepReturn &&
+                    s.salesRep.equals(seller, ignoreCase = true) &&
+                    s.id !in alreadyCoveredReturns &&
+                    s.date.take(10) <= date.take(10)
+            }.sortedBy { it.timestamp }
+            var remRet = returned
+            var remExp = expired
+            for (r in pendingReturns) {
+                if (r.returnedQty <= remRet + 0.001 && r.expiredQty <= remExp + 0.001) {
+                    remRet = max(0.0, remRet - r.returnedQty)
+                    remExp = max(0.0, remExp - r.expiredQty)
+                    linkedRepReturnIds.add(r.id)
+                }
+            }
         }
 
         val calc = CalculatorRecord(
             id = calcId,
             seller = seller.ifBlank { "Rep" },
             date = date,
+            dateFrom = effDateFrom,
             unitPrice = InputGuards.round2(unitPrice),
-            costPrice = FormulaEngine.costSourceFromIndex(FormulaEngine.buildCostIndex(snapshot.production), storeKey, date).cp,
-            revenue = netRevenue,
+            costPrice = costPerKg,
+            revenue = revenue,
+            profit = profit,
+            totalCost = totalCost,
             totalSold = InputGuards.round2(totalSold),
             returned = InputGuards.round2(returned),
-            returnStore = if (returnType == "store") storeKey else "",
-            returnRep = if (returnType == "rep") returnTargetRep else "",
-            returnType = returnType,
+            returnStore = if (isStoreReturn) storeKey else "",
+            returnEntryId = returnEntryId,
+            returnLogId = returnLogId,
+            expiredApplied = choraApplied,
+            returnRep = if (isRepTransferReturn) returnTargetRep else "",
+            returnType = if (isRepTransferReturn) "TRANSFER" else if (isStoreReturn) "RETURN" else "",
+            transferSaleId = transferSaleId,
             expired = InputGuards.round2(expired),
-            expiredApplied = expired,
             shared = InputGuards.round2(shared),
             creditQty = InputGuards.round2(creditQty),
-            cashQty = InputGuards.round2(cashQty),
+            cashQty = cashQty,
             creditValue = creditValue,
             prevColl = InputGuards.round2(prevColl),
             fieldExpenses = fieldExpensesTotal,
             fieldExpenseItems = fieldExpenseItems,
+            commissionPerUnit = InputGuards.round2(commissionPerUnit),
+            commissionPaid = commissionPaid,
             commissionPaidItems = commissionItems,
+            grossCommission = grossCommission,
+            commissionPayable = commissionPayable,
             totalExpected = expected,
             received = InputGuards.round2(received),
-            commissionPaid = commissionTotal,
             statusText = statusText,
             statusClass = statusClass,
+            linkedSalesIds = linkedSalesIds,
+            linkedRepSalesIds = linkedRepSalesIds,
+            linkedRepReturnIds = linkedRepReturnIds,
             notes = InputGuards.sanitizeNotes(notes),
             timestamp = now
         )
 
         if (addToLedger && snapshot.profile.isAdmin) {
+            val ledgerMirrors = mutableListOf<DailyLedgerEntry>()
             if (received > 0.0) {
-                appendDailyLedgerEntry(
-                    snapshot,
+                ledgerMirrors.add(
                     DailyLedgerEntry(
                         id = ops.newId("dl"),
                         type = "IN",
                         amount = InputGuards.round2(received),
                         category = "Sales",
-                        scope = "",
                         mode = "Cash",
                         party = seller,
-                        note = "Calculator settlement (${store.name})",
+                        note = "Calculator: cash received (${store.name})",
                         date = date,
                         timestamp = now,
                         updatedAt = now,
                         linkCollection = "calculator",
-                        linkDocId = calcId
+                        linkDocId = calcId,
+                        linkKind = "calc",
+                        linkOrigin = "tab",
+                        linkPart = "cash"
                     )
                 )
             }
+            if (fieldExpensesTotal > 0.0) {
+                ledgerMirrors.add(
+                    DailyLedgerEntry(
+                        id = ops.newId("dl"),
+                        type = "OUT",
+                        amount = fieldExpensesTotal,
+                        category = "Field Expense",
+                        scope = "BUSINESS",
+                        mode = "Cash",
+                        party = seller,
+                        note = "Calculator: field expenses",
+                        date = date,
+                        timestamp = now + 1L,
+                        updatedAt = now,
+                        linkCollection = "calculator",
+                        linkDocId = calcId,
+                        linkKind = "calc",
+                        linkOrigin = "tab",
+                        linkPart = "expense"
+                    )
+                )
+            }
+            if (commissionPaid > 0.0) {
+                ledgerMirrors.add(
+                    DailyLedgerEntry(
+                        id = ops.newId("dl"),
+                        type = "OUT",
+                        amount = commissionPaid,
+                        category = "Commission",
+                        scope = "BUSINESS",
+                        mode = "Cash",
+                        party = seller,
+                        note = "Calculator: commission paid",
+                        date = date,
+                        timestamp = now + 2L,
+                        updatedAt = now,
+                        linkCollection = "calculator",
+                        linkDocId = calcId,
+                        linkKind = "calc",
+                        linkOrigin = "tab",
+                        linkPart = "commission"
+                    )
+                )
+            }
+            appendDailyLedgerEntries(snapshot, ledgerMirrors)
         }
 
         return ops.submitOrExecuteWrite(
@@ -1197,6 +1448,115 @@ class SarimActionDispatcher(
             summaryDetail = "$date • Expected ${InputGuards.fmtNum(expected)} • Rec ${InputGuards.fmtNum(received)}",
             payload = WorkspaceJsonCodec.calculatorToMap(calc)
         )
+    }
+
+    internal suspend fun createCalcStoreReturn(
+        snapshot: WorkspaceSnapshot,
+        date: String,
+        store: StoreConfig,
+        quantityKg: Double,
+        seller: String
+    ): Pair<String, String> {
+        val storeKey = resolvedStoreKey(store)
+        val idx = FormulaEngine.buildCostIndex(snapshot.production)
+        val cp = FormulaEngine.costSourceFromIndex(idx, storeKey, date).cp
+        val sp = if (store.salePrice > 0.0) store.salePrice else (snapshot.settings.defaultStorePrices[store.key] ?: 0.0)
+        val now = System.currentTimeMillis()
+        val prodId = ops.newId("ret")
+        val logId = ops.newId("retlog")
+        val prodEntry = ProductionRecord(
+            id = prodId,
+            date = date,
+            time = DateUtils.nowTimeStr(),
+            store = storeKey,
+            net = InputGuards.round2(quantityKg),
+            cp = cp,
+            sp = sp,
+            totalCost = InputGuards.round2(quantityKg * cp),
+            totalSale = InputGuards.round2(quantityKg * sp),
+            profit = InputGuards.round2(quantityKg * (sp - cp)),
+            isReturn = true,
+            returnedBy = InputGuards.sanitizeName(seller),
+            returnNote = "Calculator settlement return",
+            createdBy = snapshot.profile.uid,
+            recordDate = date,
+            timestamp = now,
+            createdAt = now
+        )
+        ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            targetCollection = "production",
+            docId = prodId,
+            summaryTitle = "Calc Return: ${store.name} (${InputGuards.formatKg(quantityKg)})",
+            summaryDetail = "$date • $seller",
+            payload = WorkspaceJsonCodec.productionToMap(prodEntry)
+        )
+        val retLog = ReturnRecord(
+            id = logId,
+            date = date,
+            store = storeKey,
+            returnStore = storeKey,
+            seller = InputGuards.sanitizeName(seller),
+            quantity = InputGuards.round2(quantityKg),
+            returnType = "store",
+            notes = "Calculator settlement return",
+            timestamp = now
+        )
+        ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            targetCollection = "returns",
+            docId = logId,
+            summaryTitle = "Return Log: ${store.name}",
+            summaryDetail = "$date • ${InputGuards.formatKg(quantityKg)}",
+            payload = WorkspaceJsonCodec.returnToMap(retLog)
+        )
+        return prodId to logId
+    }
+
+    internal suspend fun createCalcRepTransfer(
+        snapshot: WorkspaceSnapshot,
+        targetRep: String,
+        quantityKg: Double,
+        date: String,
+        seller: String
+    ): String {
+        val repCust = snapshot.customers.firstOrNull {
+            it.deletedAt == null && it.name.equals(targetRep, ignoreCase = true)
+        }
+        val unitPrice = repCust?.customSalePrice ?: 0.0
+        val totalValue = InputGuards.round2(quantityKg * unitPrice)
+        val now = System.currentTimeMillis()
+        val saleId = ops.newId("sale")
+        val rec = SalesRecord(
+            id = saleId,
+            date = DateUtils.todayIso(),
+            supplyDate = date,
+            time = DateUtils.nowTimeStr(),
+            customerName = targetRep,
+            quantity = InputGuards.round2(quantityKg),
+            supplyStore = "N/A",
+            paymentType = "CREDIT",
+            salesRep = targetRep,
+            currentRepProfile = "admin",
+            totalCost = totalValue,
+            totalValue = totalValue,
+            profit = 0.0,
+            unitPrice = InputGuards.round2(unitPrice),
+            creditReceived = false,
+            isRepTransfer = true,
+            repTransferFrom = seller,
+            timestamp = now,
+            createdAt = now
+        )
+        ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            targetCollection = "sales",
+            docId = saleId,
+            summaryTitle = "Rep Transfer: $seller → $targetRep",
+            summaryDetail = "$date • ${InputGuards.formatKg(quantityKg)}",
+            payload = WorkspaceJsonCodec.saleToMap(rec)
+        )
+        return saleId
     }
 
     suspend fun saveStockTransfer(
