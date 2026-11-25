@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Badge
@@ -384,6 +385,17 @@ private fun WorkspaceNavContainer(
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
+                        DrawerRowItem(
+                            label = "SYNC NOW",
+                            icon = Icons.Outlined.Sync,
+                            iconTint = accents.emerald,
+                            selected = false,
+                            testTag = "drawer_sync",
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                vm.syncNow()
+                            }
+                        )
                         DrawerRowItem(
                             label = "SETTINGS",
                             icon = Icons.Outlined.Settings,

@@ -115,6 +115,21 @@ class SarimViewModel(
 
     private fun currentSnapshot(): WorkspaceSnapshot? = (workspaceState.value as? UiState.Success)?.data
 
+    /** Sidebar "Sync": waits until every queued local write has reached the cloud. */
+    fun syncNow() {
+        viewModelScope.launch {
+            _snackbarMessage.emit("Syncing…")
+            try {
+                repo.db.waitForPendingWrites().await()
+                _snackbarMessage.emit("All changes synced")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _snackbarMessage.emit("Sync failed: ${e.localizedMessage ?: "check your connection"}")
+            }
+        }
+    }
+
     private fun handleResult(res: Result<*>, successMsg: String) {
         viewModelScope.launch {
             if (res.isSuccess) {
