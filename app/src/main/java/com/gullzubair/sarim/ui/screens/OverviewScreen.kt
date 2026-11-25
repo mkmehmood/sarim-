@@ -65,7 +65,8 @@ private data class SparkTileModel(
     val subtitle: String,
     val series: List<Double>?,
     val lineColor: Color,
-    val isAlert: Boolean = false
+    val isAlert: Boolean = false,
+    val isHero: Boolean = false
 )
 
 @Composable
@@ -110,7 +111,8 @@ fun OverviewScreen(
                 subtitle = if (summary.prodValue > 0) "${String.format("%.1f", summary.marginPct)}% margin on ${InputGuards.formatMoney(summary.prodValue, currency, masked)}" else "",
                 series = summary.months.map { it.prodProfit },
                 lineColor = if (summary.prodProfit < 0) accents.danger else accents.emerald,
-                isAlert = summary.prodProfit < 0
+                isAlert = summary.prodProfit < 0,
+                isHero = true
             ),
             SparkTileModel(
                 label = "Sales",
@@ -144,7 +146,7 @@ fun OverviewScreen(
             SparkTileModel(
                 label = "Expenses",
                 value = InputGuards.formatMoney(summary.expenses, currency, masked),
-                subtitle = "${summary.expenseCategories.size} categor${if (summary.expenseCategories.size == 1) "y" else "ies"}",
+                subtitle = "",
                 series = summary.months.map { it.expenses },
                 lineColor = accents.gold
             ),
@@ -178,10 +180,16 @@ fun OverviewScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Overview • ${windowMonths}M",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Column {
+                    Text(
+                        text = "Overview",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                    val stamp = remember(snapshot, windowMonths) {
+                        java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+                    }
+                    Text("Updated $stamp", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 6, 12).forEach { m ->
                         val selected = windowMonths == m
@@ -274,8 +282,9 @@ fun OverviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf("Sales", "Prod", "Money", "Stock", "Checks", "Activity").forEach { panel ->
+                    val display = if (panel == "Prod") "Production" else panel
                     val selected = activePanel == panel
-                    val label = if (panel == "Checks" && issueCount > 0) "Checks ($issueCount)" else panel
+                    val label = if (panel == "Checks" && issueCount > 0) "$display  $issueCount" else display
                     Surface(
                         onClick = { activePanel = panel },
                         shape = RoundedCornerShape(18.dp),
@@ -414,13 +423,13 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
     val accents = LocalSarimAccents.current
     val deltaPct = remember(tile.series) {
         val s = tile.series
-        if (s != null && s.size >= 2 && abs(s.first()) > 0.01) {
-            (((s.last() - s.first()) / abs(s.first())) * 100.0).roundToInt()
+        if (s != null && s.size >= 2 && abs(s[s.size - 2]) > 0.0) {
+            (((s.last() - s[s.size - 2]) / abs(s[s.size - 2])) * 100.0).roundToInt()
         } else null
     }
     SarimCard(
         modifier = modifier,
-        accentBorder = if (tile.isAlert) accents.danger.copy(alpha = 0.45f) else null,
+        accentBorder = if (tile.isAlert) accents.danger.copy(alpha = 0.45f) else if (tile.isHero) accents.emerald.copy(alpha = 0.45f) else null,
         contentPadding = PaddingValues(13.dp)
     ) {
         Text(tile.label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)

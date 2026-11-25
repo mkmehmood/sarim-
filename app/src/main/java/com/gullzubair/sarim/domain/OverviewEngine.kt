@@ -464,7 +464,6 @@ object OverviewEngine {
 
         val topOwedCust = owedByCust.entries
             .sortedByDescending { it.value }
-            .take(8)
             .map { Triple(it.key, InputGuards.round2(it.value), oldestByCust[it.key] ?: 0) }
 
         return OverviewKpiSummary(
@@ -496,7 +495,7 @@ object OverviewEngine {
             todayOut = InputGuards.round2(todayOut),
             storeSalesBreakdown = storeSalesMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
             topCustomersValue = custValMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
-            topCustomersKg = custKgMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
+            topCustomersKg = custKgMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
             formulaProductionKg = formulasMap.entries.sortedByDescending { it.value }.take(6).map { it.key to InputGuards.round2(it.value) },
             storeProductionKg = storesMap.entries.sortedByDescending { it.value }.take(5).map { it.key to InputGuards.round2(it.value) },
             expenseCategories = expCatMap.entries.sortedByDescending { it.value }.take(5).map { it.key to InputGuards.round2(it.value) },
@@ -518,22 +517,22 @@ object OverviewEngine {
                 topCustomers = topOwedCust
             ),
             audit = audit,
-            recentActivity = recent.sortedByDescending { it.timestamp }.take(10),
+            recentActivity = recent.sortedByDescending { it.timestamp }.take(8),
             salesByCustomerTrend = cTrend.entries
-                .sortedByDescending { it.value.sum() }
-                .take(5)
+                .sortedByDescending { e -> e.value.sumOf { v -> kotlin.math.abs(v) } }
+                .take(6)
                 .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
             salesByStoreTrend = ssTrend.entries
-                .sortedByDescending { it.value.sum() }
-                .take(5)
+                .sortedByDescending { e -> e.value.sumOf { v -> kotlin.math.abs(v) } }
+                .take(6)
                 .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
             prodByFormulaTrend = fTrend.entries
-                .sortedByDescending { it.value.sum() }
-                .take(5)
+                .sortedByDescending { e -> e.value.sumOf { v -> kotlin.math.abs(v) } }
+                .take(6)
                 .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
             prodByStoreTrend = sTrend.entries
-                .sortedByDescending { it.value.sum() }
-                .take(5)
+                .sortedByDescending { e -> e.value.sumOf { v -> kotlin.math.abs(v) } }
+                .take(6)
                 .map { it.key to it.value.map { v -> InputGuards.round2(v) } },
             moveFormulas = moveFormulasMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) },
             moveStores = moveStoresMap.entries.sortedByDescending { it.value }.map { it.key to InputGuards.round2(it.value) }
@@ -593,7 +592,7 @@ object OverviewEngine {
             byStore[storeName] = (byStore[storeName] ?: 0.0) + x.profit
             if (ym.length == 7) byMonth[ym] = (byMonth[ym] ?: 0.0) + x.profit
         }
-        val worst = inRange.filter { it.profit < 0.0 }.sortedBy { it.profit }.take(8).map { x ->
+        val worst = inRange.filter { it.profit < 0.0 }.sortedBy { it.profit }.map { x ->
             WorstSaleLoss(
                 id = x.id,
                 date = x.date.take(10),
