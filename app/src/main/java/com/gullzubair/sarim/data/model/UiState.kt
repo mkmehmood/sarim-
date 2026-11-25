@@ -40,6 +40,9 @@ sealed interface AppRoute {
     @Serializable data object BackupRestore : AppRoute
     @Serializable data object DbStructure : AppRoute
     @Serializable data object Settings : AppRoute
+    @Serializable data object SoundHaptics : AppRoute
+    @Serializable data object CloseFinancialYear : AppRoute
+    @Serializable data class EditCustomer(val customerName: String) : AppRoute
     @Serializable data class CustomerDetail(val customerName: String) : AppRoute
     @Serializable data class EntityDetail(val entityName: String) : AppRoute
 }

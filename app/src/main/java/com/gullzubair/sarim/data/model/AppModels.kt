@@ -367,7 +367,7 @@ data class WorkspaceSettings(
     val financialYearStartMonth: Long = 7L,
     val hideSensitiveMoney: Boolean = false,
     val biometricLockEnabled: Boolean = false,
-    val themeMode: String = "dark", // dark | light | system
+    val themeMode: String = "light", // light | dark | system
     val paymentChannels: List<String> = listOf("Cash", "Bank", "Easypaisa", "JazzCash"),
     val expenseCategories: List<String> = listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other"),
     @ServerTimestamp val createdAt: Timestamp? = null,

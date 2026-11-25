@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SarimViewModel(
@@ -291,6 +292,141 @@ class SarimViewModel(
     fun updateMemberRoles(memberUid: String, roles: List<String>, approved: Boolean) {
         viewModelScope.launch {
             handleResult(ops.updateMemberRoles(memberUid, roles, approved), "Member permissions updated")
+        }
+    }
+
+    fun updateCustomer(
+        existing: com.gullzubair.sarim.data.model.CustomerRecord,
+        name: String,
+        phone: String,
+        address: String,
+        openingBalance: Double,
+        notes: String,
+        lat: Double? = existing.routeLat,
+        lng: Double? = existing.routeLng
+    ) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            handleResult(dispatcher.updateCustomer(snap, existing, name, phone, address, openingBalance, notes, lat, lng), "Customer updated")
+        }
+    }
+
+    fun deleteFormula(formulaId: String, onDeleted: () -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = dispatcher.deleteFormula(snap, formulaId)
+            handleResult(res, "Formula deleted")
+            if (res.isSuccess) onDeleted()
+        }
+    }
+
+    fun saveFormulaSavedMix(formula: FormulaConfig, title: String, mode: String, target: Double, useGrams: Boolean, totalKg: Double) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val mixMap = mapOf<String, Any>(
+                "id" to "mix_${System.currentTimeMillis()}",
+                "title" to title.ifBlank { "Batch • ${formula.name} • ${DateUtils.todayIso()}" },
+                "date" to DateUtils.todayIso(),
+                "mode" to mode,
+                "target" to target,
+                "useGrams" to useGrams,
+                "totalKg" to totalKg
+            )
+            handleResult(dispatcher.saveFormulaSavedMix(snap, formula, mixMap), "Calculation saved")
+        }
+    }
+
+    fun recyclePair(collection: String, pairId: String?, fallbackDocId: String, title: String) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val members = snap.teamMembers.map { it.uid }
+            if (pairId.isNullOrBlank()) {
+                handleResult(ops.softRecycleRecord(snap.profile, members, collection, fallbackDocId, title), "Moved to Recycle Bin")
+            } else {
+                val ids = when (collection) {
+                    "production" -> snap.production.filter { !it.recycled && it.transferPairId == pairId }.map { it.id }
+                    "transactions" -> snap.transactions.filter { !it.recycled && it.transferPairId == pairId }.map { it.id }
+                    else -> listOf(fallbackDocId)
+                }.ifEmpty { listOf(fallbackDocId) }
+                var lastRes: Result<Unit> = Result.success(Unit)
+                ids.forEach { id -> lastRes = ops.softRecycleRecord(snap.profile, members, collection, id, title) }
+                handleResult(lastRes, "Moved to Recycle Bin")
+            }
+        }
+    }
+
+    fun revokeInvite(inviteId: String) {
+        viewModelScope.launch {
+            val res = try {
+                repo.db.collection("workspace_invites").document(inviteId).delete().await()
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            handleResult(res, "Invite removed")
+        }
+    }
+
+    fun closeFinancialYear(onComplete: () -> Unit = {}) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = dispatcher.closeFinancialYear(snap)
+            handleResult(res, res.getOrNull() ?: "Financial year closed")
+            if (res.isSuccess) onComplete()
+        }
+    }
+
+    fun restoreBackupJson(jsonString: String) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            runCatching {
+                val root = org.json.JSONObject(jsonString)
+                var count = 0
+                val existingStoreKeys = snap.stores.map { it.storeKey.lowercase() }.toSet()
+                root.optJSONArray("stores")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val name = obj.optString("name")
+                        if (name.isNotBlank() && obj.optString("storeKey").lowercase() !in existingStoreKeys) {
+                            dispatcher.saveStore(snap, null, name, obj.optString("formulaId"), obj.optDouble("salePrice", 0.0), true)
+                            count++
+                        }
+                    }
+                }
+                val existingCustNames = snap.customers.filter { !it.recycled }.map { it.name.lowercase() }.toSet()
+                root.optJSONArray("customers")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val name = obj.optString("name")
+                        if (name.isNotBlank() && name.lowercase() !in existingCustNames) {
+                            ops.submitOrExecuteWrite(
+                                profile = snap.profile,
+                                memberUids = snap.teamMembers.map { it.uid },
+                                targetCollection = "customers",
+                                docId = null,
+                                summaryTitle = "Restored Customer: $name",
+                                summaryDetail = "From backup",
+                                recordDate = DateUtils.todayIso(),
+                                payload = mapOf(
+                                    "name" to name,
+                                    "phone" to obj.optString("phone"),
+                                    "address" to obj.optString("address"),
+                                    "visitCount" to 0L,
+                                    "openingBalance" to obj.optDouble("openingBalance", 0.0),
+                                    "recycled" to false,
+                                    "recycledAtEpoch" to 0L
+                                )
+                            )
+                            count++
+                        }
+                    }
+                }
+                count
+            }.onSuccess { restored ->
+                _snackbarMessage.emit(if (restored > 0) "Restored $restored items from backup" else "Backup validated — all records already present")
+            }.onFailure { err ->
+                _snackbarMessage.emit("Restore failed: ${err.localizedMessage}")
+            }
         }
     }
 

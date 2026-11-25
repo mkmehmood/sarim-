@@ -26,19 +26,33 @@ data class SarimAccents(
     val danger: Color,
     val cardElevated: Color,
     val borderSubtle: Color,
-    val textMuted: Color
+    val textMuted: Color,
+    val isDark: Boolean = false,
+    val glassTop: Color = LightGlassTop,
+    val glassBottom: Color = LightGlassBottom,
+    val inputFill: Color = LightSurfaceVariant,
+    val inputBorder: Color = LightOutline,
+    val headerFrosted: Color = LightHeaderFrosted,
+    val softPillFill: Color = EmeraldLightContainer
 )
 
 val LocalSarimAccents = staticCompositionLocalOf {
     SarimAccents(
-        emerald = EmeraldDark,
-        cyan = CyanDark,
-        gold = GoldDark,
-        purple = PurpleDark,
-        danger = DangerDark,
-        cardElevated = DarkSurfaceElevated,
-        borderSubtle = DarkOutline,
-        textMuted = DarkTextSecondary
+        emerald = EmeraldLight,
+        cyan = CyanLight,
+        gold = GoldLight,
+        purple = PurpleLight,
+        danger = DangerLight,
+        cardElevated = LightSurfaceElevated,
+        borderSubtle = LightOutline,
+        textMuted = LightTextSecondary,
+        isDark = false,
+        glassTop = LightGlassTop,
+        glassBottom = LightGlassBottom,
+        inputFill = LightSurfaceVariant,
+        inputBorder = LightOutline,
+        headerFrosted = LightHeaderFrosted,
+        softPillFill = EmeraldLightContainer
     )
 }
 
@@ -73,7 +87,7 @@ private val LightColorScheme = lightColorScheme(
     onPrimaryContainer = Color(0xFF023D28),
     secondary = CyanLight,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCFFAFE),
+    secondaryContainer = Color(0xFFD6F4F8),
     onSecondaryContainer = Color(0xFF073B47),
     tertiary = GoldLight,
     onTertiary = Color.White,
@@ -91,19 +105,19 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val SarimShapes = Shapes(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp)
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp)
 )
 
 @Composable
 fun SarimTheme(
-    themeMode: String = "dark",
+    themeMode: String = "light",
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
-        "light" -> false
         "dark" -> true
+        "light" -> false
         else -> isSystemInDarkTheme()
     }
     val view = LocalView.current
@@ -125,7 +139,14 @@ fun SarimTheme(
             danger = DangerDark,
             cardElevated = DarkSurfaceElevated,
             borderSubtle = DarkOutline,
-            textMuted = DarkTextSecondary
+            textMuted = DarkTextSecondary,
+            isDark = true,
+            glassTop = Color(0xFF10221C),
+            glassBottom = DarkSurface,
+            inputFill = DarkSurfaceVariant,
+            inputBorder = DarkOutline,
+            headerFrosted = DarkSurface,
+            softPillFill = Color(0xFF113528)
         )
     } else {
         SarimAccents(
@@ -136,7 +157,14 @@ fun SarimTheme(
             danger = DangerLight,
             cardElevated = LightSurfaceElevated,
             borderSubtle = LightOutline,
-            textMuted = LightTextSecondary
+            textMuted = LightTextSecondary,
+            isDark = false,
+            glassTop = LightGlassTop,
+            glassBottom = LightGlassBottom,
+            inputFill = LightSurfaceVariant,
+            inputBorder = LightOutline,
+            headerFrosted = LightHeaderFrosted,
+            softPillFill = EmeraldLightContainer
         )
     }
 

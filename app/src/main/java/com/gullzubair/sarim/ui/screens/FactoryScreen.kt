@@ -1,6 +1,9 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,19 +11,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,18 +31,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gullzubair.sarim.data.model.FactoryRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
+import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
 import com.gullzubair.sarim.ui.components.EmptyStateCard
-import com.gullzubair.sarim.ui.components.MetricKpiCard
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.SarimDangerButton
+import com.gullzubair.sarim.ui.components.SarimDetailBottomSheet
+import com.gullzubair.sarim.ui.components.SarimGradientButton
+import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
+import com.gullzubair.sarim.ui.components.SarimPillInput
+import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 
@@ -63,11 +73,28 @@ fun FactoryScreen(
     var unitsStr by remember { mutableStateOf("1") }
     var notes by remember { mutableStateOf("") }
     var sortByQty by remember { mutableStateOf(false) }
+    var selectedFactoryRec by remember { mutableStateOf<FactoryRecord?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = subTab) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             listOf("Produce", "Inventory", "Pools", "History").forEachIndexed { idx, title ->
-                Tab(selected = subTab == idx, onClick = { subTab = idx }, text = { Text(title) }, modifier = Modifier.testTag("factory_subtab_$idx"))
+                val selected = subTab == idx
+                Surface(
+                    onClick = { subTab = idx },
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (selected) accents.softPillFill else accents.inputFill,
+                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                    modifier = Modifier.weight(1f).testTag("factory_subtab_$idx")
+                ) {
+                    Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                        Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted, maxLines = 1)
+                    }
+                }
             }
         }
 
@@ -92,19 +119,22 @@ fun FactoryScreen(
                 }
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
                         SarimCard {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("Formula Batch Production", style = MaterialTheme.typography.titleMedium)
-                                FilterChip(
-                                    selected = false,
+                                Surface(
                                     onClick = onOpenFormulas,
-                                    label = { Text("Manage Formulas") },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = accents.softPillFill,
+                                    border = BorderStroke(1.dp, accents.emerald),
                                     modifier = Modifier.testTag("factory_manage_formulas_btn")
-                                )
+                                ) {
+                                    Text("Formulas", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                                }
                             }
                             Spacer(Modifier.height(10.dp))
                             DatePickerField("Batch Date", date, { date = it }, "factory_date")
@@ -119,12 +149,8 @@ fun FactoryScreen(
                             )
                             Spacer(Modifier.height(10.dp))
                             DecimalField("Units to Produce", unitsStr, { unitsStr = it }, "factory_units_input")
-                            OutlinedTextField(
-                                value = notes,
-                                onValueChange = { notes = it.take(500) },
-                                label = { Text("Batch Notes") },
-                                modifier = Modifier.fillMaxWidth().testTag("factory_notes_input")
-                            )
+                            Spacer(Modifier.height(10.dp))
+                            SarimPillInput(notes, { notes = it.take(500) }, label = "BATCH NOTES", testTag = "factory_notes_input")
                             Spacer(Modifier.height(12.dp))
                             if (reqLines.isNotEmpty()) {
                                 Text("Ingredient Deduction Preview", style = MaterialTheme.typography.titleSmall)
@@ -144,11 +170,12 @@ fun FactoryScreen(
                             }
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                MetricKpiCard("Est. Batch Cost", InputGuards.formatMoney(estCost, currency, masked), accent = accents.gold, modifier = Modifier.weight(1f))
-                                MetricKpiCard("Cost / Unit", InputGuards.formatMoney(if (units > 0) estCost / units else 0.0, currency, masked), accent = accents.cyan, modifier = Modifier.weight(1f))
+                                SarimHalfRingKpiBox("Est. Batch Cost", InputGuards.formatMoney(estCost, currency, masked), accents.gold, Modifier.weight(1f))
+                                SarimHalfRingKpiBox("Cost / Unit", InputGuards.formatMoney(if (units > 0) estCost / units else 0.0, currency, masked), accents.cyan, Modifier.weight(1f))
                             }
                             Spacer(Modifier.height(14.dp))
-                            Button(
+                            SarimGradientButton(
+                                text = if (allInStock || reqLines.isEmpty()) "Produce Units & Deduct Stock" else "Insufficient Raw Material",
                                 onClick = {
                                     selectedFormula?.let { f ->
                                         vm.submitFactoryBatch(date, f, units, notes)
@@ -156,12 +183,11 @@ fun FactoryScreen(
                                     }
                                 },
                                 enabled = selectedFormula != null && units > 0 && allInStock,
-                                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("factory_produce_btn")
-                            ) {
-                                Text(if (allInStock || reqLines.isEmpty()) "Produce Units & Deduct Stock" else "Insufficient Raw Material")
-                            }
+                                testTag = "factory_produce_btn"
+                            )
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
 
@@ -171,18 +197,36 @@ fun FactoryScreen(
                     if (sortByQty) base.sortedByDescending { it.stockQty } else base.sortedBy { it.name.lowercase() }
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(selected = !sortByQty, onClick = { sortByQty = false }, label = { Text("Sort Name") })
-                                FilterChip(selected = sortByQty, onClick = { sortByQty = true }, label = { Text("Sort Qty") })
+                                listOf(false to "Sort Name", true to "Sort Qty").forEach { (isQty, label) ->
+                                    val sel = sortByQty == isQty
+                                    Surface(
+                                        onClick = { sortByQty = isQty },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (sel) accents.softPillFill else accents.inputFill,
+                                        border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle)
+                                    ) {
+                                        Text(label, style = MaterialTheme.typography.labelMedium, color = if (sel) accents.emerald else accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                                    }
+                                }
                             }
-                            Button(onClick = onOpenRawPurchase, modifier = Modifier.testTag("factory_purchase_btn")) {
-                                Icon(Icons.Default.AddShoppingCart, contentDescription = null)
-                                Text(" Purchase")
+                            Surface(
+                                onClick = onOpenRawPurchase,
+                                shape = RoundedCornerShape(16.dp),
+                                color = accents.softPillFill,
+                                border = BorderStroke(1.dp, accents.emerald),
+                                modifier = Modifier.testTag("factory_purchase_btn")
+                            ) {
+                                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AddShoppingCart, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Purchase", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
+                                }
                             }
                         }
                     }
@@ -203,20 +247,21 @@ fun FactoryScreen(
                                     }
                                     Text(
                                         InputGuards.formatKg(item.stockQty),
-                                        style = MaterialTheme.typography.titleMedium,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = if (low) accents.gold else accents.emerald
                                     )
                                 }
                             }
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
 
             2 -> {
                 val pools = remember(snapshot) { FinanceEngine.computeUnitPools(snapshot) }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (pools.isEmpty()) {
@@ -236,47 +281,93 @@ fun FactoryScreen(
                             }
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
 
             else -> {
-                val activeFactory = remember(snapshot.factory) { snapshot.factory.filter { !it.recycled } }
+                val activeFactory = remember(snapshot.factory) { snapshot.factory.filter { !it.recycled }.sortedByDescending { it.date } }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (activeFactory.isEmpty()) {
                         item { EmptyStateCard("No factory history", "Batches and raw material purchases will appear here.") }
                     } else {
-                        items(activeFactory, key = { it.id }) { rec ->
-                            SarimCard {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        val title = if (rec.recordType == "batch") {
-                                            "Batch: ${rec.formulaName} (${rec.unitsProduced} units)"
-                                        } else {
-                                            "Purchase: ${rec.rawItemName} (${InputGuards.formatKg(rec.qtyKg)})"
+                        item {
+                            SarimYearMonthDayTree(
+                                items = activeFactory,
+                                dateOf = { it.date },
+                                summaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked) },
+                                itemRow = { rec ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { selectedFactoryRec = rec }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                if (rec.recordType == "batch") "BATCH • ${rec.formulaName}" else "PURCHASE • ${rec.rawItemName}",
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
+                                            Text(
+                                                if (rec.recordType == "batch") "${rec.unitsProduced} units" else InputGuards.formatKg(rec.qtyKg),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                         }
-                                        Text(title, style = MaterialTheme.typography.titleMedium)
                                         Text(
-                                            "${rec.date} • Total ${InputGuards.formatMoney(rec.totalCost, currency, masked)}" +
-                                                if (rec.recordType == "purchase" && rec.payableBalance > 0.01) " • Payable ${InputGuards.formatMoney(rec.payableBalance, currency, masked)}" else "",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = accents.textMuted
+                                            InputGuards.formatMoney(rec.totalCost, currency, masked),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = accents.emerald
                                         )
                                     }
-                                    IconButton(
-                                        onClick = { vm.recycleRecord("factory", rec.id, "${rec.recordType} (${rec.date})") },
-                                        modifier = Modifier.testTag("factory_delete_${rec.id}")
-                                    ) {
-                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Move to Recycle Bin", tint = accents.danger)
-                                    }
                                 }
-                            }
+                            )
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
+    }
+
+    selectedFactoryRec?.let { rec ->
+        SarimDetailBottomSheet(
+            title = if (rec.recordType == "batch") rec.formulaName ?: "Batch" else rec.rawItemName ?: "Purchase",
+            rightTitle = InputGuards.formatMoney(rec.totalCost, currency, masked),
+            subtitle = "${DateUtils.formatPretty(rec.date).uppercase()} • ${rec.recordType.uppercase()}",
+            onDismiss = { selectedFactoryRec = null },
+            content = {
+                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (rec.recordType == "batch") "Units Produced" else "Quantity", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text(if (rec.recordType == "batch") "${rec.unitsProduced}" else InputGuards.formatKg(rec.qtyKg), style = MaterialTheme.typography.titleSmall)
+                }
+                if (rec.recordType == "purchase" && rec.payableBalance > 0.01) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Payable Remaining", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(rec.payableBalance, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.danger)
+                    }
+                }
+            },
+            footer = {
+                SarimDangerButton(
+                    text = "Move to Recycle Bin",
+                    onClick = {
+                        vm.recycleRecord("factory", rec.id, "${rec.recordType} (${rec.date})")
+                        selectedFactoryRec = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "factory_delete_${rec.id}"
+                )
+            }
+        )
     }
 }

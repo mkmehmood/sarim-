@@ -171,7 +171,7 @@ class AppRepository(val db: FirebaseFirestore) {
                     "financialYearStartMonth" to 7L,
                     "hideSensitiveMoney" to false,
                     "biometricLockEnabled" to false,
-                    "themeMode" to "dark",
+                    "themeMode" to "light",
                     "paymentChannels" to listOf("Cash", "Bank", "Easypaisa", "JazzCash"),
                     "expenseCategories" to listOf("Fuel", "Wages", "Rent", "Electricity", "Freight", "Maintenance", "Tea & Meals", "Office", "Other"),
                     "createdAt" to FieldValue.serverTimestamp(),

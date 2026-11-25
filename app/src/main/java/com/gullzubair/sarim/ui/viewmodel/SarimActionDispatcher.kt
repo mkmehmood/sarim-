@@ -868,4 +868,162 @@ class SarimActionDispatcher(
             )
         )
     }
+
+    suspend fun updateCustomer(
+        snapshot: WorkspaceSnapshot,
+        existing: CustomerRecord,
+        name: String,
+        phone: String,
+        address: String,
+        openingBalance: Double,
+        notes: String,
+        lat: Double? = existing.routeLat,
+        lng: Double? = existing.routeLng
+    ): Result<String> {
+        val clean = InputGuards.sanitizeName(name)
+        if (clean.isBlank()) return Result.failure(IllegalArgumentException("Customer name required"))
+        val payload = mutableMapOf<String, Any?>(
+            "name" to clean,
+            "phone" to phone.take(32),
+            "address" to address.take(200),
+            "visitCount" to existing.visitCount,
+            "openingBalance" to InputGuards.round2(openingBalance),
+            "notes" to InputGuards.sanitizeNotes(notes),
+            "recycled" to false,
+            "recycledAtEpoch" to 0L
+        )
+        if (lat != null && lng != null) {
+            payload["routeLat"] = lat
+            payload["routeLng"] = lng
+        }
+        return ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            memberUids = memberUids(snapshot),
+            targetCollection = "customers",
+            docId = existing.id,
+            summaryTitle = "Edit Customer: $clean",
+            summaryDetail = phone.ifBlank { address },
+            recordDate = DateUtils.todayIso(),
+            isUpdate = true,
+            payload = payload
+        )
+    }
+
+    suspend fun deleteFormula(snapshot: WorkspaceSnapshot, formulaId: String): Result<Unit> {
+        val ownerUid = snapshot.profile.workspaceOwnerUid.ifBlank { snapshot.profile.uid }
+        val inUseByStore = snapshot.stores.any { it.formulaId == formulaId }
+        val inUseByFormula = snapshot.formulas.any { f ->
+            f.id != formulaId && f.ingredients.any { (it["linkFormulaId"] as? String) == formulaId }
+        }
+        if (inUseByStore || inUseByFormula) {
+            return Result.failure(IllegalArgumentException("Formula is currently linked to a store or sub-formula"))
+        }
+        return ops.permanentDelete(ownerUid, "formulas", formulaId)
+    }
+
+    suspend fun saveFormulaSavedMix(
+        snapshot: WorkspaceSnapshot,
+        formula: FormulaConfig,
+        mixMap: Map<String, Any>
+    ): Result<String> {
+        val nextMixes = (listOf(mixMap) + formula.savedMixes).take(30)
+        return ops.submitOrExecuteWrite(
+            profile = snapshot.profile,
+            memberUids = memberUids(snapshot),
+            targetCollection = "formulas",
+            docId = formula.id,
+            summaryTitle = "Saved Mix: ${formula.name}",
+            summaryDetail = mixMap["title"]?.toString() ?: "Batch calculation",
+            recordDate = DateUtils.todayIso(),
+            isUpdate = true,
+            payload = mapOf(
+                "name" to formula.name,
+                "unitsPerBatch" to formula.unitsPerBatch,
+                "additionalCost" to formula.additionalCost,
+                "costAdjustment" to formula.costAdjustment,
+                "ingredients" to formula.ingredients,
+                "savedMixes" to nextMixes,
+                "savedCorrections" to formula.savedCorrections
+            )
+        )
+    }
+
+    suspend fun closeFinancialYear(snapshot: WorkspaceSnapshot): Result<String> {
+        val ownerUid = snapshot.profile.workspaceOwnerUid.ifBlank { snapshot.profile.uid }
+        if (snapshot.profile.uid != ownerUid && snapshot.profile.role != "admin") {
+            return Result.failure(IllegalArgumentException("Only workspace Admin can close the financial year"))
+        }
+        val members = memberUids(snapshot)
+        val today = DateUtils.todayIso()
+        val storeStocks = FinanceEngine.computeStoreStockSnapshots(snapshot)
+
+        // Persist closing customer balances into customer openingBalance before recycling historical sales
+        val activeCustomers = snapshot.customers.filter { !it.recycled }
+        activeCustomers.forEach { cust ->
+            val closingBal = FinanceEngine.computeCustomerBalance(cust.name, snapshot.customers, snapshot.sales, snapshot.repRecords)
+            updateCustomer(snapshot, cust, cust.name, cust.phone, cust.address, closingBal, cust.notes ?: "")
+        }
+
+        // Persist closing entity balances into entity openingBalance
+        val activeEntities = snapshot.entities.filter { !it.recycled }
+        activeEntities.forEach { ent ->
+            val closingBal = FinanceEngine.computeEntityBalance(ent, snapshot.transactions, snapshot.factory)
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                memberUids = members,
+                targetCollection = "entities",
+                docId = ent.id,
+                summaryTitle = "Year-End Opening: ${ent.name}",
+                summaryDetail = InputGuards.formatMoney(closingBal),
+                recordDate = today,
+                isUpdate = true,
+                payload = mapOf(
+                    "name" to ent.name,
+                    "entityType" to ent.entityType,
+                    "phone" to ent.phone,
+                    "notes" to (ent.notes ?: ""),
+                    "openingBalance" to closingBal,
+                    "recycled" to false,
+                    "recycledAtEpoch" to 0L
+                )
+            )
+        }
+
+        var compacted = 0
+        snapshot.production.filter { !it.recycled && !it.transfer }.forEach {
+            ops.softRecycleRecord(snapshot.profile, members, "production", it.id, "FY Close ${it.date}")
+            compacted++
+        }
+        snapshot.sales.filter { !it.recycled }.forEach {
+            ops.softRecycleRecord(snapshot.profile, members, "sales", it.id, "FY Close ${it.date}")
+            compacted++
+        }
+        snapshot.calculator.filter { !it.recycled }.forEach {
+            ops.softRecycleRecord(snapshot.profile, members, "calculator", it.id, "FY Close ${it.dateTo}")
+            compacted++
+        }
+        snapshot.transactions.filter { !it.recycled }.forEach {
+            ops.softRecycleRecord(snapshot.profile, members, "transactions", it.id, "FY Close ${it.date}")
+            compacted++
+        }
+
+        // Re-create single opening stock record per store with non-zero stock
+        storeStocks.filter { it.availableKg > 0.001 }.forEach { st ->
+            val storeObj = snapshot.stores.firstOrNull { it.storeKey == st.storeKey }
+            if (storeObj != null) {
+                saveProduction(
+                    snapshot = snapshot,
+                    date = today,
+                    store = storeObj,
+                    grossWeight = st.availableKg,
+                    containerWeight = 0.0,
+                    formulaUnits = 0.0,
+                    costPerKg = st.avgCostPerKg,
+                    notes = "Financial Year Opening Stock"
+                )
+            }
+        }
+        return Result.success("Compacted $compacted records into opening balances")
+    }
 }
+
