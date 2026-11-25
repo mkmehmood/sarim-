@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -94,6 +95,7 @@ fun ExpenseDetailsScreen(
             .sortedByDescending { it.date }
     }
     val allTimeTotal = remember(allRecords) { InputGuards.round2(allRecords.sumOf { it.amount }) }
+
     val ranged = remember(allRecords, range, todayIso) {
         val cutoff = expenseRangeCutoffIso(range, todayIso)
         if (cutoff == null) allRecords else allRecords.filter { it.date.take(10) >= cutoff }
@@ -151,7 +153,7 @@ fun ExpenseDetailsScreen(
             }
 
             item {
-                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(EXPENSE_RANGES) { (key, label) ->
                         FilterChip(
                             selected = range == key,

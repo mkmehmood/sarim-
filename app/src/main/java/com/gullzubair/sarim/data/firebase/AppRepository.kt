@@ -1,15 +1,22 @@
 package com.gullzubair.sarim.data.firebase
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
 import com.gullzubair.sarim.R
+import com.gullzubair.sarim.data.local.OfflineSyncRepository
+import com.gullzubair.sarim.data.local.SarimOfflineDatabase
 import com.gullzubair.sarim.data.model.CalculatorSettlement
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.DailyLedgerEntry
@@ -32,20 +39,40 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
-class AppRepository(val db: FirebaseFirestore) {
+class AppRepository(
+    val db: FirebaseFirestore,
+    val offlineRepo: OfflineSyncRepository? = null,
+    private val appContext: Context? = null
+) {
 
     constructor(context: Context) : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
+        db = configureFirestore(
+            FirebaseFirestore.getInstance(
+                context.applicationContext.getString(R.string.firestore_database_id)
+            )
+        ),
+        offlineRepo = OfflineSyncRepository(
+            SarimOfflineDatabase.getInstance(context.applicationContext).offlineDao()
+        ),
+        appContext = context.applicationContext
     )
 
     private val auth = Firebase.auth
+
+    fun isOnline(): Boolean {
+        val ctx = appContext ?: return true
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     fun requireUserId(): String = auth.currentUser?.uid
         ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
@@ -79,17 +106,38 @@ class AppRepository(val db: FirebaseFirestore) {
         )
     }
 
-    suspend fun ensureUserProfileAndWorkspace(): Result<UserProfile> = try {
+    suspend fun ensureUserProfileAndWorkspace(): Result<UserProfile> {
+        return try {
         val user = auth.currentUser ?: error("Not authenticated")
         val uid = user.uid
         val email = (user.email ?: "$uid@local.user").lowercase().take(160)
         val displayName = InputGuards.sanitizeName(user.displayName?.ifBlank { null } ?: email.substringBefore("@"))
+
+        // Instant offline startup from Room SQLite cache when already initialized
+        offlineRepo?.getCachedProfile(uid)?.let { cached ->
+            return Result.success(cached)
+        }
+
         val profileRef = db.collection("users").document(uid)
-        val existingSnap = profileRef.get().await()
+        val cachedFirestoreSnap = runCatching { profileRef.get(Source.CACHE).await() }.getOrNull()
+        if (cachedFirestoreSnap != null && cachedFirestoreSnap.exists()) {
+            val profile = cachedFirestoreSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
+            offlineRepo?.cacheProfile(profile)
+            return Result.success(profile)
+        }
+
+        if (!isOnline()) {
+            return Result.failure(IllegalStateException("No internet connection. Connect once to download your workspace offline cache."))
+        }
+
+        val existingSnap = withTimeoutOrNull(8000L) { profileRef.get().await() }
+            ?: return Result.failure(IllegalStateException("Workspace connection timed out. Check your connection and retry."))
 
         if (existingSnap.exists()) {
             val profile = existingSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                 ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
+            offlineRepo?.cacheProfile(profile)
             Result.success(profile)
         } else {
             // Check verified pending workspace invite for this user's email
@@ -131,8 +179,8 @@ class AppRepository(val db: FirebaseFirestore) {
                 }
             }
 
-            if (invitedProfile != null) {
-                Result.success(invitedProfile)
+            val resolved = if (invitedProfile != null) {
+                invitedProfile
             } else {
                 val ownerPayload = mapOf(
                     "uid" to uid,
@@ -147,17 +195,19 @@ class AppRepository(val db: FirebaseFirestore) {
                 )
                 profileRef.set(ownerPayload).await()
                 seedDefaultWorkspaceIfEmpty(uid)
-                val created = profileRef.get().await()
+                profileRef.get().await()
                     .toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                     ?: UserProfile(uid = uid, email = email, displayName = displayName, workspaceOwnerUid = uid)
-                Result.success(created)
             }
+            offlineRepo?.cacheProfile(resolved)
+            Result.success(resolved)
         }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         handleFirestoreError(e, OperationType.WRITE, "users/${auth.currentUser?.uid}")
         Result.failure(e)
+    }
     }
 
     private suspend fun seedDefaultWorkspaceIfEmpty(ownerUid: String) {
@@ -201,13 +251,23 @@ class AppRepository(val db: FirebaseFirestore) {
         db.collection("users").document(uid)
             .snapshots()
             .map { it.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE) }
+            .onEach { profile ->
+                if (profile != null) {
+                    offlineRepo?.cacheProfile(profile)
+                }
+            }
             .catch { error ->
                 val unwrapped = unwrapFirestoreError(error)
                 if (unwrapped == null && error is CancellationException) throw error
-                if (auth.currentUser?.uid == uid) {
-                    handleFirestoreError(unwrapped ?: error, OperationType.GET, "users/$uid")
+                val cached = offlineRepo?.getCachedProfile(uid)
+                if (cached != null) {
+                    emit(cached)
+                } else {
+                    if (auth.currentUser?.uid == uid) {
+                        handleFirestoreError(unwrapped ?: error, OperationType.GET, "users/$uid")
+                    }
+                    throw error
                 }
-                throw error
             }
 
     @Suppress("UNCHECKED_CAST")
@@ -317,48 +377,109 @@ class AppRepository(val db: FirebaseFirestore) {
 
     suspend fun saveSettings(ownerUid: String, memberUids: List<String>, settings: WorkspaceSettings): Result<Unit> {
         val path = "users/$ownerUid/settings/preferences"
+        var opId: String? = null
         return try {
             requireUserId()
             val members = (memberUids + ownerUid).distinct().take(20)
+            val currency = settings.currencySymbol.take(12).ifBlank { "Rs" }
+            val fyMonth = settings.financialYearStartMonth.coerceIn(1L, 12L)
+            val channels = settings.paymentChannels.take(15)
+            val categories = settings.expenseCategories.take(30)
+
+            val localPayload = mapOf<String, Any?>(
+                "id" to "preferences",
+                "ownerUid" to ownerUid,
+                "memberUids" to members,
+                "currencySymbol" to currency,
+                "financialYearStartMonth" to fyMonth,
+                "hideSensitiveMoney" to settings.hideSensitiveMoney,
+                "biometricLockEnabled" to settings.biometricLockEnabled,
+                "themeMode" to settings.themeMode,
+                "paymentChannels" to channels,
+                "expenseCategories" to categories,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            offlineRepo?.applyLocalMutation(ownerUid, "settings", "preferences", localPayload, isUpdate = true)
+            opId = offlineRepo?.enqueueSyncOp(ownerUid, "settings", "preferences", "SETTINGS", localPayload)
+
+            if (!isOnline()) {
+                return Result.success(Unit)
+            }
+
             val docRef = workspaceCol(ownerUid, "settings").document("preferences")
-            val exists = docRef.get().await().exists()
-            if (exists) {
-                docRef.update(
-                    mapOf(
-                        "memberUids" to members,
-                        "currencySymbol" to settings.currencySymbol.take(12).ifBlank { "Rs" },
-                        "financialYearStartMonth" to settings.financialYearStartMonth.coerceIn(1L, 12L),
-                        "hideSensitiveMoney" to settings.hideSensitiveMoney,
-                        "biometricLockEnabled" to settings.biometricLockEnabled,
-                        "themeMode" to settings.themeMode,
-                        "paymentChannels" to settings.paymentChannels.take(15),
-                        "expenseCategories" to settings.expenseCategories.take(30),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            } else {
-                docRef.set(
-                    mapOf(
-                        "ownerUid" to ownerUid,
-                        "memberUids" to members,
-                        "currencySymbol" to settings.currencySymbol.take(12).ifBlank { "Rs" },
-                        "financialYearStartMonth" to settings.financialYearStartMonth.coerceIn(1L, 12L),
-                        "hideSensitiveMoney" to settings.hideSensitiveMoney,
-                        "biometricLockEnabled" to settings.biometricLockEnabled,
-                        "themeMode" to settings.themeMode,
-                        "paymentChannels" to settings.paymentChannels.take(15),
-                        "expenseCategories" to settings.expenseCategories.take(30),
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
+            val synced = withTimeoutOrNull(1800L) {
+                val exists = docRef.get().await().exists()
+                if (exists) {
+                    docRef.update(
+                        mapOf(
+                            "memberUids" to members,
+                            "currencySymbol" to currency,
+                            "financialYearStartMonth" to fyMonth,
+                            "hideSensitiveMoney" to settings.hideSensitiveMoney,
+                            "biometricLockEnabled" to settings.biometricLockEnabled,
+                            "themeMode" to settings.themeMode,
+                            "paymentChannels" to channels,
+                            "expenseCategories" to categories,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                } else {
+                    docRef.set(
+                        mapOf(
+                            "ownerUid" to ownerUid,
+                            "memberUids" to members,
+                            "currencySymbol" to currency,
+                            "financialYearStartMonth" to fyMonth,
+                            "hideSensitiveMoney" to settings.hideSensitiveMoney,
+                            "biometricLockEnabled" to settings.biometricLockEnabled,
+                            "themeMode" to settings.themeMode,
+                            "paymentChannels" to channels,
+                            "expenseCategories" to categories,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                }
+                true
+            }
+            if (synced == true && opId != null) {
+                offlineRepo?.markOpSynced(opId)
             }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: FirebaseFirestoreException) {
+            if (e.code == FirebaseFirestoreException.Code.UNAVAILABLE ||
+                e.code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED
+            ) {
+                Result.success(Unit)
+            } else {
+                opId?.let { offlineRepo?.discardSyncOp(it) }
+                handleFirestoreError(e, OperationType.WRITE, path)
+                Result.failure(e)
+            }
         } catch (e: Exception) {
+            opId?.let { offlineRepo?.discardSyncOp(it) }
             handleFirestoreError(e, OperationType.WRITE, path)
             Result.failure(e)
+        }
+    }
+
+    companion object {
+        private const val CACHE_SIZE_BYTES = 100L * 1024L * 1024L
+
+        fun configureFirestore(firestore: FirebaseFirestore): FirebaseFirestore {
+            runCatching {
+                val settings = FirebaseFirestoreSettings.Builder()
+                    .setLocalCacheSettings(
+                        PersistentCacheSettings.newBuilder()
+                            .setSizeBytes(CACHE_SIZE_BYTES)
+                            .build()
+                    )
+                    .build()
+                firestore.firestoreSettings = settings
+            }
+            return firestore
         }
     }
 }

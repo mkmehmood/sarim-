@@ -1,6 +1,5 @@
 package com.gullzubair.sarim.ui.viewmodel
 
-import com.google.firebase.firestore.FieldValue
 import com.gullzubair.sarim.data.firebase.AppRepository
 import com.gullzubair.sarim.data.firebase.WorkspaceOperations
 import com.gullzubair.sarim.data.model.CustomerRecord
@@ -16,7 +15,6 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
-import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 class SarimActionDispatcher(
@@ -123,10 +121,13 @@ class SarimActionDispatcher(
         if (expiredKg > 0.0 && (snapshot.profile.role == "admin" || snapshot.profile.uid == snapshot.profile.workspaceOwnerUid)) {
             val chora = snapshot.inventory.firstOrNull { !it.recycled && it.name.equals("CHORA", true) }
             if (chora != null) {
-                repo.db.collection("users").document(snapshot.profile.workspaceOwnerUid.ifBlank { snapshot.profile.uid })
-                    .collection("inventory").document(chora.id)
-                    .update(mapOf("stockQty" to FieldValue.increment(InputGuards.round3(expiredKg)), "updatedAt" to FieldValue.serverTimestamp()))
-                    .await()
+                val ownerUid = snapshot.profile.workspaceOwnerUid.ifBlank { snapshot.profile.uid }
+                ops.updateFieldsOfflineSafe(
+                    ownerUid = ownerUid,
+                    collection = "inventory",
+                    docId = chora.id,
+                    fields = mapOf("stockQty" to InputGuards.round3(chora.stockQty + expiredKg))
+                )
             }
         }
 
@@ -292,13 +293,12 @@ class SarimActionDispatcher(
         if (res.isSuccess && (snapshot.profile.role == "admin" || snapshot.profile.uid == ownerUid)) {
             flat.forEach { line ->
                 val inv = invByName[line.name.lowercase()] ?: return@forEach
-                repo.db.collection("users").document(ownerUid).collection("inventory").document(inv.id)
-                    .update(
-                        mapOf(
-                            "stockQty" to InputGuards.round3((inv.stockQty - line.qtyKg).coerceAtLeast(0.0)),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
+                ops.updateFieldsOfflineSafe(
+                    ownerUid = ownerUid,
+                    collection = "inventory",
+                    docId = inv.id,
+                    fields = mapOf("stockQty" to InputGuards.round3((inv.stockQty - line.qtyKg).coerceAtLeast(0.0)))
+                )
             }
         }
         return res
@@ -488,16 +488,19 @@ class SarimActionDispatcher(
         // FIFO supplier allocation on payment OUT to supplier
         if (txType == "out" && entity?.entityType == "supplier" && (snapshot.profile.role == "admin" || snapshot.profile.uid == ownerUid)) {
             val allocations = FinanceEngine.previewSupplierFifoAllocation(cleanName, amount, snapshot.factory)
+            val factoryById = snapshot.factory.associateBy { it.id }
             allocations.forEach { alloc ->
-                repo.db.collection("users").document(ownerUid).collection("factory").document(alloc.purchaseId)
-                    .update(
-                        mapOf(
-                            "payableBalance" to alloc.afterPayable,
-                            "allocatedPaid" to FieldValue.increment(alloc.appliedPayment),
-                            "settled" to (alloc.afterPayable <= 0.01),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
+                val existingAllocated = factoryById[alloc.purchaseId]?.allocatedPaid ?: 0.0
+                ops.updateFieldsOfflineSafe(
+                    ownerUid = ownerUid,
+                    collection = "factory",
+                    docId = alloc.purchaseId,
+                    fields = mapOf(
+                        "payableBalance" to alloc.afterPayable,
+                        "allocatedPaid" to InputGuards.round2(existingAllocated + alloc.appliedPayment),
+                        "settled" to (alloc.afterPayable <= 0.01)
+                    )
+                )
             }
         }
 

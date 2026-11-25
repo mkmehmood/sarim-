@@ -47,8 +47,8 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -390,6 +390,7 @@ private fun WorkspaceNavContainer(
                             icon = Icons.Outlined.Sync,
                             iconTint = accents.emerald,
                             selected = false,
+                            badgeCount = snapshot.pendingSyncCount,
                             testTag = "drawer_sync",
                             onClick = {
                                 scope.launch { drawerState.close() }

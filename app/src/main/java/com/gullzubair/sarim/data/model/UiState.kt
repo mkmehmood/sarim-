@@ -66,5 +66,6 @@ data class WorkspaceSnapshot(
     val ledgerEntries: List<DailyLedgerEntry> = emptyList(),
     val pendingApprovals: List<PendingApproval> = emptyList(),
     val invites: List<WorkspaceInvite> = emptyList(),
-    val teamMembers: List<UserProfile> = emptyList()
+    val teamMembers: List<UserProfile> = emptyList(),
+    val pendingSyncCount: Int = 0
 )

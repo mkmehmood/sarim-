@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.gullzubair.sarim.R
 import com.gullzubair.sarim.data.firebase.AppRepository
 import com.gullzubair.sarim.data.firebase.WorkspaceOperations
 import com.gullzubair.sarim.data.firebase.unwrapFirestoreError
@@ -29,12 +28,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SarimViewModel(
@@ -61,26 +61,68 @@ class SarimViewModel(
 
     val workspaceState: StateFlow<UiState<WorkspaceSnapshot>> = profileTrigger
         .flatMapLatest {
-            flow {
+            channelFlow<UiState<WorkspaceSnapshot>> {
                 val boot = repo.ensureUserProfileAndWorkspace()
                 if (boot.isFailure) {
-                    emit(UiState.Error(boot.exceptionOrNull()?.localizedMessage ?: "Failed to initialize workspace"))
-                    return@flow
+                    send(UiState.Error(boot.exceptionOrNull()?.localizedMessage ?: "Failed to initialize workspace"))
+                    return@channelFlow
                 }
-                repo.observeProfile(currentUserId)
-                    .flatMapLatest { profile ->
-                        val active = profile ?: boot.getOrThrow()
-                        repo.observeWorkspace(active)
+                val bootProfile = boot.getOrThrow()
+                val offline = repo.offlineRepo
+                var hasEmittedCacheOrLive = false
+
+                if (offline != null) {
+                    val cachedSnap = offline.getWorkspaceSnapshotOnce(bootProfile)
+                    if (cachedSnap != null) {
+                        hasEmittedCacheOrLive = true
+                        send(UiState.Success(cachedSnap))
                     }
-                    .map<WorkspaceSnapshot, UiState<WorkspaceSnapshot>> { UiState.Success(it) }
-                    .collect { emit(it) }
+                    launch {
+                        offline.observeProfile(currentUserId)
+                            .flatMapLatest { cachedProfile ->
+                                offline.observeCachedWorkspaceSnapshot(cachedProfile ?: bootProfile)
+                            }
+                            .filterNotNull()
+                            .collect { snap ->
+                                hasEmittedCacheOrLive = true
+                                send(UiState.Success(snap))
+                            }
+                    }
+                }
+
+                var flushedOnConnect = false
+                launch {
+                    repo.observeProfile(currentUserId)
+                        .flatMapLatest { liveProfile ->
+                            val active = liveProfile ?: bootProfile
+                            repo.observeWorkspace(active)
+                        }
+                        .catch { error ->
+                            val unwrapped = unwrapFirestoreError(error)
+                            if (unwrapped == null && error is CancellationException) throw error
+                            if (!hasEmittedCacheOrLive) {
+                                val root = unwrapped ?: error
+                                send(UiState.Error(root.localizedMessage ?: "Failed to sync workspace"))
+                            }
+                        }
+                        .collect { liveSnapshot ->
+                            if (offline != null) {
+                                val activeOwner = liveSnapshot.profile.workspaceOwnerUid.ifBlank { liveSnapshot.profile.uid }
+                                if (!flushedOnConnect && repo.isOnline()) {
+                                    flushedOnConnect = true
+                                    launch {
+                                        offline.flushPendingSyncOps(activeOwner, repo.db)
+                                    }
+                                }
+                                offline.cacheWorkspaceSnapshot(activeOwner, liveSnapshot)
+                                hasEmittedCacheOrLive = true
+                            } else {
+                                hasEmittedCacheOrLive = true
+                                send(UiState.Success(liveSnapshot))
+                            }
+                        }
+                }
             }
-        }
-        .catch { error ->
-            val unwrapped = unwrapFirestoreError(error)
-            if (unwrapped == null && error is CancellationException) throw error
-            val root = unwrapped ?: error
-            emit(UiState.Error(root.localizedMessage ?: "Failed to sync workspace"))
         }
         .stateIn(
             scope = viewModelScope,
@@ -115,13 +157,33 @@ class SarimViewModel(
 
     private fun currentSnapshot(): WorkspaceSnapshot? = (workspaceState.value as? UiState.Success)?.data
 
-    /** Sidebar "Sync": waits until every queued local write has reached the cloud. */
+    /** Sidebar "Sync": flushes Room pending offline queue and awaits Firestore pending writes. */
     fun syncNow() {
         viewModelScope.launch {
             _snackbarMessage.emit("Syncing…")
+            val snap = currentSnapshot()
+            val ownerUid = snap?.profile?.workspaceOwnerUid?.ifBlank { snap.profile.uid } ?: currentUserId
+            if (!repo.isOnline()) {
+                val pending = repo.offlineRepo?.getPendingSyncCount(ownerUid) ?: (snap?.pendingSyncCount ?: 0)
+                _snackbarMessage.emit(
+                    if (pending > 0) "Offline: $pending change(s) queued in local Room DB"
+                    else "Offline: running on cached Room DB"
+                )
+                return@launch
+            }
             try {
-                repo.db.waitForPendingWrites().await()
-                _snackbarMessage.emit("All changes synced")
+                val flushRes = repo.offlineRepo?.flushPendingSyncOps(ownerUid, repo.db)
+                if (flushRes != null && flushRes.isFailure) {
+                    _snackbarMessage.emit(flushRes.exceptionOrNull()?.localizedMessage ?: "Sync incomplete")
+                    return@launch
+                }
+                withTimeoutOrNull(5000L) {
+                    repo.db.waitForPendingWrites().await()
+                }
+                val syncedCount = flushRes?.getOrDefault(0) ?: 0
+                _snackbarMessage.emit(
+                    if (syncedCount > 0) "Synced $syncedCount offline change(s)" else "All changes synced"
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -305,8 +367,9 @@ class SarimViewModel(
     }
 
     fun updateMemberRoles(memberUid: String, roles: List<String>, approved: Boolean) {
+        val ownerUid = currentSnapshot()?.profile?.workspaceOwnerUid?.ifBlank { currentUserId } ?: currentUserId
         viewModelScope.launch {
-            handleResult(ops.updateMemberRoles(memberUid, roles, approved), "Member permissions updated")
+            handleResult(ops.updateMemberRoles(memberUid, roles, approved, ownerUid), "Member permissions updated")
         }
     }
 
@@ -371,14 +434,9 @@ class SarimViewModel(
     }
 
     fun revokeInvite(inviteId: String) {
+        val ownerUid = currentSnapshot()?.profile?.workspaceOwnerUid?.ifBlank { currentUserId } ?: currentUserId
         viewModelScope.launch {
-            val res = try {
-                repo.db.collection("workspace_invites").document(inviteId).delete().await()
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-            handleResult(res, "Invite removed")
+            handleResult(ops.revokeInvite(ownerUid, inviteId), "Invite removed")
         }
     }
 
@@ -471,8 +529,7 @@ class SarimViewModel(
         fun factory(currentUserId: String): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-                val dbId = app.getString(R.string.firestore_database_id)
-                SarimViewModel(AppRepository(com.google.firebase.firestore.FirebaseFirestore.getInstance(dbId)), currentUserId)
+                SarimViewModel(AppRepository(app.applicationContext), currentUserId)
             }
         }
     }

@@ -783,7 +783,17 @@ fun DbStructureScreen(snapshot: WorkspaceSnapshot, onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "DB STRUCTURE", onBack = onBack)
         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { MetricKpiCard("Active Workspace Owner", snapshot.profile.workspaceOwnerUid.take(16) + "...", "Real-time Firestore Sync") }
+            item {
+                MetricKpiCard(
+                    label = "Active Workspace Owner",
+                    value = snapshot.profile.workspaceOwnerUid.take(16) + "...",
+                    subtitle = if (snapshot.pendingSyncCount > 0) {
+                        "Room SQLite (WAL) • ${snapshot.pendingSyncCount} pending sync"
+                    } else {
+                        "Room SQLite (WAL) + Cloud Firestore Sync"
+                    }
+                )
+            }
             items(rows, key = { it.first }) { (name, count) ->
                 SarimCard {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

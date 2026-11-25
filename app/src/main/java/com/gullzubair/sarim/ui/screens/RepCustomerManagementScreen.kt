@@ -190,7 +190,7 @@ fun RepCustomerManagementScreen(
                                 onClick = {
                                     context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${customer?.phone}")))
                                 },
-                                modifier = Modifier.size(44.dp).testTag("rep_cust_call_btn")
+                                modifier = Modifier.size(48.dp).testTag("rep_cust_call_btn")
                             ) {
                                 Icon(Icons.Default.Call, contentDescription = "Call customer", tint = accents.emerald)
                             }
@@ -248,7 +248,7 @@ fun RepCustomerManagementScreen(
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
-                                    "${DateUtils.formatPretty(r.date)}" +
+                                    DateUtils.formatPretty(r.date) +
                                         (if (r.qtyKg > 0.0) " • ${InputGuards.formatKg(r.qtyKg)}" else ""),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = accents.textMuted
