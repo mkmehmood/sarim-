@@ -58,12 +58,59 @@ class SarimEditActions(
             return Result.failure(IllegalArgumentException("This production entry cannot be edited"))
         }
         val net = InputGuards.round2(grossWt - contWt)
-        if (net <= 0.0) return Result.failure(IllegalArgumentException("Net weight must be greater than 0 kg"))
+        if (net <= 0.0) return Result.failure(IllegalArgumentException("Net production must be greater than zero. Please check weights."))
+        if (formulaUnits <= 0.0) return Result.failure(IllegalArgumentException("Please enter formula units used."))
 
         val storeKey = dispatcher.resolvedStoreKey(store)
+        val pools = FormulaEngine.buildUnitPools(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production)
+        val pool = com.gullzubair.sarim.domain.ProductionAnalyticsEngine.resolvePoolForStore(store, pools)
+        val availableUnits = pool?.availableUnits ?: 0.0
+        val resolvedFormulaId = store.formulaId.orEmpty()
+        val unitCredit = if (original.formulaId == resolvedFormulaId ||
+            com.gullzubair.sarim.domain.ProductionAnalyticsEngine.matchesStore(original.store, store)
+        ) {
+            original.formulaUnits
+        } else {
+            0.0
+        }
+        if (costPerKgOverride <= 0.0 && availableUnits + unitCredit + 1e-9 < formulaUnits) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "Not enough formula units at ${store.name}. Available: ${InputGuards.fmtNum(availableUnits + unitCredit)}, Requested: ${InputGuards.fmtNum(formulaUnits)}"
+                )
+            )
+        }
+
+        // Prevent reducing net production below what was already sold from original (date, store) bucket
+        val sameBucket = com.gullzubair.sarim.domain.ProductionAnalyticsEngine.matchesStore(original.store, store) &&
+            original.date.take(10) == date.take(10)
+        val remainingOrigBucket = FinanceEngine.computeStoreStockOnDate(
+            storeKeyOrName = original.store,
+            dateIso = original.date,
+            snapshot = snapshot,
+            excludeProdIds = setOf(original.id)
+        ) + (if (sameBucket) net else 0.0)
+        if (remainingOrigBucket < -1e-6) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "Cannot reduce this entry: ${InputGuards.fmtNum(-remainingOrigBucket)} kg already sold from ${original.date}. Reduce or delete those sales first."
+                )
+            )
+        }
+
         val formula = snapshot.formulas.firstOrNull { it.id == store.formulaId }
         val desc = formula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
-        val formulaCostTotal = if (desc != null && formulaUnits > 0.0) InputGuards.round2(desc.perUnit * formulaUnits) else 0.0
+        val isFrozenEditCost = costPerKgOverride <= 0.0 &&
+            original.formulaId.isNotBlank() &&
+            original.formulaId == resolvedFormulaId &&
+            original.formulaUnits > 0.0 &&
+            original.formulaCost > 0.0
+
+        val formulaCostTotal = when {
+            isFrozenEditCost -> InputGuards.round2((original.formulaCost / original.formulaUnits) * formulaUnits)
+            desc != null && formulaUnits > 0.0 -> InputGuards.round2(desc.perUnit * formulaUnits)
+            else -> 0.0
+        }
         val resolvedCp = when {
             costPerKgOverride > 0.0 -> InputGuards.round2(costPerKgOverride)
             formulaCostTotal > 0.0 -> InputGuards.round2(formulaCostTotal / net)
@@ -74,6 +121,12 @@ class SarimEditActions(
             }
         }
         val sp = if (store.salePrice > 0.0) store.salePrice else (snapshot.settings.defaultStorePrices[store.key] ?: original.sp)
+        if (sp <= 0.0) {
+            return Result.failure(IllegalArgumentException("Please set a sale price in Factory Formulas first."))
+        }
+        if (resolvedCp <= 0.0) {
+            return Result.failure(IllegalArgumentException("This formula has no cost. Set the formula and ingredient costs first."))
+        }
         val totalCost = if (formulaCostTotal > 0.0 && costPerKgOverride <= 0.0) formulaCostTotal else InputGuards.round2(net * resolvedCp)
         val totalSale = InputGuards.round2(net * sp)
         val profit = InputGuards.round2(totalSale - totalCost)
@@ -138,10 +191,14 @@ class SarimEditActions(
             profit = profit,
             formulaUnits = InputGuards.round2(formulaUnits),
             formulaId = formula?.id ?: original.formulaId,
-            formulaName = formula?.name ?: original.formulaName,
-            formulaMaterials = desc?.items?.map {
-                mapOf("id" to it.id, "name" to it.name, "qty" to InputGuards.round4(it.quantity * formulaUnits))
-            } ?: original.formulaMaterials,
+            formulaName = if (isFrozenEditCost && original.formulaName.isNotBlank()) original.formulaName else (formula?.name ?: original.formulaName),
+            formulaMaterials = if (isFrozenEditCost && original.formulaMaterials.isNotEmpty()) {
+                original.formulaMaterials
+            } else {
+                desc?.items?.map {
+                    mapOf("id" to it.id, "name" to it.name, "qty" to InputGuards.round4(it.quantity * formulaUnits))
+                } ?: original.formulaMaterials
+            },
             formulaCost = formulaCostTotal,
             photoKeys = finalKeys,
             returnNote = cleanNotes,

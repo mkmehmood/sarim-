@@ -205,7 +205,20 @@ class SarimActionDispatcher(
         photoDataUris: List<String> = emptyList()
     ): Result<String> {
         val net = InputGuards.round2(grossWt - contWt)
-        if (net <= 0.0) return Result.failure(IllegalArgumentException("Net weight must be greater than 0 kg"))
+        if (net <= 0.0) return Result.failure(IllegalArgumentException("Net production must be greater than zero. Please check weights."))
+        if (formulaUnits <= 0.0) return Result.failure(IllegalArgumentException("Please enter formula units used."))
+
+        val storeKey = resolvedStoreKey(store)
+        val pools = FormulaEngine.buildUnitPools(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production)
+        val pool = com.gullzubair.sarim.domain.ProductionAnalyticsEngine.resolvePoolForStore(store, pools)
+        val availableUnits = pool?.availableUnits ?: 0.0
+        if (costPerKgOverride <= 0.0 && availableUnits + 1e-9 < formulaUnits) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "Not enough formula units at ${store.name}. Available: ${InputGuards.fmtNum(availableUnits)}, Requested: ${InputGuards.fmtNum(formulaUnits)}"
+                )
+            )
+        }
 
         val formula = snapshot.formulas.firstOrNull { it.id == store.formulaId }
         val desc = formula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
@@ -215,15 +228,20 @@ class SarimActionDispatcher(
             formulaCostTotal > 0.0 -> InputGuards.round2(formulaCostTotal / net)
             else -> {
                 val idx = FormulaEngine.buildCostIndex(snapshot.production)
-                val lookup = FormulaEngine.costSourceFromIndex(idx, resolvedStoreKey(store), date)
+                val lookup = FormulaEngine.costSourceFromIndex(idx, storeKey, date)
                 if (lookup.cp > 0.0) lookup.cp else (snapshot.settings.storeCosts[store.key] ?: 0.0)
             }
         }
         val sp = if (store.salePrice > 0.0) store.salePrice else (snapshot.settings.defaultStorePrices[store.key] ?: 0.0)
+        if (sp <= 0.0) {
+            return Result.failure(IllegalArgumentException("Please set a sale price in Factory Formulas first."))
+        }
+        if (resolvedCp <= 0.0) {
+            return Result.failure(IllegalArgumentException("This formula has no cost. Set the formula and ingredient costs first."))
+        }
         val totalCost = if (formulaCostTotal > 0.0 && costPerKgOverride <= 0.0) formulaCostTotal else InputGuards.round2(net * resolvedCp)
         val totalSale = InputGuards.round2(net * sp)
         val profit = InputGuards.round2(totalSale - totalCost)
-        val storeKey = resolvedStoreKey(store)
 
         val allPhotos = (photoDataUris + listOfNotNull(photoDataUri?.takeIf { it.isNotBlank() }))
             .distinct()

@@ -75,18 +75,42 @@ fun ProductionDetailSheet(
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Formula Units", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                Text(InputGuards.fmtNum(rec.formulaUnits), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = buildString {
+                        append(InputGuards.fmtNum(rec.formulaUnits))
+                        if (rec.formulaName.isNotBlank()) append(" (${rec.formulaName})")
+                    },
+                    style = MaterialTheme.typography.titleSmall
+                )
             }
             if (!masked) {
+                if (rec.cp > 0.0 || rec.sp > 0.0) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Cost / Sale (per kg)", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text("${InputGuards.fmtNum(rec.cp)}/kg / ${InputGuards.fmtNum(rec.sp)}/kg", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+                if (rec.formulaCost > 0.0) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Formula Cost", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(rec.formulaCost, currency, false), style = MaterialTheme.typography.titleSmall, color = accents.danger)
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cost / Sale", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                    Text("Total Cost / Sale", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
                     Text("${InputGuards.formatMoney(rec.totalCost, currency, false)} / ${InputGuards.formatMoney(rec.totalSale, currency, false)}", style = MaterialTheme.typography.titleSmall)
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Profit", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(rec.profit, currency, false), style = MaterialTheme.typography.titleSmall, color = accents.emerald)
+                    Text(
+                        InputGuards.formatMoney(rec.profit, currency, false),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (rec.profit >= 0.0) accents.emerald else accents.danger
+                    )
                 }
             }
             val note = rec.returnNote.ifBlank { rec.transferNote }
