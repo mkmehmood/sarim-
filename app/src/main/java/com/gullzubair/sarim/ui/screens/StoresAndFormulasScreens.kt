@@ -76,6 +76,7 @@ import com.gullzubair.sarim.ui.components.SarimNoteBanner
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.JakartaFont
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import java.util.Locale
@@ -301,18 +302,17 @@ fun StoreManagerScreen(
 
     confirmDeleteKey?.let { keyToDel ->
         val storeLabel = activeStores.firstOrNull { it.key == keyToDel }?.name ?: keyToDel
-        AlertDialog(
-            onDismissRequest = { confirmDeleteKey = null },
-            title = { Text("Remove Store") },
-            text = { Text("Remove \"$storeLabel\" from active stores? Existing historical records keep their store reference.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteStore(keyToDel)
-                    confirmDeleteKey = null
-                    editKey = null; name = ""; selectedFormulaId = ""; rateStr = ""; active = true
-                }) { Text("Remove") }
+        SarimConfirmDialog(
+            title = "Remove Store?",
+            message = "Store: $storeLabel\n\nRemove it from active stores? Existing historical records keep their store reference.",
+            confirmText = "Remove",
+            danger = true,
+            onConfirm = {
+                vm.deleteStore(keyToDel)
+                confirmDeleteKey = null
+                editKey = null; name = ""; selectedFormulaId = ""; rateStr = ""; active = true
             },
-            dismissButton = { TextButton(onClick = { confirmDeleteKey = null }) { Text("Cancel") } }
+            onDismiss = { confirmDeleteKey = null }
         )
     }
 }
@@ -934,17 +934,16 @@ fun FormulaEditScreen(
     }
 
     if (confirmDelete && existing != null) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete Formula") },
-            text = { Text("Delete formula \"${existing.name}\"? Formulas linked to stores or used inside other formulas cannot be deleted until unlinked.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    vm.deleteFormula(existing.id, onDeleted = onBack)
-                }) { Text("Delete") }
+        SarimConfirmDialog(
+            title = "Delete Formula?",
+            message = "Formula: ${existing.name}\n\nNote: Formulas linked to stores or used inside other formulas cannot be deleted until unlinked.",
+            confirmText = "Delete",
+            danger = true,
+            onConfirm = {
+                confirmDelete = false
+                vm.deleteFormula(existing.id, onDeleted = onBack)
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+            onDismiss = { confirmDelete = false }
         )
     }
 }

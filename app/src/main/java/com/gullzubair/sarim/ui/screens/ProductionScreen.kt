@@ -601,6 +601,10 @@ fun ProductionScreen(
             hideMoneyPanels = isMoneyRestrictedMode,
             masked = masked,
             currency = currency,
+            grossKg = gross,
+            containerKg = container,
+            units = units,
+            gated = session.mode != "admin",
             onConfirm = {
                 showSaveConfirmDialog = false
                 vm.submitProduction(

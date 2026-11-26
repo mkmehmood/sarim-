@@ -187,23 +187,18 @@ fun EditHistorySection(
     }
 
     if (pendingDeleteIdx >= 0) {
-        AlertDialog(
-            onDismissRequest = { pendingDeleteIdx = -1 },
-            title = { Text("Delete History Entry") },
-            text = { Text("Remove this edit log entry permanently from the record?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val idx = pendingDeleteIdx
-                        pendingDeleteIdx = -1
-                        onDeleteEntry(idx)
-                    },
-                    modifier = Modifier.testTag("confirm_del_edit_history")
-                ) { Text("Delete", color = accents.danger) }
+        SarimConfirmDialog(
+            title = "Delete History Entry?",
+            message = "Remove this edit log entry permanently from the record?\n\nThis action cannot be undone.",
+            confirmText = "Delete",
+            danger = true,
+            onConfirm = {
+                val idx = pendingDeleteIdx
+                pendingDeleteIdx = -1
+                onDeleteEntry(idx)
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteIdx = -1 }) { Text("Cancel") }
-            }
+            onDismiss = { pendingDeleteIdx = -1 },
+            confirmTag = "confirm_del_edit_history"
         )
     }
 }
@@ -215,36 +210,22 @@ fun EditDiffConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val accents = LocalSarimAccents.current
     val changed = remember(rows) { rows.filter { it.second != it.third } }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.EditNote, contentDescription = null, tint = accents.emerald) },
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (changed.isEmpty()) {
-                    Text("No field values changed. Save edit stamp anyway?", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    changed.forEach { (label, fromVal, toVal) ->
-                        Column {
-                            Text(label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            Text("${fromVal.ifBlank { "—" }} → ${toVal.ifBlank { "—" }}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                            Spacer(Modifier.height(4.dp))
-                            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.4f))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm_edit_diff_btn")) {
-                Text("Save Changes", color = accents.emerald, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+    val message = remember(changed) {
+        if (changed.isEmpty()) "No field values changed. Save edit stamp anyway?\n\nThe existing record will be replaced."
+        else changed.joinToString("\n") { (label, from, to) ->
+            "$label: ${from.ifBlank { "\u2014" }} \u2192 ${to.ifBlank { "\u2014" }}"
+        } + "\n\nThe existing record will be replaced."
+    }
+    SarimConfirmDialog(
+        title = title,
+        message = message,
+        confirmText = "Update",
+        cancelText = "Cancel",
+        tone = DialogTone.Warning,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        confirmTag = "confirm_edit_diff_btn"
     )
 }
 
@@ -253,18 +234,14 @@ fun DiscardEditDialog(
     onDiscard: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val accents = LocalSarimAccents.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Discard Edits?") },
-        text = { Text("You are currently editing an entry. Discard unsaved changes and return?") },
-        confirmButton = {
-            TextButton(onClick = onDiscard, modifier = Modifier.testTag("confirm_discard_edit_btn")) {
-                Text("Discard", color = accents.danger)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Keep Editing") }
-        }
+    SarimConfirmDialog(
+        title = "Discard Edits?",
+        message = "You are currently editing an entry.\nDiscard unsaved changes and return?",
+        confirmText = "Discard",
+        cancelText = "Keep Editing",
+        danger = true,
+        onConfirm = onDiscard,
+        onDismiss = onDismiss,
+        confirmTag = "confirm_discard_edit_btn"
     )
 }

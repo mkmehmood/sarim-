@@ -729,48 +729,34 @@ fun ProductionSaveConfirmDialog(
     hideMoneyPanels: Boolean,
     masked: Boolean,
     currency: String,
+    grossKg: Double = 0.0,
+    containerKg: Double = 0.0,
+    units: Double = 0.0,
+    gated: Boolean = false,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val accents = LocalSarimAccents.current
-    val netProfit = totalSale - totalCost
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Save this production entry?") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("$storeName · ${DateUtils.formatPretty(dateIso)}", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "Net Production: ${InputGuards.formatKg(netKg)}",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = accents.emerald
-                )
-                if (!hideMoneyPanels) {
-                    Text(
-                        "Total Cost: ${InputGuards.formatMoney(totalCost, currency, masked)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = accents.danger
-                    )
-                    Text(
-                        "Net Profit: ${InputGuards.formatMoney(netProfit, currency, masked)}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = if (netProfit >= 0.0) accents.emerald else accents.danger
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                modifier = Modifier.testTag("prod_confirm_save_btn")
-            ) {
-                Text("Save", color = accents.emerald, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+    // Same structure as web confirmGuard: "Save Production Entry?" + detail lines + tail sentence.
+    val details = buildList {
+        add("Store" to storeName)
+        add("Date" to DateUtils.formatPretty(dateIso))
+        if (grossKg > 0.0) add("Gross Weight" to InputGuards.fmtNum(grossKg))
+        if (grossKg > 0.0) add("Container" to InputGuards.fmtNum(containerKg))
+        add("Net Weight" to InputGuards.fmtNum(netKg))
+        if (units > 0.0) add("Units" to InputGuards.fmtNum(units))
+        if (!hideMoneyPanels) {
+            add("Total Cost" to InputGuards.formatMoney(totalCost, currency, masked))
+            add("Net Profit" to InputGuards.formatMoney(totalSale - totalCost, currency, masked))
         }
+    }
+    SarimConfirmDialog(
+        title = confirmGuardTitle("Production Entry", isUpdate = false, gated = gated),
+        message = confirmGuardMessage(details, isUpdate = false, gated = gated),
+        confirmText = confirmGuardConfirmWord(isUpdate = false, gated = gated),
+        cancelText = "Cancel",
+        tone = DialogTone.Primary,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        confirmTag = "prod_confirm_save_btn"
     )
 }

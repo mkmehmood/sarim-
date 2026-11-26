@@ -94,6 +94,7 @@ import com.gullzubair.sarim.ui.components.SarimDangerButton
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.FeedbackHelper
@@ -1282,17 +1283,16 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
     }
 
     confirmPurgeItem?.let { itemToPurge ->
-        AlertDialog(
-            onDismissRequest = { confirmPurgeItem = null },
-            title = { Text("Delete Permanently") },
-            text = { Text("Permanently erase \"${itemToPurge.displayName.ifBlank { itemToPurge.recordId }}\" from ${itemToPurge.collection}? This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.purgeTombstone(itemToPurge)
-                    confirmPurgeItem = null
-                }) { Text("Erase Forever", color = accents.danger) }
+        SarimConfirmDialog(
+            title = "Delete Permanently?",
+            message = "Item: ${itemToPurge.displayName.ifBlank { itemToPurge.recordId }}\nCollection: ${itemToPurge.collection}\n\nThis action cannot be undone.",
+            confirmText = "Erase Forever",
+            danger = true,
+            onConfirm = {
+                vm.purgeTombstone(itemToPurge)
+                confirmPurgeItem = null
             },
-            dismissButton = { TextButton(onClick = { confirmPurgeItem = null }) { Text("Cancel") } }
+            onDismiss = { confirmPurgeItem = null }
         )
     }
 }
