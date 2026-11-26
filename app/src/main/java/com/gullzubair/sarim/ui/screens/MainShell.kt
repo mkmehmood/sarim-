@@ -55,13 +55,12 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -120,7 +119,6 @@ import kotlinx.coroutines.launch
 private val ScreenEnterEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 private val ScreenLeaveEasing = CubicBezierEasing(0.4f, 0f, 0.8f, 0.6f)
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MainFeatureScreen(currentUserId: String) {
     val vm: SarimViewModel = viewModel(
@@ -149,8 +147,7 @@ fun MainFeatureScreen(currentUserId: String) {
                     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                // Expressive loading indicator: a morphing shape instead of a spinning ring.
-                                LoadingIndicator(color = MaterialTheme.colorScheme.primary)
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.height(12.dp))
                                 Text("Syncing Sarim Workspace...", style = MaterialTheme.typography.bodyMedium)
                             }
