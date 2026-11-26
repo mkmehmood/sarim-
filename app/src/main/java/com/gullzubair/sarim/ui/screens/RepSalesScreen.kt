@@ -1,7 +1,6 @@
 package com.gullzubair.sarim.ui.screens
 
 import android.Manifest
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,8 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -113,10 +110,9 @@ fun RepSalesScreen(
     var capturedLatLng by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var gpsStatus by remember { mutableStateOf("GPS not captured") }
 
-    // Analytics / Directory / History state
+    // Analytics / Directory state
     var analyticsPeriod by remember { mutableStateOf(RepSalesAnalyticsEngine.RepAnalyticsPeriod.DAY) }
     var customerSearch by remember { mutableStateOf("") }
-    var historySearch by remember { mutableStateOf("") }
 
     // Sheets, Edit & Confirmation Modals
     var selectedRepRec by remember { mutableStateOf<SalesRecord?>(null) }
@@ -305,15 +301,10 @@ fun RepSalesScreen(
     val runningBalances = remember(snapshot, activeRepProfile) {
         RepSalesAnalyticsEngine.computeRepRunningBalances(snapshot, activeRepProfile)
     }
-    val filteredHistory = remember(snapshot.repRecords, activeRepProfile, customerName, historySearch) {
+    val filteredHistory = remember(snapshot.repRecords, activeRepProfile, customerName) {
         val cf = customerName.trim().lowercase()
-        val hs = historySearch.trim().lowercase()
         RepSalesAnalyticsEngine.scopedRepRecords(snapshot.repRecords, activeRepProfile).filter { r ->
             if (cf.isNotBlank() && !r.customerName.lowercase().contains(cf)) return@filter false
-            if (hs.isNotBlank()) {
-                val hay = "${r.customerName} ${r.paymentType} ${r.supplyStore} ${r.notes} ${r.date}".lowercase()
-                if (!hay.contains(hs)) return@filter false
-            }
             true
         }.sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
     }
@@ -471,8 +462,6 @@ fun RepSalesScreen(
             RepEntryCard(
                 isEditing = editingRepRec != null,
                 editingSpecialType = editingSpecialType,
-                isOwnRepOnly = isOwnRepOnly,
-                activeRepProfile = activeRepProfile,
                 masked = masked,
                 currency = currency,
                 entryMode = entryMode,
@@ -487,18 +476,13 @@ fun RepSalesScreen(
                 customerPhone = customerPhone,
                 onCustomerPhoneChange = { customerPhone = it },
                 existingDebt = existingDebt,
-                customerTotalQty = customerTotalQty,
                 onOpenCustomerLedger = onOpenCustomer,
                 onClearCustomer = { customerName = ""; customerPhone = "" },
-                activeStores = activeStores,
-                selectedStore = selectedStore,
-                onSelectStore = { selectedStore = it },
                 paymentType = paymentType,
                 onSelectPaymentType = { paymentType = it },
                 qtyStr = qtyStr,
                 onQtyChange = { qtyStr = it },
-                rateStr = rateStr,
-                onRateChange = { rateStr = it },
+                rateVal = rate,
                 previewTotalValue = previewTotalValue,
                 previewUnitCost = previewUnitCost,
                 previewProfit = previewProfit,
@@ -508,19 +492,6 @@ fun RepSalesScreen(
                 onExpiredChange = { expiredStr = it },
                 goodsCreditRate = goodsCreditRate,
                 goodsCreditPlan = goodsCreditPlan,
-                gpsStatus = gpsStatus,
-                gpsConfirmedCluster = gpsConfirmedCluster,
-                onCaptureGps = {
-                    if (LocationHelper.hasLocationPermission(context)) {
-                        val coords = LocationHelper.getBestLastLocation(context)
-                        capturedLatLng = coords
-                        gpsStatus = if (coords != null) "GPS: ${"%.5f".format(coords.first)}, ${"%.5f".format(coords.second)}" else "Waiting for GPS fix"
-                    } else {
-                        locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                    }
-                },
-                notes = notes,
-                onNotesChange = { notes = it },
                 onCancelEdit = { showDiscardEdit = true },
                 onSaveClick = { validateAndSave() }
             )
@@ -561,7 +532,7 @@ fun RepSalesScreen(
                 onExportPdf = {
                     val (rows, footer) = RepSalesAnalyticsEngine.buildAllRepClientsPdfRows(snapshot, activeRepProfile, masked)
                     if (rows.isEmpty()) {
-                        Toast.makeText(context, "No rep customers to export", Toast.LENGTH_SHORT).show()
+                        vm.showToast("No rep customers to export", com.gullzubair.sarim.ui.viewmodel.ToastKind.WARNING)
                     } else {
                         PdfExporter.exportAndShareStatement(
                             context = context,
@@ -578,67 +549,31 @@ fun RepSalesScreen(
             )
         }
 
-        // 5. Activity History Tree
+        // 5. Rep History Tree (#repHistoryList)
         item {
-            SarimCard(contentPadding = PaddingValues(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Activity", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Text("${filteredHistory.size} entries", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
-                }
-                if (customerName.trim().isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Surface(
-                        onClick = { customerName = "" },
-                        shape = RoundedCornerShape(10.dp),
-                        color = accents.cyan.copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.4f)),
-                        modifier = Modifier.testTag("rep_history_clear_cust_filter")
-                    ) {
-                        Text(
-                            text = "Filtered by \"${customerName.trim()}\" • Tap to show all",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = accents.cyan,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+            if (filteredHistory.isEmpty()) {
+                EmptyStateCard("No rep history", "Saved field sales and collections appear here.")
+            } else {
+                SarimYearMonthDayTree(
+                    items = filteredHistory,
+                    dateOf = { it.date },
+                    summaryLabel = { list ->
+                        val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
+                        val cash = list.sumOf { it.collectedAmount }
+                        "${InputGuards.formatKg(kg)} • ${InputGuards.formatMoney(cash, currency, masked)}"
+                    },
+                    itemRow = { r ->
+                        RepHistoryRowCard(
+                            r = r,
+                            stores = snapshot.stores,
+                            runningBalanceAfter = runningBalances[r.id],
+                            isSelectedDate = r.date.take(10) == dateIso.take(10),
+                            currency = currency,
+                            masked = masked,
+                            onClick = { selectedRepRec = r }
                         )
                     }
-                }
-                Spacer(Modifier.height(10.dp))
-                SarimPillInput(
-                    value = historySearch,
-                    onValueChange = { historySearch = it },
-                    placeholder = "Search activity by customer, store, notes...",
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    testTag = "rep_history_search"
                 )
-                Spacer(Modifier.height(10.dp))
-                if (filteredHistory.isEmpty()) {
-                    EmptyStateCard("No rep activity", "Saved field sales and collections appear here.")
-                } else {
-                    SarimYearMonthDayTree(
-                        items = filteredHistory,
-                        dateOf = { it.date },
-                        summaryLabel = { list ->
-                            val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
-                            val cash = list.sumOf { it.collectedAmount }
-                            "${InputGuards.formatKg(kg)} • ${InputGuards.formatMoney(cash, currency, masked)}"
-                        },
-                        itemRow = { r ->
-                            RepHistoryRowCard(
-                                r = r,
-                                stores = snapshot.stores,
-                                runningBalanceAfter = runningBalances[r.id],
-                                isSelectedDate = r.date.take(10) == dateIso.take(10),
-                                currency = currency,
-                                masked = masked,
-                                onClick = { selectedRepRec = r }
-                            )
-                        }
-                    )
-                }
             }
         }
     }

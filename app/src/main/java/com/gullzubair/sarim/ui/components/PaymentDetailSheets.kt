@@ -3,6 +3,7 @@ package com.gullzubair.sarim.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +15,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
@@ -24,47 +31,83 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 
 @Composable
 fun PaymentTxDetailSheet(
     tx: PaymentTransaction,
+    attachedPhotoDataUri: String? = null,
     currency: String,
     masked: Boolean,
     isAdmin: Boolean,
     vm: SarimViewModel,
+    onOpenExpenseDetail: ((String) -> Unit)? = null,
     onEditEntry: (PaymentTransaction) -> Unit,
     onCopyToForm: (PaymentTransaction) -> Unit,
     onDismiss: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
     var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    var showPhotoLightbox by remember { mutableStateOf(false) }
     ConfirmRequestHost(confirmReq) { confirmReq = null }
-    val canEdit = !tx.isMerged && !tx.isTransfer && !tx.isPayable
+    val canEdit = !tx.isMerged && !tx.isTransfer && !tx.isSettled && !tx.isPayable &&
+        tx.materialId.isBlank() && tx.supplierCreditAmount <= 0.0
+
     SarimDetailBottomSheet(
         title = tx.entityName.uppercase(),
         rightTitle = InputGuards.formatMoney(tx.amount, currency, masked),
-        subtitle = "${DateUtils.formatPretty(tx.date).uppercase()} • ${tx.type} • ${tx.entityType}",
+        subtitle = buildString {
+            append(DateUtils.formatPretty(tx.date).uppercase())
+            append(" • ")
+            append(if (tx.isExpense) "OPERATING EXPENSE" else tx.type)
+            if (tx.entityType.isNotBlank() && !tx.isExpense) {
+                append(" • ${tx.entityType}")
+            }
+            if (tx.isSettled) append(" • Settled")
+        },
         onDismiss = onDismiss,
         content = {
             HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
             Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Channel", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                Text(tx.paymentMethod, style = MaterialTheme.typography.titleSmall)
-            }
             if (tx.description.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Description", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
                     Text(tx.description, style = MaterialTheme.typography.titleSmall)
                 }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (!attachedPhotoDataUri.isNullOrBlank()) {
+                Text("Attached Photo", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
+                Spacer(Modifier.height(6.dp))
+                DecodedDataUrlImage(
+                    dataUrl = attachedPhotoDataUri,
+                    contentDescription = "Transaction photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showPhotoLightbox = true }
+                        .testTag("pay_detail_photo")
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            if (tx.isExpense && onOpenExpenseDetail != null) {
+                Text(
+                    "View all \"${tx.entityName}\" records",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = accents.emerald,
+                    modifier = Modifier
+                        .clickable {
+                            val nm = tx.entityName
+                            onDismiss()
+                            onOpenExpenseDetail(nm)
+                        }
+                        .padding(vertical = 6.dp)
+                        .testTag("pay_view_expense_${tx.id}")
+                )
             }
             if (tx.editHistory.isNotEmpty() || tx.timestamp > 0L) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
                 EditHistorySection(
                     editHistory = tx.editHistory,
                     createdAtEpoch = tx.timestamp,
@@ -137,11 +180,19 @@ fun PaymentTxDetailSheet(
             }
         }
     )
+
+    if (showPhotoLightbox && !attachedPhotoDataUri.isNullOrBlank()) {
+        ProductionPhotoLightboxDialog(
+            photos = listOf(attachedPhotoDataUri),
+            onDismiss = { showPhotoLightbox = false }
+        )
+    }
 }
 
 @Composable
 fun ExpenseTxDetailSheet(
     exp: ExpenseRecord,
+    attachedPhotoDataUri: String? = null,
     currency: String,
     masked: Boolean,
     isAdmin: Boolean,
@@ -153,6 +204,7 @@ fun ExpenseTxDetailSheet(
 ) {
     val accents = LocalSarimAccents.current
     var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    var showPhotoLightbox by remember { mutableStateOf(false) }
     ConfirmRequestHost(confirmReq) { confirmReq = null }
     val canEdit = !exp.isMerged
     SarimDetailBottomSheet(
@@ -163,18 +215,29 @@ fun ExpenseTxDetailSheet(
         content = {
             HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
             Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Channel", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                Text(exp.paymentMethod, style = MaterialTheme.typography.titleSmall)
-            }
             if (exp.description.isNotBlank() || exp.notes.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Notes", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
                     Text(exp.notes.ifBlank { exp.description }, style = MaterialTheme.typography.titleSmall)
                 }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(10.dp))
+            if (!attachedPhotoDataUri.isNullOrBlank()) {
+                Text("Attached Photo", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
+                Spacer(Modifier.height(6.dp))
+                DecodedDataUrlImage(
+                    dataUrl = attachedPhotoDataUri,
+                    contentDescription = "Expense photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showPhotoLightbox = true }
+                        .testTag("exp_detail_photo")
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             Text(
                 "View all \"${exp.name}\" records",
                 style = MaterialTheme.typography.labelLarge,
@@ -258,4 +321,11 @@ fun ExpenseTxDetailSheet(
             }
         }
     )
+
+    if (showPhotoLightbox && !attachedPhotoDataUri.isNullOrBlank()) {
+        ProductionPhotoLightboxDialog(
+            photos = listOf(attachedPhotoDataUri),
+            onDismiss = { showPhotoLightbox = false }
+        )
+    }
 }

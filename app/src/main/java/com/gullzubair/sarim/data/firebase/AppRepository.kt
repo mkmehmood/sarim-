@@ -4,8 +4,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -52,26 +53,32 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
 class AppRepository(
-    val db: FirebaseFirestore,
+    val db: FirebaseFirestore?,
     val offlineRepo: OfflineSyncRepository? = null,
     private val appContext: Context? = null
 ) {
 
     constructor(context: Context) : this(
-        db = configureFirestore(
-            FirebaseFirestore.getInstance(
-                context.applicationContext.getString(R.string.firestore_database_id)
+        db = if (isFirebaseConfigured(context.applicationContext)) {
+            configureFirestore(
+                FirebaseFirestore.getInstance(
+                    context.applicationContext.getString(R.string.firestore_database_id)
+                )
             )
-        ),
+        } else {
+            null
+        },
         offlineRepo = OfflineSyncRepository(
             SarimOfflineDatabase.getInstance(context.applicationContext).offlineDao()
         ),
         appContext = context.applicationContext
     )
 
-    private val auth = Firebase.auth
+    private val auth: FirebaseAuth?
+        get() = if (isFirebaseConfigured(appContext)) runCatching { Firebase.auth }.getOrNull() else null
 
     fun isOnline(): Boolean {
+        if (db == null) return false
         val ctx = appContext ?: return true
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
         val network = cm.activeNetwork ?: return false
@@ -79,10 +86,16 @@ class AppRepository(
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    fun requireUserId(): String = auth.currentUser?.uid
-        ?: throw IllegalStateException("User must be signed in before accessing Firestore.")
+    fun requireUserId(): String =
+        if (db == null) {
+            LocalSessionStore.localUid.value ?: LocalSessionStore.DEFAULT_LOCAL_UID
+        } else {
+            auth?.currentUser?.uid
+                ?: throw IllegalStateException("User must be signed in before accessing Firestore.")
+        }
 
-    private fun userRoot(ownerUid: String) = db.collection("users").document(ownerUid)
+    private fun userRoot(ownerUid: String) =
+        requireNotNull(db) { "Firestore unavailable in local mode" }.collection("users").document(ownerUid)
 
     private fun workspaceCol(ownerUid: String, collection: String) =
         userRoot(ownerUid).collection(collection)
@@ -107,7 +120,7 @@ class AppRepository(
                 .catch { error ->
                     val unwrapped = unwrapFirestoreError(error)
                     if (unwrapped == null && error is CancellationException) throw error
-                    if (auth.currentUser?.uid == viewerUid) {
+                    if (auth?.currentUser?.uid == viewerUid) {
                         handleFirestoreError(unwrapped ?: error, OperationType.LIST, path)
                     }
                     throw error
@@ -129,7 +142,7 @@ class AppRepository(
                 .catch { error ->
                     val unwrapped = unwrapFirestoreError(error)
                     if (unwrapped == null && error is CancellationException) throw error
-                    if (auth.currentUser?.uid == viewerUid) {
+                    if (auth?.currentUser?.uid == viewerUid) {
                         handleFirestoreError(unwrapped ?: error, OperationType.GET, path)
                     }
                     emit(emptyMap())
@@ -139,7 +152,25 @@ class AppRepository(
 
     suspend fun ensureUserProfileAndWorkspace(): Result<UserProfile> {
         return try {
-            val user = auth.currentUser ?: error("Not authenticated")
+            val remoteDb = db
+            if (remoteDb == null) {
+                val localUid = LocalSessionStore.localUid.value ?: LocalSessionStore.DEFAULT_LOCAL_UID
+                val existing = offlineRepo?.getCachedProfile(localUid)
+                val profile = existing ?: UserProfile(
+                    uid = localUid,
+                    email = "local@sarim.app",
+                    displayName = "Admin",
+                    role = "admin",
+                    roles = listOf("admin"),
+                    approved = true
+                ).also {
+                    offlineRepo?.cacheProfile(it)
+                }
+                seedLocalWorkspaceIfEmpty(localUid)
+                return Result.success(profile)
+            }
+
+            val user = auth?.currentUser ?: error("Not authenticated")
             val uid = user.uid
             val email = (user.email ?: "$uid@local.user").lowercase().take(160)
             val displayName = InputGuards.sanitizeName(user.displayName?.ifBlank { null } ?: email.substringBefore("@"))
@@ -148,7 +179,7 @@ class AppRepository(
                 if (!isOnline()) return Result.success(cached)
             }
 
-            val profileRef = db.collection("users").document(uid)
+            val profileRef = remoteDb.collection("users").document(uid)
             val cachedFirestoreSnap = runCatching { profileRef.get(Source.CACHE).await() }.getOrNull()
             if (cachedFirestoreSnap != null && cachedFirestoreSnap.exists() && !isOnline()) {
                 val profile = WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(cachedFirestoreSnap))
@@ -173,7 +204,7 @@ class AppRepository(
                 var invitedProfile: UserProfile? = null
                 if (user.isEmailVerified && !user.email.isNullOrBlank()) {
                     val invites = try {
-                        db.collection("workspace_invites")
+                        remoteDb.collection("workspace_invites")
                             .whereEqualTo("memberEmail", email)
                             .get()
                             .await()
@@ -201,7 +232,7 @@ class AppRepository(
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
                         profileRef.set(payload).await()
-                        db.collection("workspace_invites").document(match.id).update(
+                        remoteDb.collection("workspace_invites").document(match.id).update(
                             mapOf(
                                 "status" to "accepted",
                                 "acceptedByUid" to uid,
@@ -237,8 +268,41 @@ class AppRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "users/${auth.currentUser?.uid}")
+            handleFirestoreError(e, OperationType.WRITE, "users/${auth?.currentUser?.uid}")
             Result.failure(e)
+        }
+    }
+
+    private suspend fun seedLocalWorkspaceIfEmpty(ownerUid: String) {
+        val offline = offlineRepo ?: return
+        offline.ensureWorkspaceScopedKv(ownerUid)
+        val hasStores = !offline.getKvRaw("stores").isNullOrBlank()
+        val hasSettings = !offline.getKvRaw("settings").isNullOrBlank()
+        if (hasStores && hasSettings) return
+        val now = System.currentTimeMillis()
+        val defaultStores = listOf(
+            mapOf("key" to "zubair", "name" to "Zubair", "salePrice" to 0.0, "active" to true, "updatedAt" to now),
+            mapOf("key" to "mahmood", "name" to "Mahmood", "salePrice" to 0.0, "active" to true, "updatedAt" to now),
+            mapOf("key" to "asaan", "name" to "Asaan", "salePrice" to 0.0, "active" to true, "updatedAt" to now)
+        )
+        val defaultSettings = mapOf(
+            "currencySymbol" to "Rs",
+            "financialYearStartMonth" to 7L,
+            "hideSensitiveMoney" to false,
+            "themeMode" to "light",
+            "paymentModes" to listOf("Cash", "Bank", "Easypaisa", "JazzCash")
+        )
+        val updates = linkedMapOf<String, String>()
+        if (!hasStores) updates["stores"] = WorkspaceJsonCodec.mapListToJson(defaultStores)
+        if (!hasSettings) updates["settings"] = WorkspaceJsonCodec.mapToJson(defaultSettings)
+        if (offline.getKvRaw("formulas").isNullOrBlank()) updates["formulas"] = "[]"
+        if (offline.getKvRaw("daily_ledger").isNullOrBlank()) updates["daily_ledger"] = "[]"
+        if (offline.getKvRaw("reps").isNullOrBlank()) updates["reps"] = "[]"
+        if (offline.getKvRaw("categories").isNullOrBlank()) updates["categories"] = "[]"
+        if (offline.getKvRaw("field_expense_categories").isNullOrBlank()) updates["field_expense_categories"] = "[]"
+        if (offline.getKvRaw("commission_categories").isNullOrBlank()) updates["commission_categories"] = "[]"
+        if (updates.isNotEmpty()) {
+            offline.setKvBatch(updates)
         }
     }
 
@@ -304,8 +368,9 @@ class AppRepository(
         }
     }
 
-    fun observeProfile(uid: String): Flow<UserProfile?> =
-        db.collection("users").document(uid)
+    fun observeProfile(uid: String): Flow<UserProfile?> {
+        val remoteDb = db ?: return offlineRepo?.observeProfile(uid) ?: emptyFlow()
+        return remoteDb.collection("users").document(uid)
             .snapshots()
             .map { snap ->
                 if (snap.exists()) WorkspaceJsonCodec.mapToUserProfile(uid, WorkspaceJsonCodec.snapshotToMap(snap))
@@ -321,15 +386,17 @@ class AppRepository(
                 if (cached != null) {
                     emit(cached)
                 } else {
-                    if (auth.currentUser?.uid == uid) {
+                    if (auth?.currentUser?.uid == uid) {
                         handleFirestoreError(unwrapped ?: error, OperationType.GET, "users/$uid")
                     }
                     throw error
                 }
             }
+    }
 
     @Suppress("UNCHECKED_CAST")
     fun observeWorkspace(profile: UserProfile): Flow<WorkspaceSnapshot> {
+        val remoteDb = db ?: return emptyFlow()
         val ownerUid = profile.effectiveOwnerUid
         val viewerUid = profile.uid
 
@@ -418,7 +485,7 @@ class AppRepository(
                 emit(emptyList())
             } else {
                 emitAll(
-                    db.collection("workspace_invites")
+                    remoteDb.collection("workspace_invites")
                         .whereEqualTo("ownerUid", ownerUid)
                         .snapshots()
                         .map { snap ->
@@ -435,7 +502,7 @@ class AppRepository(
                 emit(listOf(profile))
             } else {
                 emitAll(
-                    db.collection("users")
+                    remoteDb.collection("users")
                         .whereEqualTo("ownerUid", ownerUid)
                         .snapshots()
                         .map { snap ->
@@ -544,6 +611,7 @@ class AppRepository(
             if (kvUpdates.isNotEmpty()) {
                 offlineRepo?.setKvBatch(kvUpdates)
             }
+            if (db == null) return Result.success(Unit)
             outboxId = offlineRepo?.enqueueOutbox(ownerUid, "SINGLETON", collection, docId, payload) ?: 0L
             if (!isOnline()) return Result.success(Unit)
             val synced = withTimeoutOrNull(2500L) {

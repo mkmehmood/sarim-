@@ -552,8 +552,8 @@ fun SalesSummaryCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedPeriod.title.uppercase(),
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp),
+                text = selectedPeriod.title,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                 color = accents.textMuted
             )
             summary.marginPercent?.let { m ->

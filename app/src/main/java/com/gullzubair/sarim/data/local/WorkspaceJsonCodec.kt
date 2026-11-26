@@ -610,6 +610,7 @@ object WorkspaceJsonCodec {
             gpsConfirmed = asBool(gps?.get("confirmed"), asBool(data["addressConfirmed"], false)),
             notes = asStr(data["notes"]),
             isMerged = asBool(data["isMerged"], false),
+            mergedSummary = asDoubleMap(data["mergedSummary"]),
             timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
             createdAt = asLong(data["createdAt"], 0L),
             updatedAtEpoch = asLong(data["updatedAt"], 0L),
@@ -673,6 +674,7 @@ object WorkspaceJsonCodec {
         }
         if (s.notes.isNotBlank()) put("notes", s.notes)
         if (s.isMerged) put("isMerged", true)
+        if (s.mergedSummary.isNotEmpty()) put("mergedSummary", s.mergedSummary)
         put("timestamp", if (s.timestamp > 0L) s.timestamp else System.currentTimeMillis())
         put("createdAt", if (s.createdAt > 0L) s.createdAt else System.currentTimeMillis())
         s.deletedAt?.let { put("deletedAt", it) }
@@ -990,9 +992,14 @@ object WorkspaceJsonCodec {
             amount = asDouble(data["amount"], 0.0),
             description = asStr(data["description"], asStr(data["notes"])),
             paymentMethod = asStr(data["paymentMethod"], asStr(data["paymentChannel"], "Cash")),
+            category = asStr(data["category"]),
             isPayable = asBool(data["isPayable"], false),
             isExpense = asBool(data["isExpense"], false),
             expenseId = asStr(data["expenseId"]),
+            supplierCreditAmount = asDouble(data["supplierCreditAmount"], 0.0),
+            materialId = asStr(data["materialId"]),
+            materialIds = asStrList(data["materialIds"]),
+            consumedCredits = asMapList(data["consumedCredits"]),
             isTransfer = asBool(data["isTransfer"], rawType.startsWith("TRANSFER")),
             transferPairId = asStr(data["transferPairId"]),
             transferDirection = asStr(data["transferDirection"]),
@@ -1019,9 +1026,14 @@ object WorkspaceJsonCodec {
         put("amount", t.amount)
         if (t.description.isNotBlank()) put("description", t.description)
         put("paymentMethod", t.paymentMethod)
+        if (t.category.isNotBlank()) put("category", t.category)
         if (t.isPayable) put("isPayable", true)
         if (t.isExpense) put("isExpense", true)
         if (t.expenseId.isNotBlank()) put("expenseId", t.expenseId)
+        if (t.supplierCreditAmount != 0.0) put("supplierCreditAmount", t.supplierCreditAmount)
+        if (t.materialId.isNotBlank()) put("materialId", t.materialId)
+        if (t.materialIds.isNotEmpty()) put("materialIds", t.materialIds)
+        if (t.consumedCredits.isNotEmpty()) put("consumedCredits", t.consumedCredits)
         if (t.isTransfer) {
             put("isTransfer", true)
             if (t.transferPairId.isNotBlank()) put("transferPairId", t.transferPairId)

@@ -10,17 +10,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +60,7 @@ fun CalculatorPerformanceChartCard(
 ) {
     val accents = LocalSarimAccents.current
     var mode by remember { mutableStateOf("week") } // week | month | year | all
-    var metric by remember { mutableStateOf("revenue") } // revenue | sold | cash | commission
+    var metric by remember { mutableStateOf("weight") } // weight | value | cost | profit | cash | credit
 
     val filtered = remember(history, seller) {
         if (seller.equals("COMBINED", true) || seller.isBlank()) history
@@ -61,9 +68,12 @@ fun CalculatorPerformanceChartCard(
     }
 
     fun metricOf(c: CalculatorRecord): Double = when (metric) {
-        "sold" -> c.totalSold
-        "cash" -> c.received
-        "commission" -> c.commissionPaid
+        "weight" -> (c.totalSold - c.returned).coerceAtLeast(0.0)
+        "value" -> c.revenue
+        "cost" -> c.totalCost
+        "profit" -> c.profit
+        "cash" -> c.cashQty * c.unitPrice
+        "credit" -> c.creditValue
         else -> c.revenue
     }
 
@@ -101,62 +111,178 @@ fun CalculatorPerformanceChartCard(
         }
     }
 
+    val metricOptions = listOf(
+        "weight" to "Weight (kg)",
+        "value" to "Total Value",
+        "cost" to "Total Cost",
+        "profit" to "Net Profit",
+        "cash" to "Cash Sales",
+        "credit" to "Credit Sales"
+    )
+    val selectedMetricLabel = metricOptions.firstOrNull { it.first == metric }?.second ?: "Weight (kg)"
+
     SarimCard {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (seller.equals("COMBINED", true) || seller.isBlank()) "COMBINED PERFORMANCE" else "${seller.uppercase()} PERFORMANCE",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            Text(metric.uppercase(), style = MaterialTheme.typography.labelSmall, color = accents.emerald)
-        }
+        Text(
+            "Performance Analytics for ${if (seller.equals("COMBINED", true) || seller.isBlank()) "Combined" else seller}",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("week" to "Week", "month" to "Month", "year" to "Year", "all" to "All").forEach { (k, lbl) ->
+            listOf("week" to "Weekly", "month" to "Monthly", "year" to "Yearly", "all" to "All Times").forEach { (k, lbl) ->
                 val sel = mode == k
                 Surface(
                     onClick = { mode = k },
                     shape = RoundedCornerShape(12.dp),
                     color = if (sel) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).testTag("calc_ind_mode_$k")
                 ) {
-                    Box(Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(lbl, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted)
+                    Box(Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
+                        Text(lbl, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted, maxLines = 1)
                     }
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("revenue" to "Revenue", "sold" to "Sold kg", "cash" to "Cash", "commission" to "Comm").forEach { (k, lbl) ->
-                val sel = metric == k
-                Surface(
-                    onClick = { metric = k },
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (sel) accents.emerald.copy(alpha = 0.14f) else accents.inputFill,
-                    border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(lbl, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted)
-                    }
-                }
-            }
-        }
+        Spacer(Modifier.height(8.dp))
+        PickerField(
+            label = "Select Metric:",
+            selectedLabel = selectedMetricLabel,
+            options = metricOptions,
+            onSelect = { metric = it },
+            testTag = "calc_ind_metric_picker"
+        )
         Spacer(Modifier.height(10.dp))
         SparklineChart(
-            title = when (metric) {
-                "sold" -> "Sold Volume (kg)"
-                "cash" -> "Cash Received"
-                "commission" -> "Commission Paid"
-                else -> "Net Revenue"
-            },
+            title = selectedMetricLabel,
             series = series,
-            lineColor = if (metric == "commission") accents.gold else accents.emerald,
-            currency = if (metric == "sold") "kg" else currency,
-            masked = masked && metric != "sold"
+            lineColor = when (metric) {
+                "cost" -> accents.danger
+                "credit" -> accents.gold
+                else -> accents.emerald
+            },
+            currency = if (metric == "weight") "kg" else currency,
+            masked = masked && metric != "weight"
         )
     }
+}
+
+@Composable
+fun CalculatorItemListDialog(
+    title: String,
+    eyebrow: String,
+    caption: String,
+    placeholder: String,
+    totalLabel: String,
+    categories: List<String>,
+    items: List<Pair<String, String>>,
+    currency: String,
+    masked: Boolean,
+    onAddItem: (String, String) -> Unit,
+    onRemoveAt: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val accents = LocalSarimAccents.current
+    var nameInput by remember { mutableStateOf("") }
+    var amountInput by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    val total = items.sumOf { it.second.toDoubleOrNull() ?: 0.0 }
+    val q = nameInput.trim().lowercase()
+    val suggestions = remember(categories, items, q) {
+        (categories + items.map { it.first })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .filter { q.isEmpty() || it.lowercase().contains(q) }
+            .take(8)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = accents.emerald)
+                Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(caption, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                SarimPillInput(
+                    value = nameInput,
+                    onValueChange = { nameInput = it.take(60); errorMsg = null },
+                    label = "CATEGORY",
+                    placeholder = placeholder,
+                    testTag = "calc_popup_cat_input"
+                )
+                if (suggestions.isNotEmpty() && !suggestions.any { it.equals(nameInput.trim(), true) }) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            suggestions.take(4).forEach { sug ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { nameInput = sug }.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(sug, style = MaterialTheme.typography.bodySmall)
+                                    Text(eyebrow, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                }
+                            }
+                        }
+                    }
+                }
+                DecimalField("Amount", amountInput, { amountInput = it; errorMsg = null }, "calc_popup_amt_input")
+                errorMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accents.danger) }
+                if (items.isEmpty()) {
+                    Text("Nothing added yet.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 180.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(items) { idx, pair ->
+                            val amt = pair.second.toDoubleOrNull() ?: 0.0
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(pair.first, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.danger)
+                                IconButton(onClick = { onRemoveAt(idx) }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Close, contentDescription = "Remove ${pair.first}", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = accents.borderSubtle)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(totalLabel, style = MaterialTheme.typography.titleSmall)
+                        Text(InputGuards.formatMoney(total, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val nm = nameInput.trim()
+                val v = amountInput.toDoubleOrNull() ?: 0.0
+                when {
+                    nm.isEmpty() -> errorMsg = "Search and select a category, or type a new one."
+                    v <= 0.0 -> errorMsg = "Enter an amount greater than zero."
+                    else -> {
+                        onAddItem(nm, amountInput.trim())
+                        nameInput = ""
+                        amountInput = ""
+                    }
+                }
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
 }
 
 @Composable

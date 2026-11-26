@@ -1,6 +1,5 @@
 package com.gullzubair.sarim.ui.screens
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -568,6 +567,7 @@ fun SalesScreen(
         item {
             SalesEntryCard(
                 isEditing = editingSale != null,
+                editingId = editingSale?.id,
                 isSalesRestricted = isSalesRestricted,
                 masked = masked,
                 currency = currency,
@@ -646,7 +646,7 @@ fun SalesScreen(
                     onExportAllPdf = {
                         val (rows, footer) = SalesAnalyticsEngine.buildAllCustomersPdfRows(snapshot, masked)
                         if (rows.isEmpty()) {
-                            Toast.makeText(context, "No customers to export", Toast.LENGTH_SHORT).show()
+                            vm.showToast("No customers to export", com.gullzubair.sarim.ui.viewmodel.ToastKind.WARNING)
                         } else {
                             PdfExporter.exportAndShareStatement(
                                 context = context,

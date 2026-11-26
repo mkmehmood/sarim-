@@ -1,6 +1,13 @@
 package com.gullzubair.sarim.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -90,7 +97,11 @@ import com.gullzubair.sarim.ui.theme.DangerGradientEnd
 import com.gullzubair.sarim.ui.theme.DangerGradientStart
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.viewmodel.ToastEvent
+import com.gullzubair.sarim.ui.viewmodel.ToastKind
 import com.gullzubair.sarim.util.FeedbackHelper
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharedFlow
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -1027,3 +1038,181 @@ fun SparklineChart(
         }
     }
 }
+
+/**
+ * Web parity: `.toast-container` + `.liquid-toast` pill at top-center below status bar
+ * with circular tinted glyph badge, text, and animated bottom progress bar.
+ */
+@Composable
+fun LiquidToastOverlay(
+    toastEvents: SharedFlow<ToastEvent>,
+    modifier: Modifier = Modifier
+) {
+    val accents = LocalSarimAccents.current
+    var currentToast by remember { mutableStateOf<ToastEvent?>(null) }
+    val progress = remember { Animatable(1f) }
+
+    androidx.compose.runtime.LaunchedEffect(toastEvents) {
+        toastEvents.collect { evt ->
+            currentToast = evt
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(currentToast?.id) {
+        val evt = currentToast ?: return@LaunchedEffect
+        progress.snapTo(1f)
+        progress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = evt.durationMs.toInt().coerceAtLeast(800), easing = LinearEasing)
+        )
+        delay(80)
+        if (currentToast?.id == evt.id) {
+            currentToast = null
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(top = 8.dp, start = 16.dp, end = 16.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        AnimatedVisibility(
+            visible = currentToast != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(tween(180)),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(tween(180))
+        ) {
+            val evt = currentToast ?: return@AnimatedVisibility
+            val tint = when (evt.kind) {
+                ToastKind.SUCCESS -> accents.emerald
+                ToastKind.WARNING -> accents.gold
+                ToastKind.ERROR -> accents.danger
+                ToastKind.INFO -> accents.cyan
+            }
+            val glyph = when (evt.kind) {
+                ToastKind.SUCCESS -> "✓"
+                ToastKind.WARNING -> "!"
+                ToastKind.ERROR -> "✕"
+                ToastKind.INFO -> "i"
+            }
+            Surface(
+                onClick = { currentToast = null },
+                shape = RoundedCornerShape(999.dp),
+                color = accents.headerFrosted.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, tint.copy(alpha = 0.38f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier.testTag("liquid_toast_pill")
+            ) {
+                Box(modifier = Modifier.clip(RoundedCornerShape(999.dp))) {
+                    Row(
+                        modifier = Modifier
+                            .padding(start = 8.dp, end = 16.dp, top = 7.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(tint.copy(alpha = 0.18f))
+                                .border(1.dp, tint.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = glyph,
+                                fontFamily = JakartaFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = tint
+                            )
+                        }
+                        Text(
+                            text = evt.message,
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth(progress.value.coerceIn(0f, 1f))
+                            .height(2.dp)
+                            .background(tint.copy(alpha = 0.65f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Web parity: `#offline-banner` pill showing offline / pending Room outbox count. */
+@Composable
+fun OfflineBanner(
+    isOnline: Boolean,
+    pendingSyncCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val accents = LocalSarimAccents.current
+    if (isOnline && pendingSyncCount <= 0) return
+    val dotColor = if (!isOnline) accents.gold else accents.cyan
+    val message = if (!isOnline) {
+        "Offline — changes saved locally"
+    } else {
+        "Syncing $pendingSyncCount queued operation${if (pendingSyncCount == 1) "" else "s"}..."
+    }
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = accents.headerFrosted.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, dotColor.copy(alpha = 0.35f)),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("offline_banner")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+            Text(
+                text = message,
+                fontFamily = JakartaFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (pendingSyncCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(accents.inputFill)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "$pendingSyncCount pending",
+                        fontFamily = JakartaFont,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 10.5.sp,
+                        color = accents.textMuted
+                    )
+                }
+            }
+        }
+    }
+}
+

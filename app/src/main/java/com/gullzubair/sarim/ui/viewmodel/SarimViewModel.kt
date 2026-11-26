@@ -51,6 +51,15 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
+enum class ToastKind { SUCCESS, WARNING, ERROR, INFO }
+
+data class ToastEvent(
+    val id: Long,
+    val message: String,
+    val kind: ToastKind = ToastKind.INFO,
+    val durationMs: Long = 3000L
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class SarimViewModel(
     private val repo: AppRepository,
@@ -71,8 +80,17 @@ class SarimViewModel(
     private val _biometricUnlocked = MutableStateFlow(false)
     val biometricUnlocked: StateFlow<Boolean> = _biometricUnlocked.asStateFlow()
 
-    private val _snackbarMessage = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val snackbarMessage = _snackbarMessage.asSharedFlow()
+    private var toastSeq = 0L
+    private val _toastEvents = MutableSharedFlow<ToastEvent>(extraBufferCapacity = 16)
+    val toastEvents = _toastEvents.asSharedFlow()
+
+    fun showToast(message: String, kind: ToastKind = ToastKind.INFO, durationMs: Long = 3000L) {
+        if (message.isBlank()) return
+        toastSeq += 1L
+        _toastEvents.tryEmit(ToastEvent(id = toastSeq, message = message, kind = kind, durationMs = durationMs))
+    }
+
+    fun isOnline(): Boolean = repo.isOnline()
 
     private val profileTrigger = MutableStateFlow(0)
 
@@ -107,37 +125,40 @@ class SarimViewModel(
                     }
                 }
 
-                var flushedOnConnect = false
-                launch {
-                    repo.observeProfile(currentUserId)
-                        .flatMapLatest { liveProfile ->
-                            val active = liveProfile ?: bootProfile
-                            repo.observeWorkspace(active)
-                        }
-                        .catch { error ->
-                            val unwrapped = unwrapFirestoreError(error)
-                            if (unwrapped == null && error is CancellationException) throw error
-                            if (!hasEmittedCacheOrLive) {
-                                val root = unwrapped ?: error
-                                send(UiState.Error(root.localizedMessage ?: "Failed to sync workspace"))
+                val remoteDb = repo.db
+                if (remoteDb != null) {
+                    var flushedOnConnect = false
+                    launch {
+                        repo.observeProfile(currentUserId)
+                            .flatMapLatest { liveProfile ->
+                                val active = liveProfile ?: bootProfile
+                                repo.observeWorkspace(active)
                             }
-                        }
-                        .collect { liveSnapshot ->
-                            if (offline != null) {
-                                val activeOwner = liveSnapshot.profile.effectiveOwnerUid
-                                if (!flushedOnConnect && repo.isOnline()) {
-                                    flushedOnConnect = true
-                                    launch {
-                                        offline.flushOutbox(activeOwner, repo.db)
-                                    }
+                            .catch { error ->
+                                val unwrapped = unwrapFirestoreError(error)
+                                if (unwrapped == null && error is CancellationException) throw error
+                                if (!hasEmittedCacheOrLive) {
+                                    val root = unwrapped ?: error
+                                    send(UiState.Error(root.localizedMessage ?: "Failed to sync workspace"))
                                 }
-                                offline.cacheWorkspaceSnapshot(activeOwner, liveSnapshot)
-                                hasEmittedCacheOrLive = true
-                            } else {
-                                hasEmittedCacheOrLive = true
-                                send(UiState.Success(liveSnapshot))
                             }
-                        }
+                            .collect { liveSnapshot ->
+                                if (offline != null) {
+                                    val activeOwner = liveSnapshot.profile.effectiveOwnerUid
+                                    if (!flushedOnConnect && repo.isOnline()) {
+                                        flushedOnConnect = true
+                                        launch {
+                                            offline.flushOutbox(activeOwner, remoteDb)
+                                        }
+                                    }
+                                    offline.cacheWorkspaceSnapshot(activeOwner, liveSnapshot)
+                                    hasEmittedCacheOrLive = true
+                                } else {
+                                    hasEmittedCacheOrLive = true
+                                    send(UiState.Success(liveSnapshot))
+                                }
+                            }
+                    }
                 }
             }
         }
@@ -194,34 +215,41 @@ class SarimViewModel(
 
     fun syncNow() {
         viewModelScope.launch {
-            _snackbarMessage.emit("Syncing…")
+            val remoteDb = repo.db
+            if (remoteDb == null) {
+                showToast("Local mode: saved in Room database", ToastKind.INFO)
+                return@launch
+            }
+            showToast("Syncing…", ToastKind.INFO)
             val snap = currentSnapshot()
             val ownerUid = snap?.profile?.effectiveOwnerUid ?: currentUserId
             if (!repo.isOnline()) {
                 val pending = repo.offlineRepo?.getOutboxCount(ownerUid) ?: (snap?.pendingSyncCount ?: 0)
-                _snackbarMessage.emit(
+                showToast(
                     if (pending > 0) "Offline: $pending change(s) queued in local Room DB"
-                    else "Offline: running on cached Room DB"
+                    else "Offline: running on cached Room DB",
+                    ToastKind.WARNING
                 )
                 return@launch
             }
             try {
-                val flushRes = repo.offlineRepo?.flushOutbox(ownerUid, repo.db)
+                val flushRes = repo.offlineRepo?.flushOutbox(ownerUid, remoteDb)
                 if (flushRes != null && flushRes.isFailure) {
-                    _snackbarMessage.emit(flushRes.exceptionOrNull()?.localizedMessage ?: "Sync incomplete")
+                    showToast(flushRes.exceptionOrNull()?.localizedMessage ?: "Sync incomplete", ToastKind.WARNING)
                     return@launch
                 }
                 withTimeoutOrNull(5000L) {
-                    repo.db.waitForPendingWrites().await()
+                    remoteDb.waitForPendingWrites().await()
                 }
                 val syncedCount = flushRes?.getOrDefault(0) ?: 0
-                _snackbarMessage.emit(
-                    if (syncedCount > 0) "Synced $syncedCount offline change(s)" else "All changes synced"
+                showToast(
+                    if (syncedCount > 0) "Synced $syncedCount offline change(s)" else "All changes synced",
+                    ToastKind.SUCCESS
                 )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _snackbarMessage.emit("Sync failed: ${e.localizedMessage ?: "check your connection"}")
+                showToast("Sync failed: ${e.localizedMessage ?: "check your connection"}", ToastKind.ERROR)
             }
         }
     }
@@ -229,12 +257,14 @@ class SarimViewModel(
     private fun handleResult(res: Result<*>, successMsg: String) {
         viewModelScope.launch {
             if (res.isSuccess) {
-                val msg = if (res.getOrNull()?.toString()?.startsWith("PENDING:") == true) {
-                    "Submitted for Admin approval"
-                } else successMsg
-                _snackbarMessage.emit(msg)
+                val isPending = res.getOrNull()?.toString()?.startsWith("PENDING:") == true
+                if (isPending) {
+                    showToast("Submitted for Admin approval", ToastKind.INFO)
+                } else {
+                    showToast(successMsg, ToastKind.SUCCESS)
+                }
             } else {
-                _snackbarMessage.emit(res.exceptionOrNull()?.localizedMessage ?: "Operation failed")
+                showToast(res.exceptionOrNull()?.localizedMessage ?: "Operation failed", ToastKind.ERROR)
             }
         }
     }
@@ -249,7 +279,11 @@ class SarimViewModel(
     fun toggleThemeMode() {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            val next = if (snap.settings.themeMode == "dark") "light" else "dark"
+            val next = when (snap.settings.themeMode.lowercase()) {
+                "system", "auto", "" -> "light"
+                "light" -> "dark"
+                else -> "system"
+            }
             dispatcher.saveSettings(snap, snap.settings.copy(themeMode = next))
         }
     }
@@ -417,13 +451,20 @@ class SarimViewModel(
         channel: String,
         amount: Double,
         addToLedger: Boolean,
-        notes: String
+        notes: String,
+        photoDataUri: String? = null
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
+            val normKind = kind.trim().uppercase()
+            val successLabel = when {
+                normKind == "EXPENSE" || normKind == "OPERATING" -> "Operating expense recorded: $name"
+                normKind == "IN" -> "Payment IN recorded: $name"
+                else -> "Payment OUT recorded: $name"
+            }
             handleResult(
-                dispatcher.savePaymentOrExpense(snap, date, kind, entity, name, category, channel, amount, addToLedger, notes),
-                if (kind.equals("EXPENSE", true)) "Expense saved" else "Payment saved"
+                dispatcher.savePaymentOrExpense(snap, date, kind, entity, name, category, channel, amount, addToLedger, notes, photoDataUri),
+                successLabel
             )
         }
     }
@@ -737,12 +778,14 @@ class SarimViewModel(
         paymentMethod: String,
         amount: Double,
         description: String,
+        photoDataUri: String? = null,
+        clearPhoto: Boolean = false,
         onSuccess: () -> Unit = {}
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            val res = editActions.editPaymentTransaction(snap, original, date, entity, customName, paymentMethod, amount, description)
-            handleResult(res, "Payment updated")
+            val res = editActions.editPaymentTransaction(snap, original, date, entity, customName, paymentMethod, amount, description, photoDataUri, clearPhoto)
+            handleResult(res, "Transaction updated")
             if (res.isSuccess) onSuccess()
         }
     }
@@ -755,12 +798,14 @@ class SarimViewModel(
         paymentMethod: String,
         amount: Double,
         notes: String,
+        photoDataUri: String? = null,
+        clearPhoto: Boolean = false,
         onSuccess: () -> Unit = {}
     ) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            val res = editActions.editExpenseRecord(snap, original, date, name, category, paymentMethod, amount, notes)
-            handleResult(res, "Expense updated")
+            val res = editActions.editExpenseRecord(snap, original, date, name, category, paymentMethod, amount, notes, photoDataUri, clearPhoto)
+            handleResult(res, "Transaction updated")
             if (res.isSuccess) onSuccess()
         }
     }
@@ -826,10 +871,10 @@ class SarimViewModel(
             val res = calcAndRepairActions.repairSalesLinks(snap, kind)
             if (res.isSuccess) {
                 val msg = res.getOrThrow().text
-                _snackbarMessage.emit(msg)
+                showToast(msg, ToastKind.SUCCESS)
                 onDone(msg)
             } else {
-                _snackbarMessage.emit(res.exceptionOrNull()?.localizedMessage ?: "Link repair failed")
+                showToast(res.exceptionOrNull()?.localizedMessage ?: "Link repair failed", ToastKind.ERROR)
             }
         }
     }
@@ -960,9 +1005,12 @@ class SarimViewModel(
             val res = dispatcher.auditRepriceZeroCostSales(snap)
             if (res.isSuccess) {
                 val n = res.getOrDefault(0)
-                _snackbarMessage.emit(if (n > 0) "Repriced $n sale(s) from production cost" else "No zero-cost sales to reprice")
+                showToast(
+                    if (n > 0) "Repriced $n sale(s) from production cost" else "No zero-cost sales to reprice",
+                    ToastKind.INFO
+                )
             } else {
-                _snackbarMessage.emit(res.exceptionOrNull()?.localizedMessage ?: "Reprice failed")
+                showToast(res.exceptionOrNull()?.localizedMessage ?: "Reprice failed", ToastKind.ERROR)
             }
         }
     }
@@ -1005,9 +1053,12 @@ class SarimViewModel(
                 val root = JSONObject(jsonText)
                 dispatcher.restoreBackupPayload(snap, root).getOrThrow()
             }.onSuccess { n ->
-                _snackbarMessage.emit(if (n > 0) "Restored $n record(s) from backup" else "Backup verified — all records already present")
+                showToast(
+                    if (n > 0) "Restored $n record(s) from backup" else "Backup verified — all records already present",
+                    ToastKind.SUCCESS
+                )
             }.onFailure { err ->
-                _snackbarMessage.emit("Restore failed: ${err.localizedMessage}")
+                showToast("Restore failed: ${err.localizedMessage}", ToastKind.ERROR)
             }
         }
     }

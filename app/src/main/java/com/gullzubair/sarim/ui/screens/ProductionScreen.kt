@@ -1,6 +1,5 @@
 package com.gullzubair.sarim.ui.screens
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -23,9 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -87,7 +83,7 @@ fun ProductionScreen(
     snapshot: WorkspaceSnapshot,
     todayIso: String,
     vm: SarimViewModel,
-    onOpenStockTransfer: () -> Unit
+    onOpenStockTransfer: () -> Unit = {}
 ) {
     val accents = LocalSarimAccents.current
     val context = LocalContext.current
@@ -121,7 +117,6 @@ fun ProductionScreen(
     var overviewPeriod by remember { mutableStateOf(ProductionAnalyticsEngine.OverviewPeriod.DAY) }
     var comparisonMetric by remember { mutableStateOf(ProductionAnalyticsEngine.ComparisonMetric.WEIGHT) }
     var mfgPeriod by remember { mutableStateOf(ProductionAnalyticsEngine.MfgChartPeriod.WEEK) }
-    var historySearch by remember { mutableStateOf("") }
 
     // Edit & Confirmation Dialogs
     var editingRecord by remember { mutableStateOf<ProductionRecord?>(null) }
@@ -202,7 +197,11 @@ fun ProductionScreen(
     // Mirrors web `_recordEntryImpl`: same checks, same order, same wording.
     fun validateBeforeSubmit(): Boolean {
         fun warn(message: String, long: Boolean = false): Boolean {
-            Toast.makeText(context, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+            vm.showToast(
+                message,
+                com.gullzubair.sarim.ui.viewmodel.ToastKind.WARNING,
+                if (long) 4500L else 3000L
+            )
             return false
         }
         val dateProblem = InputGuards.dateIssue(date, todayIso)
@@ -260,22 +259,14 @@ fun ProductionScreen(
         } else null
     }
 
-    val filteredHistory = remember(snapshot.production, snapshot.stores, effectiveView, selectedStore, date, historySearch, isMoneyRestrictedMode) {
+    val filteredHistory = remember(snapshot.production, effectiveView, selectedStore, date, isMoneyRestrictedMode) {
         if (isMoneyRestrictedMode) return@remember emptyList()
-        val q = historySearch.trim().lowercase()
         val base = snapshot.production.filter { rec ->
             if (rec.deletedAt != null) return@filter false
             if (effectiveView == "store") {
                 val st = selectedStore ?: return@filter false
                 if (!ProductionAnalyticsEngine.matchesStore(rec.store, st)) return@filter false
                 if (rec.date.isNotBlank() && rec.date.take(10) != date.take(10)) return@filter false
-            }
-            if (q.isNotBlank()) {
-                val storeName = FormulaEngine.storeLabelFor(rec.store, snapshot.stores)
-                val hay = listOf(storeName, rec.store, rec.date, rec.returnNote, rec.transferNote, rec.returnedBy, rec.formulaName, rec.managedBy)
-                    .joinToString(" ")
-                    .lowercase()
-                if (q !in hay) return@filter false
             }
             true
         }
@@ -302,31 +293,6 @@ fun ProductionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TabHeading("Manufacturing")
-                    if (!isMoneyRestrictedMode) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Surface(
-                                onClick = onOpenStockTransfer,
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.inputFill,
-                                border = BorderStroke(1.dp, accents.borderSubtle),
-                                modifier = Modifier
-                                    .defaultMinSize(minHeight = 40.dp)
-                                    .testTag("prod_open_transfer_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer Stock", tint = accents.emerald, modifier = Modifier.size(16.dp))
-                                    Text("Transfer", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
-                                }
-                            }
-                        }
-                    }
                 }
                 if (!isMoneyRestrictedMode) {
                     Spacer(Modifier.height(10.dp))
@@ -475,14 +441,6 @@ fun ProductionScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    SarimPillInput(
-                        value = historySearch,
-                        onValueChange = { historySearch = it },
-                        placeholder = "Search production history...",
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search history") },
-                        testTag = "prod_history_search"
-                    )
                 }
 
                 if (filteredHistory.isEmpty()) {
@@ -562,7 +520,10 @@ fun ProductionScreen(
                 if (res.isSuccess) {
                     selectedPhotoRecIds = emptySet()
                 } else {
-                    Toast.makeText(context, res.exceptionOrNull()?.localizedMessage ?: "Share failed", Toast.LENGTH_SHORT).show()
+                    vm.showToast(
+                        res.exceptionOrNull()?.localizedMessage ?: "Share failed",
+                        com.gullzubair.sarim.ui.viewmodel.ToastKind.ERROR
+                    )
                 }
             },
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -629,7 +590,10 @@ fun ProductionScreen(
                 {
                     val res = CaptionedPhotoSharer.shareProductionPhotos(context, listOf(r), snapshot.photos, currency, masked)
                     if (res.isFailure) {
-                        Toast.makeText(context, res.exceptionOrNull()?.localizedMessage ?: "Share failed", Toast.LENGTH_SHORT).show()
+                        vm.showToast(
+                            res.exceptionOrNull()?.localizedMessage ?: "Share failed",
+                            com.gullzubair.sarim.ui.viewmodel.ToastKind.ERROR
+                        )
                     }
                 }
             },

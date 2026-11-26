@@ -13,24 +13,54 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
-import com.gullzubair.sarim.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 private const val TAG = "Auth"
+
+object LocalSessionStore {
+    const val DEFAULT_LOCAL_UID = "local_admin"
+    private val _localUid = MutableStateFlow<String?>(DEFAULT_LOCAL_UID)
+    val localUid: StateFlow<String?> = _localUid.asStateFlow()
+
+    fun signInLocal() {
+        _localUid.value = DEFAULT_LOCAL_UID
+    }
+
+    fun signOutLocal() {
+        _localUid.value = null
+    }
+}
+
+fun isFirebaseConfigured(context: Context? = null): Boolean =
+    if (context != null) {
+        runCatching { FirebaseApp.getApps(context.applicationContext).isNotEmpty() }.getOrDefault(false)
+    } else {
+        runCatching { FirebaseApp.getInstance() }.isSuccess
+    }
+
+private fun resolveDefaultWebClientId(context: Context): String? {
+    val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+    if (resId == 0) return null
+    return runCatching { context.getString(resId) }.getOrNull()?.takeIf { it.isNotBlank() }
+}
 
 fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
     val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
@@ -47,13 +77,15 @@ fun attemptAutoSignIn(
     onUnauthenticated: () -> Unit,
     scope: CoroutineScope
 ) {
+    if (!isFirebaseConfigured(context)) {
+        onUnauthenticated()
+        return
+    }
     if (Firebase.auth.currentUser != null) {
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
+    val clientId = resolveDefaultWebClientId(context) ?: run {
         onUnauthenticated()
         return
     }
@@ -90,9 +122,12 @@ fun onGoogleSignInClicked(
     scope: CoroutineScope,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
+    if (!isFirebaseConfigured(context)) {
+        LocalSessionStore.signInLocal()
+        onAuthSuccess()
+        return
+    }
+    val clientId = resolveDefaultWebClientId(context) ?: run {
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
     }
@@ -130,6 +165,11 @@ fun onEmailPasswordSignInClicked(
     onAuthError: (String) -> Unit,
     scope: CoroutineScope
 ) {
+    if (!isFirebaseConfigured()) {
+        LocalSessionStore.signInLocal()
+        onAuthSuccess()
+        return
+    }
     val cleanEmail = email.trim()
     if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
         onAuthError("Please enter a valid email address.")
@@ -171,6 +211,16 @@ fun signOutUser(
     onBeforeFirebaseSignOut: suspend () -> Unit = {},
     onSignOutComplete: () -> Unit = {}
 ) {
+    if (!isFirebaseConfigured()) {
+        scope.launch {
+            withContext(NonCancellable) {
+                runCatching { onBeforeFirebaseSignOut() }
+                LocalSessionStore.signOutLocal()
+                onSignOutComplete()
+            }
+        }
+        return
+    }
     scope.launch {
         withContext(NonCancellable) {
             try {

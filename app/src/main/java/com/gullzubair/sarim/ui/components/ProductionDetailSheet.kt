@@ -1,6 +1,5 @@
 package com.gullzubair.sarim.ui.components
 
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -130,7 +129,10 @@ fun ProductionDetailSheet(
                         onClick = {
                             val res = CaptionedPhotoSharer.shareProductionPhotos(context, listOf(rec), photoStore, currency, masked)
                             if (res.isFailure) {
-                                Toast.makeText(context, res.exceptionOrNull()?.localizedMessage ?: "Share failed", Toast.LENGTH_SHORT).show()
+                                vm.showToast(
+                                    res.exceptionOrNull()?.localizedMessage ?: "Share failed",
+                                    com.gullzubair.sarim.ui.viewmodel.ToastKind.ERROR
+                                )
                             }
                         },
                         shape = RoundedCornerShape(12.dp),

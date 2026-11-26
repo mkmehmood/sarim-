@@ -2,7 +2,6 @@ package com.gullzubair.sarim.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -340,7 +339,7 @@ internal fun CustomerLedgerBody(
             }
         }
         if (dayRows.isEmpty()) {
-            Toast.makeText(context, "Nothing to invoice for this day.", Toast.LENGTH_SHORT).show()
+            vm.showToast("Nothing to invoice for this day.", com.gullzubair.sarim.ui.viewmodel.ToastKind.WARNING)
             return
         }
         PdfExporter.exportAndShareStatement(

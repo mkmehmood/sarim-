@@ -37,11 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.filled.Approval
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CreditCard
@@ -56,10 +53,7 @@ import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TrendingUp
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -72,8 +66,6 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
@@ -112,10 +104,13 @@ import com.gullzubair.sarim.data.model.UiState
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.ui.components.EmptyStateCard
+import com.gullzubair.sarim.ui.components.LiquidToastOverlay
+import com.gullzubair.sarim.ui.components.OfflineBanner
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.theme.SarimTheme
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.viewmodel.ToastKind
 import com.gullzubair.sarim.util.BiometricLockHelper
 import com.gullzubair.sarim.util.FeedbackHelper
 import kotlinx.coroutines.launch
@@ -137,90 +132,88 @@ fun MainFeatureScreen(currentUserId: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
-    val snackbarHostState = remember { SnackbarHostState() }
 
     LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
         vm.refreshTodayDate()
     }
 
-    LaunchedEffect(Unit) {
-        vm.snackbarMessage.collect { msg ->
-            snackbarHostState.showSnackbar(msg)
-        }
-    }
-
     val themeMode = (workspaceState as? UiState.Success)?.data?.settings?.themeMode ?: "light"
 
     SarimTheme(themeMode = themeMode) {
-        when (val state = workspaceState) {
-            UiState.Loading -> {
-                Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-                    Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.height(12.dp))
-                            Text("Syncing Sarim Workspace...", style = MaterialTheme.typography.bodyMedium)
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (val state = workspaceState) {
+                UiState.Loading -> {
+                    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+                        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(12.dp))
+                                Text("Syncing Sarim Workspace...", style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
-            }
 
-            is UiState.Error -> {
-                Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-                    Box(Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
-                        EmptyStateCard(
-                            title = "Workspace Sync Unavailable",
-                            detail = state.message,
-                            actionLabel = "Retry Sync",
-                            onAction = { vm.retrySync() }
+                is UiState.Error -> {
+                    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+                        Box(Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
+                            EmptyStateCard(
+                                title = "Workspace Sync Unavailable",
+                                detail = state.message,
+                                actionLabel = "Retry Sync",
+                                onAction = { vm.retrySync() }
+                            )
+                        }
+                    }
+                }
+
+                is UiState.Success -> {
+                    val snapshot = state.data
+                    if (snapshot.settings.biometricLockEnabled && !biometricUnlocked) {
+                        Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+                            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("Workspace Locked", style = MaterialTheme.typography.headlineSmall)
+                                    Spacer(Modifier.height(8.dp))
+                                    Button(
+                                        onClick = {
+                                            val act = context as? FragmentActivity
+                                            if (act != null && BiometricLockHelper.isBiometricAvailable(act)) {
+                                                BiometricLockHelper.authenticate(
+                                                    activity = act,
+                                                    onSuccess = { vm.setBiometricUnlocked(true) },
+                                                    onError = { msg -> vm.showToast(msg, ToastKind.ERROR) }
+                                                )
+                                            } else {
+                                                vm.setBiometricUnlocked(true)
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("biometric_unlock_btn")
+                                    ) {
+                                        Text("Unlock")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        WorkspaceNavContainer(
+                            snapshot = snapshot,
+                            selectedTab = selectedTab,
+                            todayIso = todayIso,
+                            vm = vm,
+                            onSignOut = {
+                                signOutUser(credentialManager = credentialManager, scope = scope)
+                            }
                         )
                     }
                 }
             }
-
-            is UiState.Success -> {
-                val snapshot = state.data
-                if (snapshot.settings.biometricLockEnabled && !biometricUnlocked) {
-                    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-                        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.height(12.dp))
-                                Text("Workspace Locked", style = MaterialTheme.typography.headlineSmall)
-                                Spacer(Modifier.height(8.dp))
-                                Button(
-                                    onClick = {
-                                        val act = context as? FragmentActivity
-                                        if (act != null && BiometricLockHelper.isBiometricAvailable(act)) {
-                                            BiometricLockHelper.authenticate(
-                                                activity = act,
-                                                onSuccess = { vm.setBiometricUnlocked(true) },
-                                                onError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
-                                            )
-                                        } else {
-                                            vm.setBiometricUnlocked(true)
-                                        }
-                                    },
-                                    modifier = Modifier.testTag("biometric_unlock_btn")
-                                ) {
-                                    Text("Unlock")
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    WorkspaceNavContainer(
-                        snapshot = snapshot,
-                        selectedTab = selectedTab,
-                        todayIso = todayIso,
-                        vm = vm,
-                        snackbarHostState = snackbarHostState,
-                        onSignOut = {
-                            signOutUser(credentialManager = credentialManager, scope = scope)
-                        }
-                    )
-                }
-            }
+            LiquidToastOverlay(
+                toastEvents = vm.toastEvents,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 }
@@ -231,7 +224,6 @@ private fun WorkspaceNavContainer(
     selectedTab: MainTab,
     todayIso: String,
     vm: SarimViewModel,
-    snackbarHostState: SnackbarHostState,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -318,18 +310,20 @@ private fun WorkspaceNavContainer(
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        DrawerSectionLabel("NAVIGATION")
-                        Spacer(Modifier.height(4.dp))
-                        visibleTabs.forEach { tab ->
-                            val selected = isHome && effectiveTab == tab
-                            DrawerRowItem(
-                                label = tab.label.uppercase(),
-                                icon = tabIcon(tab),
-                                iconTint = tabIconColor(tab),
-                                selected = selected,
-                                testTag = "drawer_tab_${tab.key}",
-                                onClick = { selectMainTab(tab) }
-                            )
+                        if (isAdminSession || visibleTabs.size > 1) {
+                            DrawerSectionLabel("NAVIGATION")
+                            Spacer(Modifier.height(4.dp))
+                            visibleTabs.forEach { tab ->
+                                val selected = isHome && effectiveTab == tab
+                                DrawerRowItem(
+                                    label = tab.label,
+                                    icon = tabIcon(tab),
+                                    iconTint = tabIconColor(tab),
+                                    selected = selected,
+                                    testTag = "drawer_tab_${tab.key}",
+                                    onClick = { selectMainTab(tab) }
+                                )
+                            }
                         }
 
                         if (isAdminSession) {
@@ -400,7 +394,7 @@ private fun WorkspaceNavContainer(
                         }
                     }
 
-                    // Sticky Footer (SETTINGS & LOGOUT)
+                    // Sticky Footer (SETTINGS & LOGOUT — matches web sidebar-footer)
                     HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                     Column(
                         modifier = Modifier
@@ -410,19 +404,7 @@ private fun WorkspaceNavContainer(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         DrawerRowItem(
-                            label = "SYNC NOW",
-                            icon = Icons.Outlined.Sync,
-                            iconTint = accents.emerald,
-                            selected = false,
-                            badgeCount = snapshot.pendingSyncCount,
-                            testTag = "drawer_sync",
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                vm.syncNow()
-                            }
-                        )
-                        DrawerRowItem(
-                            label = "SETTINGS",
+                            label = "Settings",
                             icon = Icons.Outlined.Settings,
                             iconTint = accents.emerald,
                             selected = currentRouteName.contains("Settings"),
@@ -430,7 +412,7 @@ private fun WorkspaceNavContainer(
                             onClick = { navigateTo(AppRoute.Settings) }
                         )
                         DrawerRowItem(
-                            label = "LOGOUT",
+                            label = "Logout",
                             icon = Icons.AutoMirrored.Outlined.Logout,
                             iconTint = accents.danger,
                             textColor = accents.danger,
@@ -449,7 +431,6 @@ private fun WorkspaceNavContainer(
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = if (isHome) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0),
-            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 if (isHome) {
                     val headerShape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
@@ -487,12 +468,19 @@ private fun WorkspaceNavContainer(
                                 )
                             }
 
-                            Column(
+                            Box(
                                 modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                contentAlignment = Alignment.Center
                             ) {
+                                val headerTitle = when (session.mode) {
+                                    "admin" -> snapshot.profile.displayName.ifBlank { "MAHMOOD KHAN" }
+                                    "rep" -> snapshot.profile.displayName.ifBlank { "Sales Rep" }
+                                    "production" -> snapshot.profile.displayName.ifBlank { "Production Manager" }
+                                    "factory" -> snapshot.profile.displayName.ifBlank { "Factory Manager" }
+                                    else -> snapshot.profile.displayName.ifBlank { "User" }
+                                }.uppercase()
                                 Text(
-                                    text = snapshot.profile.displayName.ifBlank { "GULL AND ZUBAIR" }.uppercase(),
+                                    text = headerTitle,
                                     fontFamily = JakartaFont,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
@@ -501,40 +489,9 @@ private fun WorkspaceNavContainer(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (effectiveTab != MainTab.OVERVIEW) {
-                                    Text(
-                                        text = effectiveTab.label.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.9.sp),
-                                        color = accents.textMuted,
-                                        maxLines = 1
-                                    )
-                                }
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (isAdminSession && pendingCount > 0) {
-                                    IconButton(
-                                        onClick = { navigateTo(AppRoute.Approvals) },
-                                        modifier = Modifier.size(48.dp).testTag("topbar_approvals_btn")
-                                    ) {
-                                        BadgedBox(badge = { Badge { Text("$pendingCount") } }) {
-                                            Icon(Icons.Default.Approval, contentDescription = "Approvals queue", tint = accents.gold)
-                                        }
-                                    }
-                                }
-                                if (!moneyRestricted) {
-                                    IconButton(
-                                        onClick = { vm.togglePrivacyMask() },
-                                        modifier = Modifier.size(48.dp).testTag("topbar_privacy_btn")
-                                    ) {
-                                        Icon(
-                                            imageVector = if (snapshot.settings.hideSensitiveMoney) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                            contentDescription = "Toggle money privacy",
-                                            tint = accents.textMuted
-                                        )
-                                    }
-                                }
-                            }
+                            Spacer(Modifier.size(48.dp))
                         }
                     }
                 }
@@ -542,8 +499,13 @@ private fun WorkspaceNavContainer(
         ) { padding ->
             BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
                 val containerWidth = this.maxWidth
-                val useRail = isHome && containerWidth >= 600.dp
-                Row(Modifier.fillMaxSize()) {
+                val useRail = isHome && containerWidth >= 600.dp && (isAdminSession || visibleTabs.size > 1)
+                Column(Modifier.fillMaxSize()) {
+                    OfflineBanner(
+                        isOnline = vm.isOnline(),
+                        pendingSyncCount = snapshot.pendingSyncCount
+                    )
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
                     if (useRail) {
                         NavigationRail(
                             containerColor = accents.headerFrosted,
@@ -704,6 +666,7 @@ private fun WorkspaceNavContainer(
                             ExpenseDetailsScreen(snapshot, arg.expenseName, todayIso, vm) { navController.popBackStack() }
                         }
                     }
+                }
                 }
             }
         }

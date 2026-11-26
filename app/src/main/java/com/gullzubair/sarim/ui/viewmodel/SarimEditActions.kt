@@ -1190,9 +1190,11 @@ class SarimEditActions(
         customName: String,
         paymentMethod: String,
         amount: Double,
-        description: String
+        description: String,
+        photoDataUri: String? = null,
+        clearPhoto: Boolean = false
     ): Result<String> {
-        if (original.isMerged || original.isTransfer || original.isPayable) {
+        if (original.isMerged || original.isTransfer || original.isPayable || original.supplierCreditAmount > 0.0) {
             return Result.failure(IllegalArgumentException("Transfers and supplier payable invoices cannot be edited here"))
         }
         val cleanName = InputGuards.sanitizeName(entity?.name ?: customName)
@@ -1252,6 +1254,13 @@ class SarimEditActions(
             )
         }
 
+        val photoKey = "expense:${linkedExp?.id ?: original.expenseId.ifBlank { original.id }}"
+        if (clearPhoto) {
+            ops.savePhoto(snapshot.profile, photoKey, null)
+        } else if (!photoDataUri.isNullOrBlank()) {
+            ops.savePhoto(snapshot.profile, photoKey, photoDataUri)
+        }
+
         val res = ops.submitOrExecuteWrite(
             profile = snapshot.profile,
             targetCollection = "transactions",
@@ -1276,14 +1285,16 @@ class SarimEditActions(
         category: String,
         paymentMethod: String,
         amount: Double,
-        notes: String
+        notes: String,
+        photoDataUri: String? = null,
+        clearPhoto: Boolean = false
     ): Result<String> {
         if (original.isMerged) return Result.failure(IllegalArgumentException("Merged records cannot be edited"))
         val linkedTx = snapshot.transactions.firstOrNull {
             it.deletedAt == null && (it.expenseId == original.id || it.id == original.linkedTxId)
         }
         if (linkedTx != null) {
-            return editPaymentTransaction(snapshot, linkedTx, date, null, name, paymentMethod, amount, notes)
+            return editPaymentTransaction(snapshot, linkedTx, date, null, name, paymentMethod, amount, notes, photoDataUri, clearPhoto)
         }
         val cleanName = InputGuards.sanitizeName(name)
         if (cleanName.isBlank() || amount <= 0.0) {
@@ -1313,6 +1324,12 @@ class SarimEditActions(
             editedAt = iso,
             editHistory = FinanceEngine.pushEditHistory(original.editHistory, actorName(snapshot), diff, iso)
         )
+        val photoKey = "expense:${original.id}"
+        if (clearPhoto) {
+            ops.savePhoto(snapshot.profile, photoKey, null)
+        } else if (!photoDataUri.isNullOrBlank()) {
+            ops.savePhoto(snapshot.profile, photoKey, photoDataUri)
+        }
         val res = ops.submitOrExecuteWrite(
             profile = snapshot.profile,
             targetCollection = "expenses",

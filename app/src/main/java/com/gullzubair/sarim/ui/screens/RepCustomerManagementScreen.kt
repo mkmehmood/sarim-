@@ -2,7 +2,6 @@ package com.gullzubair.sarim.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -272,7 +271,7 @@ fun RepCustomerManagementScreen(
                     IconButton(
                         onClick = {
                             if (pdfRows.isEmpty()) {
-                                Toast.makeText(context, "No ledger rows to export", Toast.LENGTH_SHORT).show()
+                                vm.showToast("No ledger rows to export", com.gullzubair.sarim.ui.viewmodel.ToastKind.WARNING)
                             } else {
                                 val footer = "Total Sold: ${InputGuards.formatKg(soldKg)} • Sale Value: " +
                                     "${InputGuards.formatMoney(soldValue, currency, masked)} • Collected: " +
@@ -536,7 +535,10 @@ fun RepCustomerManagementScreen(
             isAdmin = isAdmin,
             vm = vm,
             onEditEntry = {
-                Toast.makeText(context, "Open Rep tab History to edit ${r.customerName} in-place.", Toast.LENGTH_SHORT).show()
+                vm.showToast(
+                    "Open Rep tab History to edit ${r.customerName} in-place.",
+                    com.gullzubair.sarim.ui.viewmodel.ToastKind.INFO
+                )
             },
             onOpenCustomerLedger = { /* already on customer ledger */ },
             onBlockedAction = { msg -> blockingAlert = "Action Blocked" to msg },

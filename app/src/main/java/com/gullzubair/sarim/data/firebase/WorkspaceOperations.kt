@@ -19,7 +19,7 @@ import java.util.Date
 import java.util.UUID
 
 class WorkspaceOperations(private val repo: AppRepository) {
-    private val db: FirebaseFirestore get() = repo.db
+    private val db: FirebaseFirestore? get() = repo.db
     private val offline: OfflineSyncRepository? get() = repo.offlineRepo
 
     companion object {
@@ -31,7 +31,8 @@ class WorkspaceOperations(private val repo: AppRepository) {
     }
 
     private fun workspaceCol(ownerUid: String, collection: String) =
-        db.collection("users").document(ownerUid).collection(collection)
+        requireNotNull(db) { "Firestore unavailable in local mode" }
+            .collection("users").document(ownerUid).collection(collection)
 
     fun newId(prefix: String): String =
         "${prefix}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
@@ -46,7 +47,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
         outboxId: Long,
         remoteCall: suspend () -> Unit
     ) {
-        if (!repo.isOnline()) return
+        if (db == null || !repo.isOnline()) return
         val synced = withTimeoutOrNull(2500L) {
             remoteCall()
             true
@@ -57,9 +58,10 @@ class WorkspaceOperations(private val repo: AppRepository) {
     }
 
     private suspend fun pingWorkspaceOwner(ownerUid: String, profile: UserProfile) {
+        val remoteDb = db ?: return
         if (profile.uid == ownerUid) return
         runCatching {
-            db.collection("users").document(ownerUid).update("lastWrite", System.currentTimeMillis()).await()
+            remoteDb.collection("users").document(ownerUid).update("lastWrite", System.currentTimeMillis()).await()
         }
     }
 
@@ -88,6 +90,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
 
             if (profile.isAdmin || targetCollection !in GATED_COLLECTIONS) {
                 offline?.upsertLocalCollectionDoc(ownerUid, targetCollection, resolvedId, docMap)
+                if (db == null) return Result.success(resolvedId)
                 outboxId = offline?.enqueueOutbox(ownerUid, "SET", targetCollection, resolvedId, docMap) ?: 0L
 
                 val remoteMap = docMap.toMutableMap().apply {
@@ -172,27 +175,30 @@ class WorkspaceOperations(private val repo: AppRepository) {
                 offline?.removeLocalCollectionDoc(ownerUid, collection, docId)
                 offline?.upsertLocalDeletion(ownerUid, tombstone)
 
-                val remoteTombstone = mapOf<String, Any>(
-                    "id" to docId,
-                    "recordId" to docId,
-                    "collection" to collection,
-                    "recordType" to collection,
-                    "deletedAt" to FieldValue.serverTimestamp(),
-                    "expiresAt" to Timestamp(Date(nowMs + TOMBSTONE_EXPIRY_MS)),
-                    "displayName" to displayName,
-                    "displayDetail" to displayDetail,
-                    "displayAmount" to displayAmount,
-                    "snapshot" to snapshotMap,
-                    "deleted_by" to profile.email.ifBlank { uid }
-                )
-                val queuePayload = WorkspaceJsonCodec.deletionToLocalMap(tombstone)
-                outboxId = offline?.enqueueOutbox(ownerUid, "DELETE", collection, docId, queuePayload) ?: 0L
+                val remoteDb = db
+                if (remoteDb != null) {
+                    val remoteTombstone = mapOf<String, Any>(
+                        "id" to docId,
+                        "recordId" to docId,
+                        "collection" to collection,
+                        "recordType" to collection,
+                        "deletedAt" to FieldValue.serverTimestamp(),
+                        "expiresAt" to Timestamp(Date(nowMs + TOMBSTONE_EXPIRY_MS)),
+                        "displayName" to displayName,
+                        "displayDetail" to displayDetail,
+                        "displayAmount" to displayAmount,
+                        "snapshot" to snapshotMap,
+                        "deleted_by" to profile.email.ifBlank { uid }
+                    )
+                    val queuePayload = WorkspaceJsonCodec.deletionToLocalMap(tombstone)
+                    outboxId = offline?.enqueueOutbox(ownerUid, "DELETE", collection, docId, queuePayload) ?: 0L
 
-                executeRemoteOrKeepQueued(outboxId) {
-                    val batch = db.batch()
-                    batch.delete(workspaceCol(ownerUid, collection).document(docId))
-                    batch.set(workspaceCol(ownerUid, "deletions").document(docId), remoteTombstone, SetOptions.merge())
-                    batch.commit().await()
+                    executeRemoteOrKeepQueued(outboxId) {
+                        val batch = remoteDb.batch()
+                        batch.delete(workspaceCol(ownerUid, collection).document(docId))
+                        batch.set(workspaceCol(ownerUid, "deletions").document(docId), remoteTombstone, SetOptions.merge())
+                        batch.commit().await()
+                    }
                 }
             } else {
                 val pendingId = "${collection}__${docId.replace("/", "_")}"
@@ -246,9 +252,10 @@ class WorkspaceOperations(private val repo: AppRepository) {
             offline?.upsertLocalCollectionDoc(ownerUid, col, docId, restoredMap)
             offline?.removeLocalDeletionAndOptionallyErase(ownerUid, docId, erasePermanently = false)
 
-            if (repo.isOnline()) {
+            val remoteDb = db
+            if (remoteDb != null && repo.isOnline()) {
                 withTimeoutOrNull(2500L) {
-                    val batch = db.batch()
+                    val batch = remoteDb.batch()
                     batch.set(
                         workspaceCol(ownerUid, col).document(docId),
                         restoredMap + ("updatedAt" to FieldValue.serverTimestamp()),
@@ -274,9 +281,10 @@ class WorkspaceOperations(private val repo: AppRepository) {
         return try {
             repo.requireUserId()
             offline?.removeLocalDeletionAndOptionallyErase(ownerUid, docId, erasePermanently = true)
-            if (repo.isOnline()) {
+            val remoteDb = db
+            if (remoteDb != null && repo.isOnline()) {
                 withTimeoutOrNull(2500L) {
-                    db.batch().apply {
+                    remoteDb.batch().apply {
                         delete(workspaceCol(ownerUid, "deletions").document(docId))
                         delete(workspaceCol(ownerUid, tombstone.collection).document(docId))
                     }.commit().await()
@@ -361,6 +369,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
         return try {
             repo.requireUserId()
             offline?.upsertLocalPhoto(ownerUid, photoKey, dataUri, deleted)
+            if (db == null) return Result.success(Unit)
             val payload = buildMap<String, Any> {
                 put("key", photoKey)
                 if (deleted) {
@@ -372,10 +381,6 @@ class WorkspaceOperations(private val repo: AppRepository) {
             }
             val outboxId = offline?.enqueueOutbox(ownerUid, "PHOTO", "photos", photoKey, payload) ?: 0L
             executeRemoteOrKeepQueued(outboxId) {
-                val remote = payload.toMutableMap().apply {
-                    if (deleted) put("data", null as Any? ?: "")
-                    put("updatedAt", FieldValue.serverTimestamp())
-                }
                 val docMap = buildMap<String, Any?> {
                     put("key", photoKey)
                     put("data", if (deleted) null else dataUri)
@@ -399,6 +404,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
         displayName: String,
         roles: List<String>
     ): Result<Unit> {
+        val remoteDb = db ?: return Result.failure(IllegalStateException("Team invites require Firebase Cloud Sync"))
         val ownerUid = profile.effectiveOwnerUid
         val inviteId = newId("inv")
         return try {
@@ -414,7 +420,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
-            db.collection("workspace_invites").document(inviteId).set(remoteMap).await()
+            remoteDb.collection("workspace_invites").document(inviteId).set(remoteMap).await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -425,8 +431,9 @@ class WorkspaceOperations(private val repo: AppRepository) {
     }
 
     suspend fun revokeInvite(inviteId: String): Result<Unit> = try {
+        val remoteDb = db ?: return Result.failure(IllegalStateException("Team invites require Firebase Cloud Sync"))
         repo.requireUserId()
-        db.collection("workspace_invites").document(inviteId).delete().await()
+        remoteDb.collection("workspace_invites").document(inviteId).delete().await()
         Result.success(Unit)
     } catch (e: CancellationException) {
         throw e
@@ -440,10 +447,11 @@ class WorkspaceOperations(private val repo: AppRepository) {
         roles: List<String>,
         approved: Boolean
     ): Result<Unit> = try {
+        val remoteDb = db ?: return Result.failure(IllegalStateException("Team permissions require Firebase Cloud Sync"))
         repo.requireUserId()
         val cleanRoles = roles.take(10)
         val nextRole = if ("admin" in cleanRoles) "admin" else "user"
-        db.collection("users").document(memberUid).update(
+        remoteDb.collection("users").document(memberUid).update(
             mapOf(
                 "role" to nextRole,
                 "roles" to cleanRoles,

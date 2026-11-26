@@ -4,18 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.sp
-import com.gullzubair.sarim.domain.DateUtils
-import com.gullzubair.sarim.ui.theme.JakartaFont
-import com.gullzubair.sarim.ui.theme.ManropeFont
-import com.gullzubair.sarim.ui.theme.PlayfairFont
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,65 +15,64 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddShoppingCart
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.FactoryRecord
 import com.gullzubair.sarim.data.model.InventoryRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
+import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
 import com.gullzubair.sarim.ui.components.DatePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
 import com.gullzubair.sarim.ui.components.DiscardEditDialog
 import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
 import com.gullzubair.sarim.ui.components.EditedBadge
-import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.FactoryBatchDetailSheet
 import com.gullzubair.sarim.ui.components.MaterialPurchaseLotsSheet
-import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimGradientButton
-import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
-import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
-import com.gullzubair.sarim.ui.theme.LocalSarimAccents
-import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
-import com.gullzubair.sarim.ui.components.ConfirmRequest
-import com.gullzubair.sarim.ui.components.ConfirmRequestHost
-import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
-import com.gullzubair.sarim.ui.components.DialogTone
+import com.gullzubair.sarim.ui.theme.JakartaFont
+import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.ManropeFont
+import com.gullzubair.sarim.ui.theme.PlayfairFont
+import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import java.time.temporal.ChronoUnit
 
 @Composable
 fun FactoryScreen(
     snapshot: WorkspaceSnapshot,
     todayIso: String,
     vm: SarimViewModel,
-    onOpenRawPurchase: () -> Unit,
-    onOpenFormulas: () -> Unit
+    onOpenRawPurchase: () -> Unit = {},
+    onOpenFormulas: () -> Unit = {}
 ) {
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
@@ -96,7 +85,6 @@ fun FactoryScreen(
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedFormula by remember(snapshot.formulas) { mutableStateOf(snapshot.formulas.firstOrNull()) }
     var unitsStr by remember { mutableStateOf("1") }
-    var notes by remember { mutableStateOf("") }
     var sortByValue by remember { mutableStateOf(false) }
     var summaryMode by remember { mutableStateOf("daily") }
     var availPoolKey by remember { mutableStateOf<String?>(null) }
@@ -114,7 +102,6 @@ fun FactoryScreen(
         editingBatch = null
         date = todayIso
         unitsStr = "1"
-        notes = ""
     }
 
     fun startEditBatch(rec: FactoryRecord) {
@@ -122,7 +109,6 @@ fun FactoryScreen(
         date = rec.date.ifBlank { todayIso }
         selectedFormula = snapshot.formulas.firstOrNull { it.id == rec.formulaId } ?: selectedFormula
         unitsStr = InputGuards.fmtNum(rec.units).replace(",", "")
-        notes = rec.notes
     }
 
     BackHandler(enabled = editingBatch != null) {
@@ -133,8 +119,6 @@ fun FactoryScreen(
         if (editingBatch != null) listState.animateScrollToItem(1)
     }
 
-
-    // ---- Web parity: #tab-factory is ONE scrolling page of cards ----
     val units = (unitsStr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
     val desc = remember(selectedFormula, snapshot.formulas, snapshot.inventory) {
         selectedFormula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
@@ -163,6 +147,9 @@ fun FactoryScreen(
     val activeFactory = remember(snapshot.factory) {
         snapshot.factory.filter { it.deletedAt == null }.sortedByDescending { it.date }
     }
+    val activeProduction = remember(snapshot.production) {
+        snapshot.production.filter { it.deletedAt == null && !it.isReturn }
+    }
     val pools = remember(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production) {
         FormulaEngine.buildUnitPools(snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production)
     }
@@ -181,7 +168,8 @@ fun FactoryScreen(
             else -> true
         }
     }
-    val periodRecords = remember(activeFactory, summaryMode, date) { activeFactory.filter { inSummaryPeriod(it.date) } }
+    val periodFactory = remember(activeFactory, summaryMode, date) { activeFactory.filter { inSummaryPeriod(it.date) } }
+    val periodProduction = remember(activeProduction, summaryMode, date) { activeProduction.filter { inSummaryPeriod(it.date) } }
 
     val materialsSorted = remember(snapshot.inventory, sortByValue) {
         val base = FinanceEngine.materialRecords(snapshot.inventory)
@@ -210,16 +198,6 @@ fun FactoryScreen(
                         ) {
                             Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                         }
-                    } else if (!isEntryOnlyFactory) {
-                        Surface(
-                            onClick = onOpenFormulas,
-                            shape = RoundedCornerShape(50),
-                            color = accents.softPillFill,
-                            border = BorderStroke(1.dp, accents.emerald),
-                            modifier = Modifier.testTag("factory_manage_formulas_btn")
-                        ) {
-                            Text("Formulas", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                        }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -228,7 +206,7 @@ fun FactoryScreen(
                 Text("Formula", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
                 Spacer(Modifier.height(6.dp))
                 if (snapshot.formulas.isEmpty()) {
-                    Text("Create a formula first", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    Text("Select a store...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 } else {
                     FactoryChoiceRow(
                         options = snapshot.formulas.map { it.name },
@@ -255,8 +233,6 @@ fun FactoryScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                SarimPillInput(notes, { notes = it.take(500) }, label = "BATCH NOTES", testTag = "factory_notes_input")
-                Spacer(Modifier.height(12.dp))
                 if (!desc?.problems.isNullOrEmpty()) {
                     Text(
                         "Formula error: ${desc!!.problems.joinToString { "${it.type}:${it.name}" }}",
@@ -267,7 +243,7 @@ fun FactoryScreen(
                 }
                 FactoryCallout {
                     if (reqLines.isEmpty()) {
-                        Text("Select a formula...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Text("Select a store...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     } else {
                         Column(Modifier.fillMaxWidth()) {
                             reqLines.forEach { line ->
@@ -304,7 +280,6 @@ fun FactoryScreen(
                                     add("Formula" to f.name)
                                     add("Date" to DateUtils.formatPretty(date))
                                     add("Units" to InputGuards.fmtNum(units))
-                                    if (notes.isNotBlank()) add("Note" to notes.trim())
                                 }
                                 confirmReq = saveConfirmRequest(
                                     label = "Production",
@@ -312,8 +287,7 @@ fun FactoryScreen(
                                     gated = session.mode != "admin",
                                     tag = "factory_confirm_save_btn"
                                 ) {
-                                    vm.submitFactoryBatch(date, f, units, notes)
-                                    notes = ""
+                                    vm.submitFactoryBatch(date, f, units, "")
                                 }
                             }
                         }
@@ -331,7 +305,7 @@ fun FactoryScreen(
                     FactoryCardTitle("Units Available")
                     if (pools.isEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Text("No unit pools yet. Create formulas and produce factory batches.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Text("0 kg", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     } else {
                         Spacer(Modifier.height(10.dp))
                         FactoryChoiceRow(
@@ -341,27 +315,39 @@ fun FactoryScreen(
                             tagPrefix = "factory_pool_chip_"
                         )
                         if (selectedPool != null) {
-                            val poolRecs = activeFactory.filter { it.formulaId == selectedPool.formulaId }
+                            val prodForPool = activeProduction.filter { it.formulaId == selectedPool.formulaId }
                             val poolFormula = snapshot.formulas.firstOrNull { it.id == selectedPool.formulaId }
-                            val perUnitKg = poolFormula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight } ?: 0.0
-                            val outputKg = poolRecs.sumOf { it.units } * perUnitKg
-                            val rawKg = poolRecs.sumOf { r ->
-                                r.materialsUsed.ifEmpty { r.rawMaterialsUsed }.sumOf { m ->
-                                    (m["qty"] as? Number)?.toDouble() ?: (m["quantity"] as? Number)?.toDouble() ?: 0.0
-                                }
+                            val weightPerUnit = poolFormula?.let {
+                                FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight
+                            } ?: 0.0
+                            val outputQuantity = prodForPool.sumOf { it.net }
+                            val rawMaterialsUsed = prodForPool.sumOf { p ->
+                                val w = p.unitWeight.takeIf { it > 0.0 } ?: weightPerUnit
+                                w * p.formulaUnits
                             }
-                            val totalCost = poolRecs.sumOf { it.totalCost }
-                            val matCost = poolRecs.sumOf { it.materialsCost }
+                            val costPerUnit = selectedPool.avgUnitCost
+                            val totalCostValue = costPerUnit * selectedPool.availableUnits
+                            val materialsValue = prodForPool.sumOf { if (it.formulaCost > 0.0) it.formulaCost else it.totalCost }
+                            val totalProfit = prodForPool.sumOf { it.profit }
+                            val profitPerKg = if (outputQuantity > 0.0) totalProfit / outputQuantity else 0.0
+
                             Spacer(Modifier.height(12.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FactoryStatRow("Units", listOf("Available" to InputGuards.fmtNum(selectedPool.availableUnits), "Used" to InputGuards.fmtNum(selectedPool.usedUnits)))
-                                FactoryStatRow("Output", listOf("Quantity" to InputGuards.formatKg(outputKg), "Raw Used" to InputGuards.formatKg(rawKg)))
+                                FactoryStatRow("Output", listOf("Quantity" to "${InputGuards.fmtNum(outputQuantity)} kg", "Raw Used" to "${InputGuards.fmtNum(rawMaterialsUsed)} kg"))
                                 FactoryStatRow(
                                     "Cost",
                                     listOf(
-                                        "Per Unit" to InputGuards.formatMoney(selectedPool.avgUnitCost, currency, masked),
-                                        "Total" to InputGuards.formatMoney(totalCost, currency, masked),
-                                        "Materials" to InputGuards.formatMoney(matCost, currency, masked)
+                                        "Per Unit" to InputGuards.formatMoney(costPerUnit, currency, masked),
+                                        "Total" to InputGuards.formatMoney(totalCostValue, currency, masked),
+                                        "Materials" to InputGuards.formatMoney(materialsValue, currency, masked)
+                                    )
+                                )
+                                FactoryStatRow(
+                                    "Profit",
+                                    listOf(
+                                        "Total" to InputGuards.formatMoney(totalProfit, currency, masked),
+                                        "Per kg" to "${InputGuards.formatMoney(profitPerKg, currency, masked)}/kg"
                                     )
                                 )
                             }
@@ -375,29 +361,14 @@ fun FactoryScreen(
                 SarimCard {
                     FactoryCardTitle("Raw Material Inventory")
                     Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("SORT BY", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            FactoryPill("Material \u21C5", selected = !sortByValue, onClick = { sortByValue = false })
-                            FactoryPill("Total Value \u21C5", selected = sortByValue, onClick = { sortByValue = true })
-                        }
-                        Surface(
-                            onClick = onOpenRawPurchase,
-                            shape = RoundedCornerShape(50),
-                            color = accents.softPillFill,
-                            border = BorderStroke(1.dp, accents.emerald),
-                            modifier = Modifier.testTag("factory_purchase_btn")
-                        ) {
-                            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AddShoppingCart, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Purchase", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
-                            }
-                        }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("SORT BY", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        FactoryPill("Material \u21C5", selected = !sortByValue, onClick = { sortByValue = false })
+                        FactoryPill("Total Value \u21C5", selected = sortByValue, onClick = { sortByValue = true })
                     }
                     Spacer(Modifier.height(8.dp))
                     if (materialsSorted.isEmpty()) {
-                        Text("No raw material stock. Tap Purchase to add raw materials and supplier lots.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Text("Loading inventory", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     } else {
                         materialsSorted.forEach { item ->
                             val lots = remember(snapshot.inventory, item.id) { FinanceEngine.purchasesOf(snapshot.inventory, item.id) }
@@ -415,17 +386,17 @@ fun FactoryScreen(
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(item.name, style = MaterialTheme.typography.titleSmall)
-                                    val unitDesc = if (item.purchaseUnitName.isNotBlank()) "Unit: ${item.purchaseUnitName} (1 = ${InputGuards.fmtNum(item.conversionFactor)} kg) \u2022 " else ""
+                                    val unitDesc = if (item.purchaseUnitName.isNotBlank()) "Unit: ${item.purchaseUnitName} (1 = ${InputGuards.fmtNum(item.conversionFactor)} kg) • " else ""
                                     Text(
-                                        "${unitDesc}Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg \u2022 ${lots.size} lots" +
-                                            if (pending > 0.01) " \u2022 Pending ${InputGuards.formatMoney(pending, currency, masked)}" else "",
+                                        "${unitDesc}Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg • ${lots.size} lots" +
+                                            if (pending > 0.01) " • Pending ${InputGuards.formatMoney(pending, currency, masked)}" else "",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = accents.textMuted
                                     )
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        InputGuards.formatKg(item.quantity),
+                                        "${InputGuards.fmtNum(item.quantity)} kg",
                                         fontFamily = ManropeFont,
                                         fontWeight = FontWeight.ExtraBold,
                                         fontSize = 13.sp,
@@ -443,14 +414,87 @@ fun FactoryScreen(
                     HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        FactoryStatTile("Total collected weight", InputGuards.formatKg(materialsSorted.sumOf { it.quantity }), accents.emerald, Modifier.weight(1f))
+                        FactoryStatTile("Total collected weight", "${InputGuards.fmtNum(materialsSorted.sumOf { it.quantity })} kg", accents.emerald, Modifier.weight(1f))
                         FactoryStatTile("Total inventory value", InputGuards.formatMoney(materialsSorted.sumOf { it.quantity * it.cost }, currency, masked), accents.gold, Modifier.weight(1f))
                     }
                 }
             }
 
-            // 4. Performance Summary
+            // 4. Performance Summary (ported from updateFactorySummaryCard)
             item {
+                val sumAvailable = pools.sumOf { it.availableUnits }
+                val sumConsumed = periodProduction.sumOf { it.formulaUnits }
+                val sumOutput = periodProduction.sumOf { it.net }
+                val sumTotalCost = periodProduction.sumOf { it.totalCost }
+                val sumTotalProfit = periodProduction.sumOf { it.profit }
+                val sumMatVal = periodProduction.sumOf { if (it.formulaCost > 0.0) it.formulaCost else it.totalCost }
+                val avgProfitPerKg = if (sumOutput > 0.0) sumTotalProfit / sumOutput else 0.0
+
+                val sumRawUsed = periodProduction.sumOf { entry ->
+                    val f = snapshot.formulas.firstOrNull { it.id == entry.formulaId }
+                    val wpu = entry.unitWeight.takeIf { it > 0.0 }
+                        ?: f?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight }
+                        ?: 0.0
+                    wpu * entry.formulaUnits
+                }
+                val frozenUnitCostTotal = periodProduction.sumOf { entry ->
+                    val unitsUsed = entry.formulaUnits
+                    val poolCost = pools.firstOrNull { it.formulaId == entry.formulaId }?.avgUnitCost ?: 0.0
+                    if (entry.formulaCost > 0.0 && unitsUsed > 0.0) entry.formulaCost else unitsUsed * poolCost
+                }
+                val avgCostPerUnit = if (sumConsumed > 0.0) frozenUnitCostTotal / sumConsumed else 0.0
+
+                val rawByMaterial = remember(periodProduction, snapshot.formulas, snapshot.inventory) {
+                    val map = linkedMapOf<String, Pair<Double, Double>>()
+                    periodProduction.forEach { entry ->
+                        val u = entry.formulaUnits
+                        if (u <= 0.0) return@forEach
+                        val items = if (entry.formulaMaterials.isNotEmpty()) {
+                            entry.formulaMaterials.map { fm ->
+                                val nm = fm["name"]?.toString().orEmpty()
+                                val q = (fm["quantity"] as? Number)?.toDouble() ?: (fm["qty"] as? Number)?.toDouble() ?: 0.0
+                                val c = (fm["cost"] as? Number)?.toDouble() ?: 0.0
+                                Triple(nm.ifBlank { "Unknown" }, q * u, c * q * u)
+                            }
+                        } else {
+                            val f = snapshot.formulas.firstOrNull { it.id == entry.formulaId }
+                            val descF = f?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
+                            descF?.items?.map { line ->
+                                val inv = materials.firstOrNull { it.id == line.id }
+                                    ?: materials.firstOrNull { it.name.equals(line.name, true) }
+                                val c = inv?.cost ?: line.cost
+                                Triple(inv?.name ?: line.name, line.quantity * u, c * line.quantity * u)
+                            }.orEmpty()
+                        }
+                        items.forEach { (nm, q, c) ->
+                            val cur = map[nm] ?: (0.0 to 0.0)
+                            map[nm] = (cur.first + q) to (cur.second + c)
+                        }
+                    }
+                    map.entries.sortedByDescending { it.value.first }
+                }
+
+                val totalAdditionalCost = periodFactory.filter { !it.isMerged }.sumOf { entry ->
+                    if (entry.additionalCost > 0.0) entry.additionalCost
+                    else (snapshot.formulas.firstOrNull { it.id == entry.formulaId }?.additionalCost ?: 0.0) * entry.units
+                }
+                val periodDays = remember(summaryMode, anchor, activeFactory) {
+                    val a = anchor ?: java.time.LocalDate.now()
+                    when (summaryMode) {
+                        "daily" -> 1
+                        "weekly" -> 7
+                        "monthly" -> a.lengthOfMonth()
+                        "yearly" -> a.lengthOfYear()
+                        else -> {
+                            val dates = activeFactory.mapNotNull { DateUtils.parseIso(it.date) }
+                            if (dates.size > 1) {
+                                (ChronoUnit.DAYS.between(dates.min(), dates.max()).toInt() + 1).coerceAtLeast(1)
+                            } else 1
+                        }
+                    }
+                }
+                val avgAdditionalCostPerDay = if (totalAdditionalCost > 0.0) totalAdditionalCost / periodDays else 0.0
+
                 SarimCard {
                     FactoryCardTitle("Performance Summary")
                     Spacer(Modifier.height(10.dp))
@@ -460,32 +504,61 @@ fun FactoryScreen(
                         onSelect = { summaryMode = listOf("daily", "weekly", "monthly", "yearly", "all")[it] },
                         tagPrefix = "factory_summary_chip_"
                     )
-                    val totalCost = periodRecords.sumOf { it.totalCost }
-                    val matCost = periodRecords.sumOf { it.materialsCost }
-                    val producedUnits = periodRecords.sumOf { it.units }
-                    val activeDays = periodRecords.map { it.date }.distinct().size.coerceAtLeast(1)
                     Spacer(Modifier.height(12.dp))
-                    Text("TOTAL COST", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Text("Total profit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                     Text(
-                        InputGuards.formatMoney(totalCost, currency, masked),
+                        InputGuards.formatMoney(sumTotalProfit, currency, masked),
                         fontFamily = ManropeFont,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 22.sp,
-                        color = accents.danger
+                        color = if (sumTotalProfit >= 0.0) accents.emerald else accents.danger
+                    )
+                    Text(
+                        "${InputGuards.formatMoney(avgProfitPerKg, currency, masked)}/kg average",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accents.textMuted
                     )
                     Spacer(Modifier.height(12.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         FactorySectionLabel("Units")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FactoryStatTile("Available", InputGuards.fmtNum(pools.sumOf { it.availableUnits }), accents.emerald, Modifier.weight(1f))
-                            FactoryStatTile("Produced", InputGuards.fmtNum(producedUnits), accents.gold, Modifier.weight(1f))
-                            FactoryStatTile("Cost / day", InputGuards.formatMoney(totalCost / activeDays, currency, masked), accents.danger, Modifier.weight(1f))
+                            FactoryStatTile("Available", InputGuards.fmtNum(sumAvailable), accents.emerald, Modifier.weight(1f))
+                            FactoryStatTile("Used", InputGuards.fmtNum(sumConsumed), accents.gold, Modifier.weight(1f))
+                            FactoryStatTile(
+                                "Cost / day",
+                                InputGuards.formatMoney(avgAdditionalCostPerDay, currency, masked),
+                                accents.danger,
+                                Modifier.weight(1f),
+                                subLabel = "average extra"
+                            )
+                        }
+                        FactorySectionLabel("Output")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FactoryStatTile("Quantity", "${InputGuards.fmtNum(sumOutput)} kg", accents.emerald, Modifier.weight(1f))
+                            FactoryStatTile("Raw used", "${InputGuards.fmtNum(sumRawUsed)} kg", accents.cyan, Modifier.weight(1f))
+                        }
+                        if (rawByMaterial.isNotEmpty()) {
+                            FactoryCallout {
+                                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Materials breakdown (${rawByMaterial.size})", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                    rawByMaterial.forEach { (matName, pair) ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(matName, style = MaterialTheme.typography.bodySmall)
+                                            Text(
+                                                "${InputGuards.fmtNum(pair.first)} kg • ${InputGuards.formatMoney(pair.second, currency, masked)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.danger
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                         FactorySectionLabel("Cost")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FactoryStatTile("Per unit", InputGuards.formatMoney(if (producedUnits > 0.0) totalCost / producedUnits else 0.0, currency, masked), accents.danger, Modifier.weight(1f))
-                            FactoryStatTile("Total", InputGuards.formatMoney(totalCost, currency, masked), accents.gold, Modifier.weight(1f))
-                            FactoryStatTile("Materials", InputGuards.formatMoney(matCost, currency, masked), accents.danger, Modifier.weight(1f))
+                            FactoryStatTile("Per unit", InputGuards.formatMoney(avgCostPerUnit, currency, masked), accents.danger, Modifier.weight(1f))
+                            FactoryStatTile("Total", InputGuards.formatMoney(sumTotalCost, currency, masked), accents.gold, Modifier.weight(1f))
+                            FactoryStatTile("Materials", InputGuards.formatMoney(sumMatVal, currency, masked), accents.danger, Modifier.weight(1f))
                         }
                     }
                 }
@@ -496,11 +569,11 @@ fun FactoryScreen(
                 SarimCard {
                     FactoryCardTitle("Recent Production Activity")
                     Spacer(Modifier.height(10.dp))
-                    if (periodRecords.isEmpty()) {
+                    if (periodFactory.isEmpty()) {
                         Text("No recent activity", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                     } else {
                         SarimYearMonthDayTree(
-                            items = periodRecords,
+                            items = periodFactory,
                             dateOf = { it.date },
                             summaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked) },
                             itemRow = { rec ->
@@ -566,18 +639,17 @@ fun FactoryScreen(
     if (showEditDiff && editingBatch != null && selectedFormula != null) {
         val orig = editingBatch!!
         val f = selectedFormula!!
-        val units = (unitsStr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val u = (unitsStr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
         EditDiffConfirmDialog(
             title = "Confirm Factory Batch Edit",
             rows = listOf(
                 Triple("Date", orig.date, date),
                 Triple("Formula", orig.formulaName, f.name),
-                Triple("Units", InputGuards.fmtNum(orig.units), InputGuards.fmtNum(units)),
-                Triple("Notes", orig.notes, notes.trim())
+                Triple("Units", InputGuards.fmtNum(orig.units), InputGuards.fmtNum(u))
             ),
             onConfirm = {
                 showEditDiff = false
-                vm.editFactoryBatch(orig, date, f, units, notes) { resetBatchForm() }
+                vm.editFactoryBatch(orig, date, f, u, orig.notes) { resetBatchForm() }
             },
             onDismiss = { showEditDiff = false }
         )
@@ -593,9 +665,6 @@ fun FactoryScreen(
         )
     }
 }
-
-
-// ---- Web-parity building blocks for the Factory tab ----
 
 @Composable
 private fun FactoryCardTitle(text: String, accent: Boolean = false) {
@@ -669,7 +738,13 @@ private fun FactoryCallout(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun FactoryStatTile(label: String, value: String, tone: Color, modifier: Modifier = Modifier) {
+private fun FactoryStatTile(
+    label: String,
+    value: String,
+    tone: Color,
+    modifier: Modifier = Modifier,
+    subLabel: String? = null
+) {
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
@@ -681,6 +756,9 @@ private fun FactoryStatTile(label: String, value: String, tone: Color, modifier:
         Text(label.uppercase(), fontFamily = JakartaFont, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 0.5.sp, color = accents.textMuted, maxLines = 1)
         Spacer(Modifier.height(2.dp))
         Text(value, fontFamily = ManropeFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = tone, maxLines = 1)
+        if (!subLabel.isNullOrBlank()) {
+            Text(subLabel, fontSize = 9.sp, color = accents.textMuted, maxLines = 1)
+        }
     }
 }
 

@@ -70,6 +70,7 @@ data class SalesSaveConfirmModel(
 @Composable
 fun SalesEntryCard(
     isEditing: Boolean,
+    editingId: String? = null,
     isSalesRestricted: Boolean,
     masked: Boolean,
     currency: String,
@@ -130,7 +131,7 @@ fun SalesEntryCard(
     var showCustomerSuggestions by remember { mutableStateOf(false) }
 
     SarimCard(contentPadding = PaddingValues(16.dp)) {
-        // Header + Sale / Collection toggle (web: always "New Sale" and "Sale" / "Collection")
+        // Header + ID badge + Sale / Collection toggle (web: #new-sale-id-display + "Sale" / "Collection")
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -142,6 +143,21 @@ fun SalesEntryCard(
                 color = accents.emerald,
                 modifier = Modifier.weight(1f)
             )
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = accents.inputFill,
+                border = BorderStroke(1.dp, accents.borderSubtle),
+                modifier = Modifier
+                    .padding(end = 6.dp)
+                    .testTag("sales_entry_id_badge")
+            ) {
+                Text(
+                    text = "ID: ${editingId?.take(8) ?: "—"}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = accents.textMuted,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(
                     SalesEntryMode.SALE to "Sale",

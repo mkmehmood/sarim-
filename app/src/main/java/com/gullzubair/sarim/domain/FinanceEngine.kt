@@ -510,6 +510,138 @@ object FinanceEngine {
         return out
     }
 
+    // --- Link Graph & Supplier Credit Helpers (link-graph.js & raw-purchases.js) ---
+
+    fun ownsNoPayable(rec: InventoryRecord?): Boolean =
+        rec != null && (rec.isPurchaseLot || rec.purchasesTracked)
+
+    fun isCashFlowRow(sale: SalesRecord?): Boolean =
+        sale != null && (sale.paymentType == "COLLECTION" || sale.paymentType == "PARTIAL_PAYMENT" || sale.paymentType == "MONEY_OUT")
+
+    fun soldStockValue(sale: SalesRecord?): Double {
+        if (sale == null || isCashFlowRow(sale)) return 0.0
+        if (sale.isMerged && sale.mergedSummary.isNotEmpty()) {
+            return InputGuards.round2((sale.mergedSummary["cashSales"] ?: 0.0) + (sale.mergedSummary["unpaidCredit"] ?: 0.0))
+        }
+        val v = sale.totalValue
+        if (sale.paymentType == "CREDIT" && !sale.creditReceived) return v
+        if (sale.salesRep.isNotBlank() && sale.salesRep != "NONE") return v
+        if (sale.paymentType == "CASH" || sale.creditReceived) return v
+        return 0.0
+    }
+
+    fun collectionExpiredCredit(sale: SalesRecord?): Double =
+        if (sale != null && sale.paymentType == "COLLECTION" && (sale.salesRep.isBlank() || sale.salesRep == "NONE"))
+            max(0.0, sale.expiredAllocated)
+        else 0.0
+
+    fun collectionPartialCash(sale: SalesRecord?): Double {
+        if (sale == null || sale.creditReceived || sale.collectionAllocs.isEmpty()) return 0.0
+        return InputGuards.round2(
+            sale.collectionAllocs.entries.sumOf { (cid, amt) ->
+                if (sale.collectionAllocFull[cid] != true) max(0.0, amt) else 0.0
+            }
+        )
+    }
+
+    fun txMaterialIds(tx: PaymentTransaction?): Set<String> {
+        if (tx == null) return emptySet()
+        val ids = LinkedHashSet<String>()
+        if (tx.materialId.isNotBlank()) ids.add(tx.materialId)
+        tx.materialIds.forEach { if (it.isNotBlank()) ids.add(it) }
+        return ids
+    }
+
+    fun isOrphanSupplierTx(tx: PaymentTransaction?, inventory: List<InventoryRecord>): Boolean {
+        if (tx == null || !tx.isPayable) return false
+        val ids = txMaterialIds(tx)
+        if (ids.isEmpty()) return false
+        return inventory.none { m ->
+            m.deletedAt == null && m.id in ids && m.supplierId.isNotBlank() && m.supplierId == tx.entityId
+        }
+    }
+
+    fun hasLiveSupplierInvoice(material: InventoryRecord?, txs: List<PaymentTransaction>): Boolean {
+        if (material == null || material.supplierId.isBlank()) return false
+        return txs.any { t ->
+            t.deletedAt == null &&
+                t.isPayable &&
+                t.type == "IN" &&
+                t.entityId == material.supplierId &&
+                material.id in txMaterialIds(t)
+        }
+    }
+
+    data class SupplierCreditConsumption(val id: String, val amount: Double)
+
+    data class SupplierCreditConsumptionPlan(
+        val consumptions: List<SupplierCreditConsumption>,
+        val remaining: Double
+    )
+
+    fun planSupplierCreditConsumption(
+        txs: List<PaymentTransaction>,
+        entityId: String,
+        amount: Double
+    ): SupplierCreditConsumptionPlan {
+        var remaining = InputGuards.round2(max(0.0, amount))
+        val consumptions = mutableListOf<SupplierCreditConsumption>()
+        if (remaining <= 0.0 || entityId.isBlank()) {
+            return SupplierCreditConsumptionPlan(consumptions, remaining)
+        }
+        val open = txs.filter { t ->
+            t.deletedAt == null &&
+                t.isPayable &&
+                t.type == "IN" &&
+                t.entityId == entityId &&
+                t.supplierCreditAmount > 0.0
+        }.sortedWith(compareBy<PaymentTransaction> { it.date.ifBlank { "9999-99-99" } }.thenBy { it.timestamp })
+        for (ct in open) {
+            if (remaining <= 0.0) break
+            val take = min(ct.supplierCreditAmount, remaining)
+            consumptions.add(SupplierCreditConsumption(id = ct.id, amount = InputGuards.round2(take)))
+            remaining = InputGuards.round2(max(0.0, remaining - take))
+        }
+        return SupplierCreditConsumptionPlan(consumptions, remaining)
+    }
+
+    data class MaterialAllocationResult(
+        val remaining: Double,
+        val touched: List<InventoryRecord>
+    )
+
+    fun allocatePaymentToMaterials(
+        materials: List<InventoryRecord>,
+        amount: Double,
+        date: String,
+        now: Long = System.currentTimeMillis()
+    ): MaterialAllocationResult {
+        var remaining = max(0.0, amount)
+        val touched = mutableListOf<InventoryRecord>()
+        for (mat in materials) {
+            if (remaining <= 0.0) break
+            if (mat.totalPayable <= 0.0) continue
+            val updated = if (remaining >= mat.totalPayable) {
+                remaining = InputGuards.round2(remaining - mat.totalPayable)
+                mat.copy(
+                    totalPayable = 0.0,
+                    paymentStatus = "paid",
+                    paidDate = date,
+                    updatedAtEpoch = now
+                )
+            } else {
+                val nextPayable = InputGuards.round2(mat.totalPayable - remaining)
+                remaining = 0.0
+                mat.copy(
+                    totalPayable = nextPayable,
+                    updatedAtEpoch = now
+                )
+            }
+            touched.add(updated)
+        }
+        return MaterialAllocationResult(remaining = InputGuards.round2(remaining), touched = touched)
+    }
+
     // --- Store Stock & Cost Lookup ---
 
     data class StoreStockSnapshot(
@@ -753,88 +885,446 @@ object FinanceEngine {
     fun computeChannelBalances(snapshot: WorkspaceSnapshot): Map<String, Double> =
         summarizeDailyLedger(snapshot.ledgerEntries, snapshot.settings.paymentModes).byMode
 
-    fun computeAvailableCashInHand(snapshot: WorkspaceSnapshot): Double =
-        summarizeDailyLedger(snapshot.ledgerEntries, snapshot.settings.paymentModes).cash
+    fun computeAvailableCashInHand(snapshot: WorkspaceSnapshot): Double {
+        val prodVal = snapshot.production.filter { it.deletedAt == null }.sumOf { it.totalSale }
+        var salesCash = 0.0
+        var soldVal = 0.0
+        snapshot.sales.filter { it.deletedAt == null }.forEach { sale ->
+            soldVal += soldStockValue(sale)
+            val isRepLinked = sale.salesRep.isNotBlank() && sale.salesRep != "NONE"
+            val saleVal = sale.totalValue
+            when {
+                sale.isMerged && sale.mergedSummary.isNotEmpty() -> {
+                    salesCash += (sale.mergedSummary["cashSales"] ?: 0.0)
+                }
+                sale.paymentType == "CREDIT" && !sale.creditReceived -> {
+                    salesCash += collectionPartialCash(sale)
+                }
+                isRepLinked -> {
+                    // rep-linked non-CREDIT rows don't contribute directly here
+                }
+                else -> {
+                    if ((sale.paymentType == "CASH" || sale.creditReceived) && !isCashFlowRow(sale)) {
+                        salesCash += saleVal
+                    } else if (sale.paymentType == "COLLECTION") {
+                        salesCash += saleVal - collectionExpiredCredit(sale)
+                    } else if (sale.paymentType == "PARTIAL_PAYMENT") {
+                        salesCash += saleVal
+                    } else if (sale.paymentType == "MONEY_OUT") {
+                        salesCash -= saleVal
+                    }
+                }
+            }
+        }
+        val calcCash = snapshot.calculator.filter { it.deletedAt == null }.sumOf { it.received }
+        var payIn = 0.0
+        var payOut = 0.0
+        var expTotal = 0.0
+        snapshot.transactions.filter { it.deletedAt == null }.forEach { tx ->
+            if (tx.isPayable && tx.type == "IN") return@forEach
+            if (tx.type == "IN") {
+                payIn += tx.amount
+            } else if (tx.type == "OUT") {
+                if (tx.isExpense && tx.category == "operating") expTotal += tx.amount
+                else if (!tx.isExpense) payOut += tx.amount
+            }
+        }
+        snapshot.expenses.filter { it.deletedAt == null }.forEach { exp ->
+            if (exp.isMerged && exp.category == "operating") expTotal += exp.amount
+        }
+        snapshot.factory.filter { it.deletedAt == null }.forEach { entry ->
+            if (!entry.isMerged) expTotal += entry.additionalCost
+        }
+        return InputGuards.round2(prodVal - soldVal + salesCash + calcCash + payIn - payOut - expTotal)
+    }
 
-    // --- Economic Health Dashboard ---
+    // --- Cash Tracker & Economic Health Dashboard (utilities-sales.js 1:1) ---
+
+    private fun trackerDateRange(mode: String, selectedDateIso: String): Pair<java.time.LocalDate, java.time.LocalDate> {
+        val anchor = DateUtils.parseIso(selectedDateIso) ?: java.time.LocalDate.now()
+        return when (mode.lowercase(Locale.ROOT)) {
+            "day" -> anchor to anchor
+            "week" -> anchor.minusDays(6) to anchor
+            "month" -> anchor.withDayOfMonth(1) to anchor.withDayOfMonth(anchor.lengthOfMonth())
+            "year" -> anchor.withDayOfYear(1) to java.time.LocalDate.of(anchor.year, 12, 31)
+            else -> java.time.LocalDate.of(2000, 1, 1) to java.time.LocalDate.of(2100, 12, 31)
+        }
+    }
+
+    private fun inTrackerRange(dateIso: String, mode: String, start: java.time.LocalDate, end: java.time.LocalDate): Boolean {
+        if (mode.equals("all", ignoreCase = true)) return true
+        val d = DateUtils.parseIso(dateIso) ?: return false
+        return !d.isBefore(start) && !d.isAfter(end)
+    }
+
+    data class CashTrackerSummary(
+        val mode: String,
+        val productionValue: Double,
+        val productionQuantity: Double,
+        val returnedStockValue: Double,
+        val totalSoldValue: Double,
+        val salesTabCash: Double,
+        val salesTabCredits: Double,
+        val calculatorCash: Double,
+        val calculatorCredits: Double,
+        val paymentsIn: Double,
+        val paymentsOut: Double,
+        val expenses: Double,
+        val netCash: Double,
+        val totalCredits: Double
+    )
+
+    fun calculateCashTracker(
+        snapshot: WorkspaceSnapshot,
+        mode: String = "day",
+        selectedDateIso: String = DateUtils.todayIso()
+    ): CashTrackerSummary {
+        val (start, end) = trackerDateRange(mode, selectedDateIso)
+        var prodVal = 0.0
+        var prodQty = 0.0
+        var retStockVal = 0.0
+        var salesCash = 0.0
+        var salesCredits = 0.0
+        var totalSoldVal = 0.0
+        var calcCash = 0.0
+        var calcCredits = 0.0
+        var calcRecovered = 0.0
+        var paymentsIn = 0.0
+        var paymentsOut = 0.0
+        var expenses = 0.0
+
+        snapshot.production.filter { it.deletedAt == null }.forEach { item ->
+            if (!inTrackerRange(item.date, mode, start, end)) return@forEach
+            if (item.isReturn) {
+                retStockVal += item.totalSale
+            } else {
+                prodVal += item.totalSale
+                prodQty += item.net
+            }
+        }
+
+        snapshot.sales.filter { it.deletedAt == null }.forEach { sale ->
+            if (!inTrackerRange(sale.date, mode, start, end)) return@forEach
+            val isRepLinked = sale.salesRep.isNotBlank() && sale.salesRep != "NONE"
+            val saleVal = sale.totalValue
+            when {
+                sale.isMerged && sale.mergedSummary.isNotEmpty() -> {
+                    val msCash = sale.mergedSummary["cashSales"] ?: 0.0
+                    val msCred = sale.mergedSummary["unpaidCredit"] ?: 0.0
+                    salesCash += msCash
+                    salesCredits += msCred
+                    totalSoldVal += msCash + msCred
+                }
+                sale.paymentType == "CREDIT" && !sale.creditReceived -> {
+                    salesCredits += max(0.0, saleVal - sale.partialPaymentReceived)
+                    salesCash += collectionPartialCash(sale)
+                    totalSoldVal += saleVal
+                }
+                isRepLinked -> {
+                    totalSoldVal += saleVal
+                    if (!sale.creditReceived) {
+                        salesCredits += max(0.0, saleVal - sale.partialPaymentReceived)
+                    }
+                }
+                else -> {
+                    if ((sale.paymentType == "CASH" || sale.creditReceived) && !isCashFlowRow(sale)) {
+                        salesCash += saleVal
+                        totalSoldVal += saleVal
+                    } else if (sale.paymentType == "COLLECTION") {
+                        salesCash += saleVal - collectionExpiredCredit(sale)
+                        salesCredits -= saleVal
+                    } else if (sale.paymentType == "PARTIAL_PAYMENT") {
+                        salesCash += saleVal
+                        salesCredits -= saleVal
+                    } else if (sale.paymentType == "MONEY_OUT") {
+                        salesCash -= saleVal
+                        salesCredits += saleVal
+                    }
+                }
+            }
+        }
+
+        snapshot.calculator.filter { it.deletedAt == null }.forEach { item ->
+            if (!inTrackerRange(item.date, mode, start, end)) return@forEach
+            calcCash += item.received
+            calcCredits += item.creditValue
+            calcRecovered += item.prevColl
+        }
+
+        snapshot.transactions.filter { it.deletedAt == null }.forEach { tx ->
+            if (!inTrackerRange(tx.date, mode, start, end)) return@forEach
+            if (tx.isPayable && tx.type == "IN") return@forEach
+            if (tx.type == "IN") {
+                paymentsIn += tx.amount
+            } else if (tx.type == "OUT") {
+                if (tx.isExpense && tx.category == "operating") {
+                    expenses += tx.amount
+                } else if (!tx.isExpense) {
+                    paymentsOut += tx.amount
+                }
+            }
+        }
+
+        snapshot.expenses.filter { it.deletedAt == null }.forEach { exp ->
+            if (!exp.isMerged || exp.category != "operating") return@forEach
+            if (inTrackerRange(exp.date, mode, start, end)) {
+                expenses += exp.amount
+            }
+        }
+
+        snapshot.factory.filter { it.deletedAt == null }.forEach { entry ->
+            if (entry.isMerged) return@forEach
+            if (inTrackerRange(entry.date, mode, start, end)) {
+                expenses += entry.additionalCost
+            }
+        }
+
+        val netCalcDebt = InputGuards.round2(calcCredits - calcRecovered)
+        val netCash = InputGuards.round2(prodVal - totalSoldVal + retStockVal + salesCash + calcCash + paymentsIn - paymentsOut - expenses)
+        val totalCredits = InputGuards.round2(salesCredits + netCalcDebt)
+
+        return CashTrackerSummary(
+            mode = mode,
+            productionValue = InputGuards.round2(prodVal),
+            productionQuantity = InputGuards.round3(prodQty),
+            returnedStockValue = InputGuards.round2(retStockVal),
+            totalSoldValue = InputGuards.round2(totalSoldVal),
+            salesTabCash = InputGuards.round2(salesCash),
+            salesTabCredits = InputGuards.round2(salesCredits),
+            calculatorCash = InputGuards.round2(calcCash),
+            calculatorCredits = netCalcDebt,
+            paymentsIn = InputGuards.round2(paymentsIn),
+            paymentsOut = InputGuards.round2(paymentsOut),
+            expenses = InputGuards.round2(expenses),
+            netCash = netCash,
+            totalCredits = totalCredits
+        )
+    }
 
     data class EconomicHealthSummary(
         val cashInHand: Double,
+        val directSalesCash: Double,
+        val productionCash: Double,
+        val repCollectionsCash: Double,
+        val paymentsIn: Double,
+        val paymentsOut: Double,
+        val operatingExpenses: Double,
+        val operatingCashFlow: Double,
         val rawMaterialValue: Double,
         val formulaUnitsValue: Double,
-        val finishedStockValue: Double,
-        val customerReceivables: Double,
-        val entityReceivables: Double,
+        val salesReceivables: Double,
+        val calculatorReceivables: Double,
+        val totalReceivables: Double,
         val totalAssets: Double,
         val supplierPayables: Double,
         val entityPayables: Double,
+        val otherPayables: Double,
         val totalLiabilities: Double,
         val netWorkingCapital: Double,
         val enterpriseValue: Double,
-        val currentRatio: Double
+        val currentRatio: Double?,
+        val quickRatio: Double?,
+        val cashRatio: Double?,
+        val customerReceivables: Double = totalReceivables,
+        val entityReceivables: Double = 0.0
     )
 
-    fun calculateEconomicHealth(snapshot: WorkspaceSnapshot): EconomicHealthSummary {
-        val ledgerSum = summarizeDailyLedger(snapshot.ledgerEntries, snapshot.settings.paymentModes)
-        val cash = ledgerSum.inHand
-        val rawValue = materialRecords(snapshot.inventory)
-            .filter { it.quantity > 0.0 }
-            .sumOf { it.quantity * it.cost }
-        val unitValue = FormulaEngine.buildUnitPools(
-            snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production
-        ).filter { it.availableUnits > 0.0 }.sumOf { it.availableUnits * it.avgUnitCost }
-        val finishedValue = computeStoreStockSnapshots(snapshot)
-            .filter { it.availableKg > 0.0 }
-            .sumOf { it.availableKg * it.avgCostPerKg }
+    fun calculateEconomicHealth(
+        snapshot: WorkspaceSnapshot,
+        mode: String = "all",
+        selectedDateIso: String = DateUtils.todayIso()
+    ): EconomicHealthSummary {
+        val (start, end) = trackerDateRange(mode, selectedDateIso)
+        var prodVal = 0.0
+        var retStockVal = 0.0
+        var salesCash = 0.0
+        var salesCredits = 0.0
+        var totalSoldVal = 0.0
+        var calcCash = 0.0
+        var calcIssued = 0.0
+        var calcRecovered = 0.0
+        var paymentsIn = 0.0
+        var paymentsOut = 0.0
+        var totalExpenses = 0.0
 
-        val allCustomerNames = (snapshot.customers.filter { it.deletedAt == null }.map { it.name } +
-            snapshot.sales.filter { it.deletedAt == null }.map { it.customerName } +
-            snapshot.repRecords.filter { it.deletedAt == null }.map { it.customerName } +
-            snapshot.clients.filter { it.deletedAt == null }.map { it.name })
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase(Locale.ROOT) }
-
-        val receivables = allCustomerNames.sumOf { name ->
-            computeCustomerBalance(
-                name, snapshot.customers, snapshot.sales, snapshot.repRecords,
-                snapshot.calculator, snapshot.stores, snapshot.clients
-            ).coerceAtLeast(0.0)
+        snapshot.production.filter { it.deletedAt == null }.forEach { item ->
+            if (!inTrackerRange(item.date, mode, start, end)) return@forEach
+            if (item.isReturn) retStockVal += item.totalSale else prodVal += item.totalSale
         }
 
-        val supplierPayables = snapshot.inventory
-            .filter { it.deletedAt == null && it.paymentStatus != "paid" && it.totalPayable > 0.0 }
-            .sumOf { it.totalPayable }
+        snapshot.sales.filter { it.deletedAt == null }.forEach { sale ->
+            if (!inTrackerRange(sale.date, mode, start, end)) return@forEach
+            val isRepLinked = sale.salesRep.isNotBlank() && sale.salesRep != "NONE"
+            val saleVal = sale.totalValue
+            when {
+                sale.isMerged && sale.mergedSummary.isNotEmpty() -> {
+                    val msCash = sale.mergedSummary["cashSales"] ?: 0.0
+                    val msCred = sale.mergedSummary["unpaidCredit"] ?: 0.0
+                    salesCash += msCash
+                    salesCredits += msCred
+                    totalSoldVal += msCash + msCred
+                }
+                sale.paymentType == "CREDIT" && !sale.creditReceived -> {
+                    salesCredits += max(0.0, saleVal - sale.partialPaymentReceived)
+                    salesCash += collectionPartialCash(sale)
+                    totalSoldVal += saleVal
+                }
+                isRepLinked -> {
+                    totalSoldVal += saleVal
+                    if (!sale.creditReceived) {
+                        salesCredits += max(0.0, saleVal - sale.partialPaymentReceived)
+                    }
+                }
+                else -> {
+                    if ((sale.paymentType == "CASH" || sale.creditReceived) && !isCashFlowRow(sale)) {
+                        salesCash += saleVal
+                        totalSoldVal += saleVal
+                    } else if (sale.paymentType == "COLLECTION") {
+                        salesCash += saleVal - collectionExpiredCredit(sale)
+                        salesCredits -= saleVal
+                    } else if (sale.paymentType == "PARTIAL_PAYMENT") {
+                        salesCash += saleVal
+                        salesCredits -= saleVal
+                    } else if (sale.paymentType == "MONEY_OUT") {
+                        salesCash -= saleVal
+                        salesCredits += saleVal
+                    }
+                }
+            }
+        }
 
-        var entityReceivables = 0.0
+        snapshot.calculator.filter { it.deletedAt == null }.forEach { item ->
+            if (!inTrackerRange(item.date, mode, start, end)) return@forEach
+            calcCash += item.received
+            calcIssued += item.creditValue
+            calcRecovered += item.prevColl
+        }
+
+        val activeTxs = snapshot.transactions.filter { it.deletedAt == null }
+        activeTxs.forEach { tx ->
+            if (!inTrackerRange(tx.date, mode, start, end)) return@forEach
+            if (tx.isPayable && tx.type == "IN") return@forEach
+            if (tx.type == "IN") {
+                paymentsIn += tx.amount
+            } else if (tx.type == "OUT") {
+                if (tx.isExpense && tx.category == "operating") totalExpenses += tx.amount
+                else if (!tx.isExpense) paymentsOut += tx.amount
+            }
+        }
+
+        snapshot.expenses.filter { it.deletedAt == null }.forEach { exp ->
+            if (exp.isMerged && exp.category == "operating" && inTrackerRange(exp.date, mode, start, end)) {
+                totalExpenses += exp.amount
+            }
+        }
+
+        snapshot.factory.filter { it.deletedAt == null }.forEach { entry ->
+            if (!entry.isMerged && inTrackerRange(entry.date, mode, start, end)) {
+                totalExpenses += entry.additionalCost
+            }
+        }
+
+        val opCashFlow = InputGuards.round2(prodVal - totalSoldVal + retStockVal + salesCash + calcCash)
+        val cashInHand = InputGuards.round2(opCashFlow + paymentsIn - paymentsOut - totalExpenses)
+
+        val salesTabCredit = salesCredits
+        val calculatorCredit = max(0.0, calcIssued - calcRecovered)
+        val totalReceivables = InputGuards.round2(salesTabCredit + calculatorCredit)
+
+        val activeInv = snapshot.inventory.filter { it.deletedAt == null }
+        val rawValue = InputGuards.round2(activeInv.sumOf { it.quantity * it.cost })
+        val unitValue = InputGuards.round2(
+            FormulaEngine.buildUnitPools(
+                snapshot.stores, snapshot.formulas, snapshot.factory, snapshot.production
+            ).filter { it.availableUnits > 0.0 }.sumOf { it.availableUnits * it.avgUnitCost }
+        )
+
+        val currentAssets = InputGuards.round2(cashInHand + rawValue + unitValue + totalReceivables)
+
+        val rawMaterialSupplierIds = LinkedHashSet<String>()
+        activeInv.forEach { m -> if (m.supplierId.isNotBlank()) rawMaterialSupplierIds.add(m.supplierId) }
+        activeTxs.forEach { t ->
+            if (t.isPayable && t.type == "IN" && t.supplierCreditAmount > 0.0 && t.entityId.isNotBlank()) {
+                rawMaterialSupplierIds.add(t.entityId)
+            }
+        }
+
+        val entityBalances = LinkedHashMap<String, Double>()
+        snapshot.entities.filter { it.deletedAt == null && !it.isExpenseEntity }.forEach { e ->
+            entityBalances[e.id] = 0.0
+        }
+        activeTxs.forEach { t ->
+            if (t.isExpense) return@forEach
+            if (t.entityId in rawMaterialSupplierIds) return@forEach
+            if (isOrphanSupplierTx(t, activeInv)) return@forEach
+            if (entityBalances.containsKey(t.entityId)) {
+                val cur = entityBalances[t.entityId] ?: 0.0
+                if (t.type == "OUT") entityBalances[t.entityId] = cur - t.amount
+                else if (t.type == "IN") entityBalances[t.entityId] = cur + t.amount
+            }
+        }
+
+        val pendingPerSupplier = LinkedHashMap<String, Double>()
+        activeInv.forEach { m ->
+            val isPending = m.paymentStatus == "pending" || m.paymentStatus.isBlank()
+            if (m.supplierId.isNotBlank() && isPending && m.totalPayable > 0.0 && hasLiveSupplierInvoice(m, activeTxs)) {
+                pendingPerSupplier[m.supplierId] = (pendingPerSupplier[m.supplierId] ?: 0.0) + m.totalPayable
+            } else if (m.supplierId.isBlank() && isPending && !ownsNoPayable(m)) {
+                val unlinked = if (m.totalPayable > 0.0) m.totalPayable else m.totalValue
+                if (unlinked > 0.0) pendingPerSupplier["__unlinked__${m.id}"] = unlinked
+            }
+        }
+        var supplierPayables = pendingPerSupplier.values.filter { it > 0.0 }.sum()
+        activeTxs.forEach { t ->
+            if (t.isExpense || !t.isPayable || t.type != "IN") return@forEach
+            if (t.supplierCreditAmount > 0.0) {
+                supplierPayables += t.supplierCreditAmount
+                if (t.entityId.isNotBlank()) rawMaterialSupplierIds.add(t.entityId)
+            }
+        }
+        supplierPayables = InputGuards.round2(supplierPayables)
+
         var entityPayables = 0.0
-        val supplierIds = snapshot.inventory.mapNotNull { it.supplierId.takeIf { s -> s.isNotBlank() } }.toSet()
-        snapshot.entities.filter {
-            it.deletedAt == null && !it.isExpenseEntity && !it.isSupplier && it.type != "supplier" && it.id !in supplierIds
-        }.forEach { entity ->
-            val bal = computeEntityBalance(entity, snapshot.transactions, snapshot.inventory)
-            if (bal > 0.0) entityReceivables += bal else if (bal < 0.0) entityPayables += abs(bal)
+        var entityReceivables = 0.0
+        entityBalances.forEach { (eid, bal) ->
+            if (eid in rawMaterialSupplierIds) return@forEach
+            if (bal > 0.0) entityPayables += bal
+            else if (bal < 0.0) entityReceivables += abs(bal)
         }
+        entityPayables = InputGuards.round2(entityPayables)
 
-        val totalAssets = InputGuards.round2(cash + rawValue + unitValue + finishedValue + receivables + entityReceivables)
         val totalLiab = InputGuards.round2(supplierPayables + entityPayables)
-        val nwc = InputGuards.round2(totalAssets - totalLiab)
-        val ratio = if (totalLiab > 0.01) InputGuards.round2(totalAssets / totalLiab) else 99.9
+        val nwc = InputGuards.round2(currentAssets - totalLiab)
+        val currentRatio = if (totalLiab > 0.0) InputGuards.round2(currentAssets / totalLiab) else null
+        val quickRatio = if (totalLiab > 0.0) InputGuards.round2((currentAssets - rawValue - unitValue) / totalLiab) else null
+        val cashRatio = if (totalLiab > 0.0) InputGuards.round2(cashInHand / totalLiab) else null
 
         return EconomicHealthSummary(
-            cashInHand = InputGuards.round2(cash),
-            rawMaterialValue = InputGuards.round2(rawValue),
-            formulaUnitsValue = InputGuards.round2(unitValue),
-            finishedStockValue = InputGuards.round2(finishedValue),
-            customerReceivables = InputGuards.round2(receivables),
-            entityReceivables = InputGuards.round2(entityReceivables),
-            totalAssets = totalAssets,
-            supplierPayables = InputGuards.round2(supplierPayables),
-            entityPayables = InputGuards.round2(entityPayables),
+            cashInHand = cashInHand,
+            directSalesCash = InputGuards.round2(salesCash),
+            productionCash = InputGuards.round2(prodVal),
+            repCollectionsCash = InputGuards.round2(calcCash),
+            paymentsIn = InputGuards.round2(paymentsIn),
+            paymentsOut = InputGuards.round2(paymentsOut),
+            operatingExpenses = InputGuards.round2(totalExpenses),
+            operatingCashFlow = opCashFlow,
+            rawMaterialValue = rawValue,
+            formulaUnitsValue = unitValue,
+            salesReceivables = InputGuards.round2(salesTabCredit),
+            calculatorReceivables = InputGuards.round2(calculatorCredit),
+            totalReceivables = totalReceivables,
+            totalAssets = currentAssets,
+            supplierPayables = supplierPayables,
+            entityPayables = entityPayables,
+            otherPayables = 0.0,
             totalLiabilities = totalLiab,
             netWorkingCapital = nwc,
             enterpriseValue = nwc,
-            currentRatio = ratio
+            currentRatio = currentRatio,
+            quickRatio = quickRatio,
+            cashRatio = cashRatio,
+            customerReceivables = totalReceivables,
+            entityReceivables = InputGuards.round2(entityReceivables)
         )
     }
 

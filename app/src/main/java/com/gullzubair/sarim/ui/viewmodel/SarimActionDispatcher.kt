@@ -1367,100 +1367,303 @@ class SarimActionDispatcher(
         paymentMethod: String,
         amount: Double,
         addToLedger: Boolean,
-        notes: String
+        notes: String,
+        photoDataUri: String? = null
     ): Result<String> {
         val cleanName = InputGuards.sanitizeName(entity?.name ?: customName)
-        if (cleanName.isBlank() || amount <= 0.0) {
-            return Result.failure(IllegalArgumentException("Name and positive amount are required"))
+        if (cleanName.isBlank()) {
+            return Result.failure(IllegalArgumentException("Please enter name/entity"))
         }
-        val now = System.currentTimeMillis()
+        val cleanNotes = InputGuards.sanitizeNotes(notes)
+        val issue = InputGuards.dateIssue(date, DateUtils.todayIso())
+            .ifEmpty { InputGuards.nameIssue(cleanName, "Name") }
+            .ifEmpty { InputGuards.nameIssue(cleanNotes, "Description", 300) }
+        if (issue.isNotEmpty()) return Result.failure(IllegalArgumentException(issue))
+        val roundedAmount = InputGuards.round2(amount)
+        if (roundedAmount <= 0.0) {
+            return Result.failure(IllegalArgumentException("Please enter valid amount"))
+        }
 
-        if (kind.equals("EXPENSE", ignoreCase = true)) {
+        val normKind = kind.trim().uppercase(Locale.ROOT)
+        val isOperating = normKind == "EXPENSE" || normKind == "OPERATING"
+        val normType = if (normKind == "IN") "IN" else "OUT"
+        val cleanMethod = paymentMethod.ifBlank { "Cash" }
+        val now = System.currentTimeMillis()
+        val session = FinanceEngine.deriveSession(snapshot.profile)
+
+        if (!isOperating || normType == "OUT") {
+            if (isOperating || normType == "OUT") {
+                var materialOffset = 0.0
+                if (!isOperating && normType == "OUT") {
+                    val matchedEnt = entity ?: snapshot.entities.firstOrNull {
+                        it.deletedAt == null && !it.isExpenseEntity && it.name.equals(cleanName, ignoreCase = true)
+                    }
+                    if (matchedEnt != null) {
+                        var rem = roundedAmount
+                        val openMats = snapshot.inventory.filter { m ->
+                            m.deletedAt == null &&
+                                m.supplierId == matchedEnt.id &&
+                                (m.paymentStatus == "pending" || m.paymentStatus.isBlank()) &&
+                                m.totalPayable > 0.0
+                        }.sortedWith(compareBy<InventoryRecord> { it.purchaseDate.ifBlank { "9999-99-99" } }.thenBy { it.timestamp })
+                        for (m in openMats) {
+                            if (rem <= 0.0) break
+                            materialOffset += min(rem, m.totalPayable)
+                            rem -= m.totalPayable
+                        }
+                    }
+                }
+                val netOutflow = InputGuards.round2(roundedAmount - materialOffset)
+                val availCash = FinanceEngine.computeAvailableCashInHand(snapshot)
+                if (availCash < netOutflow) {
+                    val msg = if (session.restrictMoney || snapshot.settings.hideSensitiveMoney) {
+                        "Insufficient cash in hand."
+                    } else {
+                        "Insufficient cash in hand. Available: ${InputGuards.fmtNum(max(0.0, availCash))} — Required: ${InputGuards.fmtNum(netOutflow)}"
+                    }
+                    return Result.failure(IllegalArgumentException(msg))
+                }
+            }
+        }
+
+        if (!isOperating) {
+            val knownEntity = entity ?: snapshot.entities.firstOrNull {
+                it.deletedAt == null && !it.isExpenseEntity && it.name.equals(cleanName, ignoreCase = true)
+            }
+            if (knownEntity == null && snapshot.settings.expenseCategories.any { it.equals(cleanName, ignoreCase = true) }) {
+                return Result.failure(
+                    IllegalArgumentException("\"$cleanName\" is an operating expense category, not an entity. Switch to Operating Expense mode or use a different name.")
+                )
+            }
+        }
+
+        if (isOperating) {
             val expId = ops.newId("exp")
+            var expenseEnt = snapshot.entities.firstOrNull {
+                it.deletedAt == null && it.isExpenseEntity && it.name.equals(cleanName, ignoreCase = true)
+            }
+            if (expenseEnt == null) {
+                val createdEnt = EntityRecord(
+                    id = ops.newId("ent"),
+                    name = cleanName,
+                    type = "payee",
+                    isSupplier = false,
+                    isExpenseEntity = true,
+                    notes = "Auto-created by Expense Manager",
+                    timestamp = now,
+                    updatedAtEpoch = now
+                )
+                expenseEnt = createdEnt
+                ops.submitOrExecuteWrite(
+                    profile = snapshot.profile,
+                    targetCollection = "entities",
+                    docId = createdEnt.id,
+                    summaryTitle = "Expense Payee: $cleanName",
+                    summaryDetail = "Auto-created by Expense Manager",
+                    payload = WorkspaceJsonCodec.entityToMap(createdEnt)
+                )
+            }
+
             val exp = ExpenseRecord(
                 id = expId,
                 date = date,
                 name = cleanName,
-                category = category.ifBlank { "Other" },
-                amount = InputGuards.round2(amount),
-                description = InputGuards.sanitizeNotes(notes),
-                notes = InputGuards.sanitizeNotes(notes),
-                entityId = entity?.id ?: "",
-                entityName = entity?.name ?: "",
-                paymentMethod = paymentMethod.ifBlank { "Cash" },
-                timestamp = now
+                category = "operating",
+                amount = roundedAmount,
+                description = cleanNotes,
+                notes = cleanNotes,
+                entityId = expenseEnt.id,
+                entityName = expenseEnt.name,
+                paymentMethod = cleanMethod,
+                timestamp = now,
+                updatedAtEpoch = now
             )
-            if (addToLedger && snapshot.profile.isAdmin) {
-                appendDailyLedgerEntry(
-                    snapshot,
-                    DailyLedgerEntry(
-                        id = ops.newId("dl"),
-                        type = "OUT",
-                        amount = exp.amount,
-                        category = exp.category,
-                        scope = "BUSINESS",
-                        mode = exp.paymentMethod,
-                        party = cleanName,
-                        note = notes,
-                        date = date,
-                        timestamp = now,
-                        updatedAt = now,
-                        linkCollection = "expenses",
-                        linkDocId = expId,
-                        linkOrigin = "tab",
-                        linkEntityId = entity?.id
-                    )
-                )
+            if (!photoDataUri.isNullOrBlank()) {
+                ops.savePhoto(snapshot.profile, "expense:$expId", photoDataUri)
             }
-            return ops.submitOrExecuteWrite(
+            if (snapshot.profile.isAdmin && snapshot.settings.expenseCategories.none { it.equals(cleanName, ignoreCase = true) }) {
+                val updatedCats = (snapshot.settings.expenseCategories + cleanName).distinct()
+                saveSettings(snapshot, snapshot.settings.copy(expenseCategories = updatedCats))
+            }
+
+            val expRes = ops.submitOrExecuteWrite(
                 profile = snapshot.profile,
                 targetCollection = "expenses",
                 docId = expId,
-                summaryTitle = "Expense: $cleanName",
-                summaryDetail = "$date • ${exp.category} • ${InputGuards.fmtNum(amount)}",
+                summaryTitle = "Operating Expense: $cleanName",
+                summaryDetail = "$date • ${InputGuards.fmtNum(roundedAmount)}",
                 payload = WorkspaceJsonCodec.expenseToMap(exp)
             )
-        }
-
-        val normType = if (kind.equals("IN", ignoreCase = true)) "IN" else "OUT"
-        val txId = ops.newId("tx")
-        val tx = PaymentTransaction(
-            id = txId,
-            date = date,
-            time = DateUtils.nowTimeStr(),
-            entityId = entity?.id ?: "",
-            entityName = cleanName,
-            entityType = entity?.type ?: category,
-            type = normType,
-            amount = InputGuards.round2(amount),
-            description = InputGuards.sanitizeNotes(notes),
-            paymentMethod = paymentMethod.ifBlank { "Cash" },
-            timestamp = now
-        )
-
-        if (normType == "OUT" && snapshot.profile.isAdmin) {
-            val fifo = FinanceEngine.previewSupplierFifoAllocation(
-                supplierIdOrName = entity?.id?.ifBlank { cleanName } ?: cleanName,
-                paymentAmount = amount,
-                inventory = snapshot.inventory
-            )
-            val invById = snapshot.inventory.associateBy { it.id }
-            fifo.forEach { alloc ->
-                val lot = invById[alloc.lotId] ?: return@forEach
-                val nextLot = lot.copy(
-                    totalPayable = alloc.afterPayable,
-                    paymentStatus = if (alloc.afterPayable <= 0.01) "paid" else "pending",
-                    paidDate = if (alloc.afterPayable <= 0.01) date else lot.paidDate
+            if (expRes.isSuccess && snapshot.profile.isAdmin) {
+                val txId = ops.newId("pay")
+                val tx = PaymentTransaction(
+                    id = txId,
+                    date = date,
+                    time = DateUtils.nowTimeStr(),
+                    entityId = expenseEnt.id,
+                    entityName = expenseEnt.name,
+                    entityType = expenseEnt.type,
+                    type = "OUT",
+                    amount = roundedAmount,
+                    description = cleanNotes.ifBlank { "Expense: $cleanName" },
+                    paymentMethod = cleanMethod,
+                    category = "operating",
+                    isPayable = false,
+                    isExpense = true,
+                    expenseId = expId,
+                    timestamp = now,
+                    updatedAtEpoch = now
                 )
                 ops.submitOrExecuteWrite(
                     profile = snapshot.profile,
-                    targetCollection = "inventory",
-                    docId = lot.id,
-                    summaryTitle = "Settle Lot: ${lot.materialName}",
-                    summaryDetail = "Paid ${InputGuards.fmtNum(alloc.appliedPayment)}",
-                    payload = WorkspaceJsonCodec.inventoryToMap(nextLot),
-                    isEdit = true
+                    targetCollection = "transactions",
+                    docId = txId,
+                    summaryTitle = "Expense Tx: $cleanName",
+                    summaryDetail = "$date • ${InputGuards.fmtNum(roundedAmount)}",
+                    payload = WorkspaceJsonCodec.transactionToMap(tx)
                 )
+            }
+            return expRes
+        }
+
+        // Non-operating Payment (IN / OUT)
+        var targetEntity = entity ?: snapshot.entities.firstOrNull {
+            it.deletedAt == null && !it.isExpenseEntity && it.name.equals(cleanName, ignoreCase = true)
+        }
+        if (targetEntity == null) {
+            val newEnt = EntityRecord(
+                id = ops.newId("ent"),
+                name = cleanName,
+                type = if (normType == "OUT") "payee" else "payor",
+                isSupplier = false,
+                isExpenseEntity = false,
+                notes = "Auto-created from Transaction Manager",
+                timestamp = now,
+                updatedAtEpoch = now
+            )
+            targetEntity = newEnt
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "entities",
+                docId = newEnt.id,
+                summaryTitle = "New Account: $cleanName",
+                summaryDetail = "Created from Payments",
+                payload = WorkspaceJsonCodec.entityToMap(newEnt)
+            )
+        }
+
+        val payExpenseId = ops.newId("exp")
+        val payDesc = cleanNotes.ifBlank { "Payment $normType: ${targetEntity.name}" }
+        val payExpense = ExpenseRecord(
+            id = payExpenseId,
+            date = date,
+            name = targetEntity.name,
+            category = normType,
+            amount = roundedAmount,
+            description = payDesc,
+            notes = cleanNotes,
+            entityId = targetEntity.id,
+            entityName = targetEntity.name,
+            paymentMethod = cleanMethod,
+            timestamp = now,
+            updatedAtEpoch = now
+        )
+        if (!photoDataUri.isNullOrBlank()) {
+            ops.savePhoto(snapshot.profile, "expense:$payExpenseId", photoDataUri)
+        }
+        if (snapshot.profile.isAdmin) {
+            ops.submitOrExecuteWrite(
+                profile = snapshot.profile,
+                targetCollection = "expenses",
+                docId = payExpenseId,
+                summaryTitle = "Payment Mirror: ${targetEntity.name}",
+                summaryDetail = "$date • $normType • ${InputGuards.fmtNum(roundedAmount)}",
+                payload = WorkspaceJsonCodec.expenseToMap(payExpense)
+            )
+        }
+
+        val txId = ops.newId("pay")
+        var tx = PaymentTransaction(
+            id = txId,
+            date = date,
+            time = DateUtils.nowTimeStr(),
+            entityId = targetEntity.id,
+            entityName = targetEntity.name,
+            entityType = targetEntity.type,
+            type = normType,
+            amount = roundedAmount,
+            description = payDesc,
+            paymentMethod = cleanMethod,
+            category = normType,
+            isPayable = false,
+            isExpense = false,
+            expenseId = payExpenseId,
+            timestamp = now,
+            updatedAtEpoch = now
+        )
+
+        if (normType == "OUT" && snapshot.profile.isAdmin) {
+            val pendingMaterials = snapshot.inventory.filter { m ->
+                m.deletedAt == null &&
+                    m.supplierId == targetEntity.id &&
+                    m.paymentStatus == "pending" &&
+                    m.totalPayable > 0.0
+            }.sortedWith(compareBy<InventoryRecord> { it.purchaseDate.ifBlank { "9999-99-99" } }.thenBy { it.timestamp })
+
+            var remaining = roundedAmount
+            if (pendingMaterials.isNotEmpty()) {
+                val alloc = FinanceEngine.allocatePaymentToMaterials(pendingMaterials, remaining, date, now)
+                remaining = alloc.remaining
+                if (alloc.touched.isNotEmpty()) {
+                    tx = tx.copy(
+                        isPayable = true,
+                        materialId = alloc.touched.first().id,
+                        materialIds = alloc.touched.map { it.id }
+                    )
+                    alloc.touched.forEach { mat ->
+                        ops.submitOrExecuteWrite(
+                            profile = snapshot.profile,
+                            targetCollection = "inventory",
+                            docId = mat.id,
+                            summaryTitle = "Settle Lot: ${mat.materialName.ifBlank { mat.name }}",
+                            summaryDetail = "$date • Balance ${InputGuards.fmtNum(mat.totalPayable)}",
+                            payload = WorkspaceJsonCodec.inventoryToMap(mat),
+                            isEdit = true
+                        )
+                    }
+                }
+            }
+            if (remaining > 0.0) {
+                val creditPlan = FinanceEngine.planSupplierCreditConsumption(snapshot.transactions, targetEntity.id, remaining)
+                if (creditPlan.consumptions.isNotEmpty()) {
+                    val consumedMap = creditPlan.consumptions.associate { it.id to it.amount }
+                    snapshot.transactions.filter { it.deletedAt == null && it.id in consumedMap }.forEach { ct ->
+                        val dec = consumedMap[ct.id] ?: 0.0
+                        val nextCredit = InputGuards.round2(max(0.0, ct.supplierCreditAmount - dec))
+                        val updatedCt = ct.copy(supplierCreditAmount = nextCredit, updatedAtEpoch = now)
+                        ops.submitOrExecuteWrite(
+                            profile = snapshot.profile,
+                            targetCollection = "transactions",
+                            docId = ct.id,
+                            summaryTitle = "Consume Supplier Credit: ${ct.entityName}",
+                            summaryDetail = "$date • Left ${InputGuards.fmtNum(nextCredit)}",
+                            payload = WorkspaceJsonCodec.transactionToMap(updatedCt),
+                            isEdit = true
+                        )
+                    }
+                    tx = tx.copy(
+                        isPayable = true,
+                        consumedCredits = creditPlan.consumptions.map { mapOf("id" to it.id, "amount" to it.amount) }
+                    )
+                }
+            }
+        }
+
+        if (normType == "IN") {
+            val hasMaterials = snapshot.inventory.any { it.deletedAt == null && it.supplierId == targetEntity.id }
+            val isSupplierEntity = targetEntity.isSupplier || hasMaterials
+            if (isSupplierEntity) {
+                tx = tx.copy(isPayable = true, supplierCreditAmount = roundedAmount)
             }
         }
 
@@ -1474,15 +1677,15 @@ class SarimActionDispatcher(
                     category = if (normType == "IN") "Other Income" else "Miscellaneous Business",
                     scope = if (normType == "OUT") "BUSINESS" else "",
                     mode = tx.paymentMethod,
-                    party = cleanName,
-                    note = notes,
+                    party = targetEntity.name,
+                    note = cleanNotes,
                     date = date,
                     timestamp = now,
                     updatedAt = now,
                     linkCollection = "transactions",
                     linkDocId = txId,
                     linkOrigin = "tab",
-                    linkEntityId = entity?.id
+                    linkEntityId = targetEntity.id
                 )
             )
         }
@@ -1491,8 +1694,8 @@ class SarimActionDispatcher(
             profile = snapshot.profile,
             targetCollection = "transactions",
             docId = txId,
-            summaryTitle = "$normType: $cleanName",
-            summaryDetail = "$date • ${tx.paymentMethod} • ${InputGuards.fmtNum(amount)}",
+            summaryTitle = "Payment $normType recorded: ${targetEntity.name}",
+            summaryDetail = "$date • ${tx.paymentMethod} • ${InputGuards.fmtNum(roundedAmount)}",
             payload = WorkspaceJsonCodec.transactionToMap(tx)
         )
     }

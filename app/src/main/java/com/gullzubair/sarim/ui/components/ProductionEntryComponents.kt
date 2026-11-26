@@ -161,10 +161,14 @@ fun ProductionEntryCard(
                     shape = RoundedCornerShape(10.dp),
                     color = availableColor.copy(alpha = 0.14f)
                 ) {
-                    val availText = buildString {
-                        append("${InputGuards.fmtNum(dynamicCost.availableUnits)} units available")
-                        if (dynamicCost.formulaName.isNotBlank()) {
-                            append(" · ${dynamicCost.formulaName}")
+                    val availText = if (selectedStore == null) {
+                        "Calculating..."
+                    } else {
+                        buildString {
+                            append("${InputGuards.fmtNum(dynamicCost.availableUnits)} units available")
+                            if (dynamicCost.formulaName.isNotBlank()) {
+                                append(" · ${dynamicCost.formulaName}")
+                            }
                         }
                     }
                     Text(
@@ -212,7 +216,7 @@ fun ProductionEntryCard(
         SarimPillInput(
             value = if (net > 0.0) InputGuards.fmtNum(net) else "0.00",
             onValueChange = {},
-            label = "NET PRODUCTION (KG)",
+            label = "Net Production (kg)",
             readOnly = true,
             suffix = { Text("kg", style = MaterialTheme.typography.bodySmall) },
             testTag = "prod_net_display"
@@ -237,7 +241,7 @@ fun ProductionEntryCard(
 
         // Select Store Toggle Group (#storeSelectorToggleGroup)
         Text(
-            text = "SELECT STORE:",
+            text = "Select Store:",
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
             color = accents.textMuted,
             modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
@@ -309,7 +313,7 @@ fun ProductionEntryCard(
             Column(modifier = Modifier.weight(1f)) {
                 if (!hideMoneyPanels) {
                     Text(
-                        text = "SALE PRICE (PER KG)",
+                        text = "Sale Price (per kg)",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = accents.textMuted,
                         modifier = Modifier.padding(start = 2.dp, bottom = 5.dp)

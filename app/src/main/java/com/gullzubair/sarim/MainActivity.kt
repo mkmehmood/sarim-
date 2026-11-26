@@ -11,13 +11,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import com.gullzubair.sarim.data.firebase.LocalSessionStore
 import com.gullzubair.sarim.data.firebase.authStateFlow
+import com.gullzubair.sarim.data.firebase.isFirebaseConfigured
 import com.gullzubair.sarim.ui.components.AuthScreen
 import com.gullzubair.sarim.ui.components.SarimSplashScreen
 import com.gullzubair.sarim.ui.screens.MainFeatureScreen
@@ -41,8 +45,16 @@ class MainActivity : FragmentActivity() {
 
 @Composable
 fun AppNavigation() {
-    val auth = Firebase.auth
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    val context = LocalContext.current
+    val hasFirebase = remember(context) { isFirebaseConfigured(context) }
+    val activeUid: String? = if (hasFirebase) {
+        val auth = remember { Firebase.auth }
+        val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+        currentUser?.uid
+    } else {
+        val localUid by LocalSessionStore.localUid.collectAsStateWithLifecycle()
+        localUid
+    }
     var showSplash by rememberSaveable { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -53,7 +65,7 @@ fun AppNavigation() {
     }
 
     Crossfade(
-        targetState = Pair(showSplash, currentUser?.uid),
+        targetState = Pair(showSplash, activeUid),
         animationSpec = tween(durationMillis = 360),
         label = "app_root_transition"
     ) { (splashActive, uid) ->

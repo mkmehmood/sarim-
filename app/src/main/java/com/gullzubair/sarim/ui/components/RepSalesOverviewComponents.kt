@@ -80,15 +80,13 @@ fun AdminRepViewCard(
 
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Text(
-            text = "ADMIN VIEW & DAILY ROUTE",
-            fontFamily = CinzelFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
+            text = "Admin View",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = accents.cyan
         )
         Spacer(Modifier.height(10.dp))
         PickerField(
-            label = "View For Rep",
+            label = "View For:",
             selectedLabel = selectedRep,
             items = availableReps.ifEmpty { listOf(selectedRep) },
             itemLabel = { it },
@@ -108,11 +106,11 @@ fun AdminRepViewCard(
                 text = "GPS Route (${routeStops.size} stop${if (routeStops.size == 1) "" else "s"})",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RouteLegendDot("Cash", accents.cyan)
-                RouteLegendDot("Collect", accents.emerald)
-                RouteLegendDot("Credit", accents.gold)
-            }
+            Text(
+                text = "Cash Sale | Collection | Credit Sale",
+                style = MaterialTheme.typography.labelSmall,
+                color = accents.textMuted
+            )
         }
         Spacer(Modifier.height(8.dp))
 
@@ -289,10 +287,8 @@ fun AdminRepAnalyticsCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "REP ANALYTICS",
-                fontFamily = CinzelFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                text = "Analytics",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
@@ -335,7 +331,7 @@ fun AdminRepAnalyticsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("MONEY IN (${selectedPeriod.label.uppercase()})", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Text("Money in", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                     Text("Collections + Cash sales", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                 }
                 Text(
@@ -364,8 +360,8 @@ fun AdminRepAnalyticsCard(
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RepStatBox("Collections", InputGuards.formatMoney(analytics.collections, currency, masked), accents.emerald, Modifier.weight(1f))
-            RepStatBox("Cash Sales", InputGuards.formatMoney(analytics.cashSales, currency, masked), accents.cyan, Modifier.weight(1f))
-            RepStatBox("Credit Sales", InputGuards.formatMoney(analytics.creditSales, currency, masked), accents.gold, Modifier.weight(1f))
+            RepStatBox("Cash sales", InputGuards.formatMoney(analytics.cashSales, currency, masked), accents.cyan, Modifier.weight(1f))
+            RepStatBox("Credit sales", InputGuards.formatMoney(analytics.creditSales, currency, masked), accents.gold, Modifier.weight(1f))
         }
     }
 }
@@ -393,10 +389,8 @@ fun RepCustomersDirectoryCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "CUSTOMER LIST",
-                    fontFamily = CinzelFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    text = "Customer List",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
@@ -433,7 +427,7 @@ fun RepCustomersDirectoryCard(
         SarimPillInput(
             value = searchQuery,
             onValueChange = onSearchChange,
-            placeholder = "Search rep customers, phone, page...",
+            placeholder = "Search customers...",
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             testTag = "rep_customer_search"
         )
@@ -564,8 +558,8 @@ fun RepCustomersDirectoryCard(
         HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RepStatBox("Outstanding", InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked), accents.gold, Modifier.weight(1f))
-            RepStatBox("Credit Sales", InputGuards.formatMoney(directory.totalCreditSales, currency, masked), accents.cyan, Modifier.weight(1f))
+            RepStatBox("Outstanding credit", InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked), accents.gold, Modifier.weight(1f))
+            RepStatBox("Credit sales", InputGuards.formatMoney(directory.totalCreditSales, currency, masked), accents.cyan, Modifier.weight(1f))
             RepStatBox("Collections", InputGuards.formatMoney(directory.totalCollections, currency, masked), accents.emerald, Modifier.weight(1f))
         }
     }
