@@ -41,6 +41,11 @@ object SarimMotion {
     )
 }
 
+/**
+ * App-specific semantic colours that sit alongside the Material colour scheme.
+ * Surfaces and outlines are mapped onto the tonal container roles so custom components
+ * (cards, headers, inputs, chips) stay in step with Material components.
+ */
 @Immutable
 data class SarimAccents(
     val emerald: Color,
@@ -55,107 +60,140 @@ data class SarimAccents(
     val glassTop: Color = LightGlassTop,
     val glassBottom: Color = LightGlassBottom,
     val inputFill: Color = LightSurfaceVariant,
-    val inputBorder: Color = LightOutline,
+    val inputBorder: Color = LightOutlineVariant,
     val headerFrosted: Color = LightHeaderFrosted,
-    val softPillFill: Color = EmeraldLightContainer,
-    val cardBorderWidth: Dp = 1.dp
+    val softPillFill: Color = EmeraldSoftPillLight,
+    val cardBorderWidth: Dp = 0.dp
 )
 
-val LocalSarimAccents = staticCompositionLocalOf {
-    SarimAccents(
-        emerald = EmeraldBright,
-        cyan = CyanLight,
-        gold = GoldLight,
-        purple = PurpleLight,
-        danger = DangerLight,
-        cardElevated = LightSurfaceElevated,
-        borderSubtle = LightOutlineVariant,
-        textMuted = LightTextSecondary,
-        isDark = false,
-        glassTop = LightGlassTop,
-        glassBottom = LightGlassBottom,
-        inputFill = LightSurfaceVariant,
-        inputBorder = LightOutlineVariant,
-        headerFrosted = LightHeaderFrosted,
-        softPillFill = EmeraldLightContainer,
-        cardBorderWidth = 1.dp
-    )
-}
+private val LightAccents = SarimAccents(
+    emerald = EmeraldBright,
+    cyan = CyanLight,
+    gold = GoldLight,
+    purple = PurpleLight,
+    danger = DangerLight,
+    cardElevated = LightSurfaceElevated,
+    borderSubtle = LightOutlineVariant,
+    textMuted = LightTextSecondary,
+    isDark = false,
+    glassTop = LightGlassTop,
+    glassBottom = LightGlassBottom,
+    inputFill = LightSurfaceVariant,
+    inputBorder = LightOutlineVariant,
+    headerFrosted = LightHeaderFrosted,
+    softPillFill = EmeraldSoftPillLight,
+    cardBorderWidth = 0.dp
+)
+
+private val DarkAccents = SarimAccents(
+    emerald = EmeraldDark,
+    cyan = CyanDark,
+    gold = GoldDark,
+    purple = PurpleDark,
+    danger = DangerDark,
+    cardElevated = DarkSurfaceElevated,
+    borderSubtle = DarkOutlineVariant,
+    textMuted = DarkTextSecondary,
+    isDark = true,
+    glassTop = DarkSurfaceContainerLow,
+    glassBottom = DarkSurfaceContainerLow,
+    inputFill = DarkSurfaceVariant,
+    inputBorder = DarkOutlineVariant,
+    headerFrosted = DarkSurfaceContainer,
+    softPillFill = EmeraldSoftPillDark,
+    cardBorderWidth = 0.dp
+)
+
+val LocalSarimAccents = staticCompositionLocalOf { LightAccents }
 
 private val DarkColorScheme = darkColorScheme(
     primary = EmeraldDark,
-    onPrimary = Color(0xFF022011),
+    onPrimary = OnEmeraldDark,
     primaryContainer = EmeraldDeep,
-    onPrimaryContainer = EmeraldDark,
+    onPrimaryContainer = OnEmeraldContainerDark,
+    inversePrimary = EmeraldBright,
     secondary = CyanDark,
-    onSecondary = Color(0xFF03201E),
-    secondaryContainer = Color(0xFF0B3532),
-    onSecondaryContainer = CyanDark,
+    onSecondary = Color(0xFF00363D),
+    secondaryContainer = SecondaryContainerDark,
+    onSecondaryContainer = OnSecondaryContainerDark,
     tertiary = GoldDark,
-    onTertiary = Color(0xFF281900),
-    tertiaryContainer = Color(0xFF3A2705),
-    onTertiaryContainer = GoldDark,
+    onTertiary = Color(0xFF402D00),
+    tertiaryContainer = TertiaryContainerDark,
+    onTertiaryContainer = OnTertiaryContainerDark,
     background = DarkBackground,
     onBackground = DarkTextPrimary,
     surface = DarkSurface,
     onSurface = DarkTextPrimary,
-    surfaceVariant = DarkSurfaceVariant,
+    surfaceVariant = DarkOutlineVariant,
     onSurfaceVariant = DarkTextSecondary,
-    surfaceContainerLowest = DarkSurfaceLowest,
-    surfaceContainerLow = DarkSurfaceLow,
-    surfaceContainer = DarkSurfaceContainer,
-    surfaceContainerHigh = DarkSurfaceHigh,
-    surfaceContainerHighest = DarkSurfaceHighest,
-    surfaceBright = DarkSurfaceHigh,
-    surfaceDim = DarkBackground,
+    surfaceTint = EmeraldDark,
+    inverseSurface = DarkTextPrimary,
+    inverseOnSurface = Color(0xFF2C322F),
+    error = DangerDark,
+    onError = Color(0xFF690005),
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = ErrorContainerLight,
     outline = DarkOutline,
     outlineVariant = DarkOutlineVariant,
-    error = DangerDark,
-    onError = Color(0xFF310707),
-    errorContainer = Color(0xFF4C1111),
-    onErrorContainer = Color(0xFFFEE2E2)
+    scrim = Color(0xFF000000),
+    surfaceBright = DarkSurfaceBright,
+    surfaceDim = DarkSurface,
+    surfaceContainerLowest = DarkSurfaceContainerLowest,
+    surfaceContainerLow = DarkSurfaceContainerLow,
+    surfaceContainer = DarkSurfaceContainer,
+    surfaceContainerHigh = DarkSurfaceContainerHigh,
+    surfaceContainerHighest = DarkSurfaceContainerHighest
 )
 
 private val LightColorScheme = lightColorScheme(
     primary = EmeraldBright,
-    onPrimary = CtaTextDark,
+    onPrimary = OnEmeraldLight,
     primaryContainer = EmeraldLightContainer,
-    onPrimaryContainer = EmeraldOnLightContainer,
+    onPrimaryContainer = OnEmeraldContainerLight,
+    inversePrimary = EmeraldDark,
     secondary = CyanLight,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE0F7FA),
-    onSecondaryContainer = Color(0xFF053944),
+    secondaryContainer = SecondaryContainerLight,
+    onSecondaryContainer = OnSecondaryContainerLight,
     tertiary = GoldLight,
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFEF0C7),
-    onTertiaryContainer = Color(0xFF452400),
+    tertiaryContainer = TertiaryContainerLight,
+    onTertiaryContainer = OnTertiaryContainerLight,
     background = LightBackground,
     onBackground = LightTextPrimary,
     surface = LightSurface,
     onSurface = LightTextPrimary,
-    surfaceVariant = LightSurfaceVariant,
+    surfaceVariant = Color(0xFFDBE5DE),
     onSurfaceVariant = LightTextSecondary,
-    surfaceContainerLowest = LightSurfaceLowest,
-    surfaceContainerLow = LightSurfaceLow,
-    surfaceContainer = LightSurfaceContainer,
-    surfaceContainerHigh = LightSurfaceHigh,
-    surfaceContainerHighest = LightSurfaceHighest,
-    surfaceBright = LightSurfaceLowest,
-    surfaceDim = LightSurfaceHigh,
-    outline = LightOutline,
-    outlineVariant = LightOutlineVariant,
+    surfaceTint = EmeraldBright,
+    inverseSurface = Color(0xFF2C322F),
+    inverseOnSurface = Color(0xFFECF2ED),
     error = DangerLight,
     onError = Color.White,
-    errorContainer = Color(0xFFFEE2E2),
-    onErrorContainer = Color(0xFF5C0C0C)
+    errorContainer = ErrorContainerLight,
+    onErrorContainer = Color(0xFF410002),
+    outline = LightOutline,
+    outlineVariant = LightOutlineVariant,
+    scrim = Color(0xFF000000),
+    surfaceBright = LightSurface,
+    surfaceDim = LightSurfaceDim,
+    surfaceContainerLowest = LightSurfaceContainerLowest,
+    surfaceContainerLow = LightSurfaceContainerLow,
+    surfaceContainer = LightSurfaceContainer,
+    surfaceContainerHigh = LightSurfaceContainerHigh,
+    surfaceContainerHighest = LightSurfaceContainerHighest
 )
 
+/**
+ * Expressive shape scale: noticeably rounder corners across the board. Cards sit on `medium`,
+ * sheets / dialogs / drawers on `large`, and hero surfaces on `extraLarge`.
+ */
 private val SarimShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
+    extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(24.dp),
+    medium = RoundedCornerShape(20.dp),
     large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(32.dp)
+    extraLarge = RoundedCornerShape(40.dp)
 )
 
 @Composable
@@ -178,51 +216,13 @@ fun SarimTheme(
         }
     }
     val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
-    val accents = if (isDark) {
-        SarimAccents(
-            emerald = EmeraldDark,
-            cyan = CyanDark,
-            gold = GoldDark,
-            purple = PurpleDark,
-            danger = DangerDark,
-            cardElevated = DarkSurfaceElevated,
-            borderSubtle = DarkOutlineVariant,
-            textMuted = DarkTextSecondary,
-            isDark = true,
-            glassTop = DarkSurface,
-            glassBottom = Color(0xFF060808),
-            inputFill = DarkBackground,
-            inputBorder = DarkOutlineVariant,
-            headerFrosted = DarkBackground,
-            softPillFill = Color(0x1E4ADE80),
-            cardBorderWidth = 1.dp
-        )
-    } else {
-        SarimAccents(
-            emerald = EmeraldBright,
-            cyan = CyanLight,
-            gold = GoldLight,
-            purple = PurpleLight,
-            danger = DangerLight,
-            cardElevated = LightSurfaceElevated,
-            borderSubtle = LightOutlineVariant,
-            textMuted = LightTextSecondary,
-            isDark = false,
-            glassTop = LightGlassTop,
-            glassBottom = LightGlassBottom,
-            inputFill = LightSurface,
-            inputBorder = LightOutlineVariant,
-            headerFrosted = LightHeaderFrosted,
-            softPillFill = EmeraldLightContainer,
-            cardBorderWidth = 1.dp
-        )
-    }
+    val accents = if (isDark) DarkAccents else LightAccents
 
     CompositionLocalProvider(LocalSarimAccents provides accents) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = SarimTypography,
             shapes = SarimShapes,
+            typography = SarimTypography,
             content = content
         )
     }

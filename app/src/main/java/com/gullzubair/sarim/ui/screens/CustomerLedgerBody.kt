@@ -488,7 +488,7 @@ internal fun CustomerLedgerBody(
                             Row(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { showQty = !showQty }
                                     .padding(vertical = 4.dp)
                                     .testTag("customer_sale_chip"),
@@ -629,7 +629,7 @@ internal fun CustomerLedgerBody(
                                     collapsedMonths = collapsedMonths - m.key
                                     jumpTarget = m.key
                                 },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle)
                             ) {

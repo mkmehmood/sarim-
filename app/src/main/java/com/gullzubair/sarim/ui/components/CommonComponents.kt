@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -282,7 +283,6 @@ fun Modifier.expressivePressScale(
 /** Pure editorial serif heading matching Sarim web `.tab-heading`. */
 @Composable
 fun TabHeading(title: String, modifier: Modifier = Modifier) {
-    val accents = LocalSarimAccents.current
     Text(
         text = title,
         fontFamily = PlayfairFont,
@@ -290,11 +290,15 @@ fun TabHeading(title: String, modifier: Modifier = Modifier) {
         fontSize = 25.sp,
         lineHeight = 29.sp,
         letterSpacing = (-0.5).sp,
-        color = accents.emerald,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier
     )
 }
 
+/**
+ * Expressive filled card: a tonal container with a 28dp corner radius and no drop shadow.
+ * Depth comes from the surface-container tone; [accentBorder] outlines a card that needs attention.
+ */
 @Composable
 fun SarimCard(
     modifier: Modifier = Modifier,
@@ -303,32 +307,17 @@ fun SarimCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(22.dp)
-    val bgBrush = remember(accents.glassTop, accents.glassBottom) {
-        Brush.verticalGradient(listOf(accents.glassTop, accents.glassBottom))
-    }
-    val cyanWash = accents.cyan.copy(alpha = if (accents.isDark) 0.16f else 0.15f)
+    val shape = RoundedCornerShape(28.dp)
+    val borderWidth = if (accentBorder != null) 2.dp else accents.cardBorderWidth
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = if (accents.isDark) 8.dp else 7.dp,
-                shape = shape,
-                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.18f),
-                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.28f else 0.16f)
-            )
             .clip(shape)
-            .background(bgBrush)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(cyanWash, Color.Transparent),
-                        center = Offset(0f, 0f),
-                        radius = maxOf(size.width, size.height) * 0.72f
-                    )
-                )
-            }
-            .border(accents.cardBorderWidth, accentBorder ?: accents.borderSubtle, shape)
+            .background(accents.glassTop)
+            .then(
+                if (borderWidth > 0.dp) Modifier.border(borderWidth, accentBorder ?: accents.borderSubtle, shape)
+                else Modifier
+            )
     ) {
         Column(modifier = Modifier.padding(contentPadding), content = content)
     }
@@ -346,17 +335,9 @@ fun SarimSubpageHeader(
     val accents = LocalSarimAccents.current
     val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = if (accents.isDark) 10.dp else 8.dp,
-                shape = shape,
-                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.22f else 0.16f),
-                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.16f)
-            ),
+        modifier = Modifier.fillMaxWidth(),
         color = accents.headerFrosted,
-        shape = shape,
-        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.85f))
+        shape = shape
     ) {
         Row(
             modifier = Modifier
@@ -366,7 +347,7 @@ fun SarimSubpageHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
-                IconButton(
+                FilledTonalIconButton(
                     onClick = onBack,
                     modifier = Modifier
                         .size(48.dp)
@@ -375,10 +356,10 @@ fun SarimSubpageHeader(
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp)
                     )
                 }
+                Spacer(Modifier.width(10.dp))
             }
             if (leadingIcon != null) {
                 leadingIcon()
@@ -389,8 +370,8 @@ fun SarimSubpageHeader(
                     Text(
                         text = title.uppercase(),
                         fontFamily = CinzelFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp,
                         letterSpacing = 0.7.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -438,36 +419,17 @@ fun SarimGradientButton(
     val shape = RoundedCornerShape(999.dp)
     val ctaAccents = LocalSarimAccents.current
     val interactionSource = remember { MutableInteractionSource() }
-    val brush = if (enabled) {
-        if (ctaAccents.isDark) {
-            Brush.horizontalGradient(listOf(CtaGradientStart, CtaGradientEnd))
-        } else {
-            Brush.horizontalGradient(listOf(CtaGradientStartLight, CtaGradientEndLight))
-        }
-    } else {
-        Brush.horizontalGradient(
-            listOf(
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            )
-        )
-    }
-    val textColor = if (!enabled) ctaAccents.textMuted.copy(alpha = 0.65f) else CtaTextDark
+    val fill = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val textColor = if (!enabled) ctaAccents.textMuted.copy(alpha = 0.65f) else MaterialTheme.colorScheme.onPrimary
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
-            .height(48.dp)
+            .defaultMinSize(minHeight = 52.dp)
+            .height(52.dp)
             .expressivePressScale(interactionSource)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .shadow(
-                elevation = if (enabled) 10.dp else 0.dp,
-                shape = shape,
-                ambientColor = ctaAccents.cyan.copy(alpha = 0.36f),
-                spotColor = ctaAccents.emerald.copy(alpha = 0.36f)
-            )
             .clip(shape)
-            .background(brush)
+            .background(fill)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = textColor),
@@ -496,7 +458,7 @@ fun SarimGradientButton(
                 text = text,
                 fontFamily = JakartaFont,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.5.sp,
+                fontSize = 14.5.sp,
                 letterSpacing = 0.1.sp,
                 color = textColor,
                 maxLines = 1,
@@ -517,28 +479,17 @@ fun SarimDangerButton(
 ) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(999.dp)
-    val dangerDark = LocalSarimAccents.current.isDark
     val interactionSource = remember { MutableInteractionSource() }
-    val brush = if (enabled) {
-        Brush.horizontalGradient(
-            listOf(
-                if (dangerDark) DangerGradientStart else DangerGradientStartLight,
-                if (dangerDark) DangerGradientEnd else DangerGradientEndLight
-            )
-        )
-    } else {
-        Brush.horizontalGradient(listOf(Color(0xFFE7B8B5), Color(0xFFEBC1B4)))
-    }
-    val textColor = if (!enabled) Color.White.copy(alpha = 0.8f) else CtaTextDark
+    val fill = if (enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val textColor = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onError
     Box(
         modifier = modifier
-            .defaultMinSize(minHeight = 48.dp)
-            .height(48.dp)
+            .defaultMinSize(minHeight = 52.dp)
+            .height(52.dp)
             .expressivePressScale(interactionSource)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .shadow(if (enabled) 10.dp else 0.dp, shape, ambientColor = Color(0x55F97316), spotColor = Color(0x55EF4444))
             .clip(shape)
-            .background(brush)
+            .background(fill)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = textColor),
@@ -617,7 +568,7 @@ fun SarimPillInput(
             keyboardOptions = keyboardOptions,
             visualTransformation = visualTransformation,
             singleLine = singleLine,
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = accents.inputFill,
                 unfocusedContainerColor = accents.inputFill,
@@ -641,7 +592,7 @@ fun SarimHalfRingKpiBox(
     labelColor: Color = LocalSarimAccents.current.textMuted
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(24.dp)
     Box(
         modifier = modifier
             .clip(shape)
@@ -683,18 +634,16 @@ fun SarimHalfRingKpiBox(
 
 @Composable
 fun SarimNoteBanner(text: String, modifier: Modifier = Modifier) {
-    val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = if (accents.isDark) Color(0xFF231B0E) else Color(0xFFFFFBF2),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.7f))
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(14.dp)
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            modifier = Modifier.padding(16.dp)
         )
     }
 }
@@ -803,7 +752,7 @@ fun DatePickerField(
         }
         Surface(
             onClick = { open = true },
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(24.dp),
             color = accents.inputFill,
             border = BorderStroke(if (open) 1.5.dp else 1.dp, borderColor),
             modifier = Modifier
@@ -888,7 +837,7 @@ fun DateRangePickerField(
         }
         Surface(
             onClick = { open = true },
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(24.dp),
             color = accents.inputFill,
             border = BorderStroke(if (open) 1.5.dp else 1.dp, borderColor),
             modifier = Modifier
@@ -967,7 +916,7 @@ private fun SarimCalendarDialog(
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { showMonthYearPicker = !showMonthYearPicker }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
@@ -1013,7 +962,7 @@ private fun SarimCalendarDialog(
                                     displayedYm = YearMonth.of(pickerYear, m)
                                     showMonthYearPicker = false
                                 },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 color = if (active) accents.emerald else accents.inputFill,
                                 modifier = Modifier
                                     .weight(1f)
@@ -1319,7 +1268,7 @@ fun <T> PickerField(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 52.dp)
                     .testTag(testTag),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, borderColor)
             ) {
@@ -1415,7 +1364,7 @@ fun EmptyStateCard(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(accents.softPillFill),
                     contentAlignment = Alignment.Center
                 ) {
