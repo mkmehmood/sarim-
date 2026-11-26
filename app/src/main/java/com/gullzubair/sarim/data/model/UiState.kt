@@ -11,10 +11,10 @@ sealed interface UiState<out T> {
 enum class MainTab(val key: String, val label: String) {
     OVERVIEW("overview", "Overview"),
     PRODUCTION("prod", "Production"),
-    FACTORY("factory", "Factory"),
     SALES("sales", "Sales"),
-    PAYMENTS("payments", "Payments"),
     CALCULATOR("calc", "Calculator"),
+    FACTORY("factory", "Factory"),
+    PAYMENTS("payments", "Payments"),
     REP_SALES("rep", "Rep Sales");
 
     companion object {

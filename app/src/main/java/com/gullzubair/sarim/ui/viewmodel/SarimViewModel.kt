@@ -62,7 +62,7 @@ class SarimViewModel(
     private val editActions = SarimEditActions(repo, ops, dispatcher)
     private val calcAndRepairActions = SarimCalcAndRepairActions(repo, ops, dispatcher)
 
-    private val _selectedTab = MutableStateFlow(MainTab.OVERVIEW)
+    private val _selectedTab = MutableStateFlow(MainTab.PRODUCTION)
     val selectedTab: StateFlow<MainTab> = _selectedTab.asStateFlow()
 
     private val _todayIso = MutableStateFlow(DateUtils.todayIso())
@@ -167,10 +167,13 @@ class SarimViewModel(
     fun sessionInfoFor(profile: UserProfile): FinanceEngine.SessionInfo =
         FinanceEngine.deriveSession(profile)
 
+    // Web parity (modules/roles.js TAB_ORDER): role-limited users see tabs in this order.
+    private val roleTabOrder = listOf(MainTab.PRODUCTION, MainTab.FACTORY, MainTab.SALES, MainTab.PAYMENTS, MainTab.REP_SALES)
+
     fun visibleTabsFor(profile: UserProfile): List<MainTab> {
         val session = FinanceEngine.deriveSession(profile)
         if (session.mode == "admin") return MainTab.entries
-        val allowed = session.tabs.map { MainTab.fromKey(it) }.distinct()
+        val allowed = session.tabs.map { MainTab.fromKey(it) }.distinct().sortedBy { roleTabOrder.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
         return if (allowed.isEmpty()) listOf(MainTab.REP_SALES) else allowed
     }
 

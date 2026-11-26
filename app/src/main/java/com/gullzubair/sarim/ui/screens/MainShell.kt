@@ -1,6 +1,14 @@
 package com.gullzubair.sarim.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -111,6 +119,9 @@ import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.BiometricLockHelper
 import com.gullzubair.sarim.util.FeedbackHelper
 import kotlinx.coroutines.launch
+
+private val ScreenEnterEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+private val ScreenLeaveEasing = CubicBezierEasing(0.4f, 0f, 0.8f, 0.6f)
 
 @Composable
 fun MainFeatureScreen(currentUserId: String) {
@@ -270,7 +281,7 @@ private fun WorkspaceNavContainer(
             ModalDrawerSheet(
                 drawerContainerColor = accents.headerFrosted,
                 drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-                modifier = Modifier.width(292.dp)
+                modifier = Modifier.width(288.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -553,7 +564,19 @@ private fun WorkspaceNavContainer(
                     NavHost(
                         navController = navController,
                         startDestination = AppRoute.WorkspaceHome,
-                        modifier = Modifier.weight(1f).fillMaxHeight()
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        // Web parity: standalone screens slide up from the bottom (340ms in, 220ms out);
+                        // the screen underneath stays put and tab switches are instant.
+                        enterTransition = {
+                            slideInVertically(tween(340, easing = ScreenEnterEasing), initialOffsetY = { it }) +
+                                fadeIn(tween(340, easing = ScreenEnterEasing), initialAlpha = 0.6f)
+                        },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = {
+                            slideOutVertically(tween(220, easing = ScreenLeaveEasing), targetOffsetY = { it }) +
+                                fadeOut(tween(220, easing = ScreenLeaveEasing))
+                        }
                     ) {
                         composable<AppRoute.WorkspaceHome> {
                             when (effectiveTab) {
