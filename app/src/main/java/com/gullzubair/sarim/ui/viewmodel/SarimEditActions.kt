@@ -18,6 +18,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.ProductionEngine
 import java.time.Instant
 import java.util.Locale
 import kotlin.math.abs
@@ -60,10 +61,37 @@ class SarimEditActions(
         val net = InputGuards.round2(grossWt - contWt)
         if (net <= 0.0) return Result.failure(IllegalArgumentException("Net weight must be greater than 0 kg"))
 
+        dispatcher.validateProductionEntry(snapshot, store, net, formulaUnits, original)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        // Web guard: an edit may not shrink a day's stock below what was already sold from it.
+        run {
+            val sameBucket = ProductionEngine.matchesStore(original.store, store) && original.date == date
+            val prodOld = snapshot.production.filter {
+                it.deletedAt == null && !it.isReturn && it.id != original.id && it.date == original.date &&
+                    it.store.equals(original.store, true)
+            }.sumOf { it.net } + (if (sameBucket) net else 0.0)
+            val retOld = snapshot.returns.filter {
+                it.deletedAt == null && it.date == original.date && it.store.equals(original.store, true)
+            }.sumOf { it.quantity }
+            val soldOld = snapshot.sales.filter {
+                it.deletedAt == null && it.supplyDate.ifBlank { it.date } == original.date &&
+                    it.supplyStore.equals(original.store, true)
+            }.sumOf { it.quantity }
+            if (prodOld + retOld - soldOld < -1e-6) {
+                return Result.failure(
+                    IllegalArgumentException(
+                        "Cannot reduce this entry: ${InputGuards.fmtNum(soldOld - prodOld - retOld)} kg already sold from ${original.date}. Reduce or delete those sales first."
+                    )
+                )
+            }
+        }
+
         val storeKey = dispatcher.resolvedStoreKey(store)
         val formula = snapshot.formulas.firstOrNull { it.id == store.formulaId }
         val desc = formula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
-        val formulaCostTotal = if (desc != null && formulaUnits > 0.0) InputGuards.round2(desc.perUnit * formulaUnits) else 0.0
+        val dyn = ProductionEngine.dynamicCost(snapshot, store, formulaUnits, net, original)
+        val formulaCostTotal = if (dyn.hasFormula) InputGuards.round2(dyn.totalFormulaCost) else 0.0
         val resolvedCp = when {
             costPerKgOverride > 0.0 -> InputGuards.round2(costPerKgOverride)
             formulaCostTotal > 0.0 -> InputGuards.round2(formulaCostTotal / net)

@@ -25,6 +25,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
+import com.gullzubair.sarim.domain.ProductionEngine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -36,6 +37,31 @@ class SarimActionDispatcher(
     private val repo: AppRepository,
     private val ops: WorkspaceOperations
 ) {
+    /**
+     * Web recordEntry validations: formula-unit availability, sale price, formula cost.
+     * [original] is set when editing so its own units are credited back (and its frozen unit cost kept).
+     */
+    internal fun validateProductionEntry(
+        snapshot: WorkspaceSnapshot,
+        store: StoreConfig,
+        net: Double,
+        formulaUnits: Double,
+        original: ProductionRecord? = null
+    ): String? {
+        val avail = ProductionEngine.unitsAvailable(snapshot, store).available
+        val credit = if (original != null && original.formulaId.isNotBlank() && original.formulaId == store.formulaId) original.formulaUnits else 0.0
+        if (formulaUnits > avail && avail + credit + 1e-9 < formulaUnits) {
+            return "Not enough formula units at ${store.name}. Available: ${InputGuards.fmtNum(avail)} units, requested: ${InputGuards.fmtNum(formulaUnits)} units."
+        }
+        if (net <= 0.0) return "Net production must be greater than zero. Please check weights."
+        if (ProductionEngine.salePriceFor(snapshot, store) <= 0.0) return "Please set a sale price in Factory Formulas first."
+        if (formulaUnits <= 0.0) return "Please enter formula units used."
+        if (!(ProductionEngine.dynamicCost(snapshot, store, formulaUnits, net, original).costPerKg > 0.0)) {
+            return "This formula has no cost (no ingredients or ingredient costs are zero). Set the formula and ingredient costs first."
+        }
+        return null
+    }
+
     internal fun resolvedStoreKey(store: StoreConfig): String = store.key.ifBlank { store.name }
 
     internal suspend fun appendDailyLedgerEntry(
@@ -206,6 +232,9 @@ class SarimActionDispatcher(
     ): Result<String> {
         val net = InputGuards.round2(grossWt - contWt)
         if (net <= 0.0) return Result.failure(IllegalArgumentException("Net weight must be greater than 0 kg"))
+        validateProductionEntry(snapshot, store, net, formulaUnits)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
 
         val formula = snapshot.formulas.firstOrNull { it.id == store.formulaId }
         val desc = formula?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory) }
