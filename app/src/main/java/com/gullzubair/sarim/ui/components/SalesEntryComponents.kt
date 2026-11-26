@@ -20,9 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -144,7 +144,7 @@ fun SalesEntryCard(
                 modifier = Modifier.weight(1f)
             )
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier
@@ -166,7 +166,7 @@ fun SalesEntryCard(
                     val selected = entryMode == mode
                     Surface(
                         onClick = { onSelectEntryMode(mode) },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -240,7 +240,7 @@ fun SalesEntryCard(
             if (matches.isNotEmpty() && !exactExists) {
                 Spacer(Modifier.height(6.dp))
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -403,7 +403,7 @@ fun SalesEntryCard(
         if (!isSalesRestricted && customerName.isNotBlank() && !isRepReturnMode) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier
@@ -449,7 +449,7 @@ fun SalesEntryCard(
                 val repRetVal = repReturnedStr.toDoubleOrNull() ?: 0.0
                 val totalBack = InputGuards.round3(repExpVal + repRetVal)
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -485,7 +485,7 @@ fun SalesEntryCard(
                 if (!isSalesRestricted && customerName.isNotBlank()) {
                     val afterBal = InputGuards.round2(max(0.0, existingCredit - colVal - goodsCreditPlan.value))
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -565,7 +565,7 @@ fun SalesEntryCard(
                         val selected = paymentType == key
                         Surface(
                             onClick = { if (enabled) onSelectPaymentType(key) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = when {
                                 !enabled -> accents.inputFill.copy(alpha = 0.4f)
                                 selected -> accents.softPillFill
@@ -613,7 +613,7 @@ fun SalesEntryCard(
                 // Result box (web #sale-result-card): stacked rows, then the stock tile
                 Spacer(Modifier.height(10.dp))
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -653,7 +653,7 @@ fun SalesEntryCard(
         if (isEditing) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = accents.gold.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
@@ -704,7 +704,7 @@ private fun SalesTogglePill(label: String, selected: Boolean, testTag: String, o
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = if (selected) accents.softPillFill else accents.inputFill,
         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
         modifier = Modifier
@@ -773,7 +773,7 @@ fun SalesStockTile(stockTile: SalesAnalyticsEngine.DateStockTileModel) {
         else -> accents.emerald
     }
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = toneColor.copy(alpha = 0.08f),
         border = BorderStroke(1.dp, toneColor.copy(alpha = 0.45f)),
         modifier = Modifier
@@ -793,7 +793,7 @@ fun SalesStockTile(stockTile: SalesAnalyticsEngine.DateStockTileModel) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                        imageVector = if (expanded) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowRight,
                         contentDescription = "Toggle stock breakdown",
                         tint = toneColor,
                         modifier = Modifier.size(16.dp)
@@ -869,7 +869,7 @@ fun SalesBlockingAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = accents.gold)
+                Icon(Icons.Rounded.Warning, contentDescription = null, tint = accents.gold)
                 Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
         },
@@ -902,7 +902,7 @@ fun SalesSaveConfirmDialog(
                 }
                 if (!model.warning.isNullOrBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.gold.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()

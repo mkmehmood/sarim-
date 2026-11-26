@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -135,13 +135,13 @@ fun ProductionDetailSheet(
                                 )
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("prod_sheet_share_photos")
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Share, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Rounded.Share, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(5.dp))
                             Text("Share Captioned", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
                         }
@@ -160,7 +160,7 @@ fun ProductionDetailSheet(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .size(76.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable { onOpenLightbox(photos, idx, rec) }
                                 .testTag("prod_sheet_photo_$idx")
                         )

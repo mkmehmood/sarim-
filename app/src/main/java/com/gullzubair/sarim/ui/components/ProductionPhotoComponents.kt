@@ -22,11 +22,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,7 +91,7 @@ fun ProductionPhotoPickerStrip(
         Surface(
             onClick = onAddClick,
             enabled = slots.size < maxPhotos,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.softPillFill,
             border = BorderStroke(1.dp, accents.emerald.copy(alpha = if (slots.size < maxPhotos) 0.55f else 0.25f)),
             modifier = Modifier.testTag("prod_attach_photo_btn")
@@ -100,7 +100,7 @@ fun ProductionPhotoPickerStrip(
                 Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = if (slots.isEmpty()) "Attach Scale Photos (Up to $maxPhotos)"
@@ -124,7 +124,7 @@ fun ProductionPhotoPickerStrip(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable { onPreviewAt(idx) }
                                 .testTag("prod_photo_thumb_$idx")
                         )
@@ -143,7 +143,7 @@ fun ProductionPhotoPickerStrip(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
+                                    Icons.Rounded.Close,
                                     contentDescription = "Remove photo ${idx + 1}",
                                     tint = Color.White,
                                     modifier = Modifier.size(14.dp)
@@ -200,14 +200,14 @@ fun ProductionPhotoLightboxDialog(
                             onClick = onShareRecord,
                             modifier = Modifier.size(48.dp).testTag("lightbox_share_btn")
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = "Share captioned photo", tint = accents.emerald)
+                            Icon(Icons.Rounded.Share, contentDescription = "Share captioned photo", tint = accents.emerald)
                         }
                     }
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier.size(48.dp).testTag("lightbox_close_btn")
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close lightbox", tint = Color.White)
+                        Icon(Icons.Rounded.Close, contentDescription = "Close lightbox", tint = Color.White)
                     }
                 }
             }
@@ -220,7 +220,7 @@ fun ProductionPhotoLightboxDialog(
                     .fillMaxWidth()
                     .height(440.dp)
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(16.dp))
             )
 
             Column(
@@ -240,19 +240,19 @@ fun ProductionPhotoLightboxDialog(
                             onClick = { index = if (index > 0) index - 1 else photos.lastIndex },
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous photo", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Previous photo", tint = Color.White)
                         }
                         IconButton(
                             onClick = { index = if (index < photos.lastIndex) index + 1 else 0 },
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next photo", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Next photo", tint = Color.White)
                         }
                     }
                 }
                 if (record != null) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = Color(0xFF0F172A),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
                         modifier = Modifier.fillMaxWidth()
@@ -289,7 +289,7 @@ fun ProductionMultiShareBar(
     if (selectedCount <= 0) return
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(24.dp),
         color = accents.cardElevated,
         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
         shadowElevation = 6.dp,
@@ -311,7 +311,7 @@ fun ProductionMultiShareBar(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     onClick = onClear,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.testTag("prod_multishare_clear")
@@ -320,12 +320,12 @@ fun ProductionMultiShareBar(
                 }
                 Surface(
                     onClick = onShare,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.emerald,
                     modifier = Modifier.testTag("prod_multishare_go")
                 ) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Share", style = MaterialTheme.typography.labelLarge, color = Color.White)
                     }

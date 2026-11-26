@@ -195,7 +195,7 @@ fun OverviewScreen(
                         val selected = windowMonths == m
                         Surface(
                             onClick = { windowMonths = m },
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(24.dp),
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier.testTag("overview_window_${m}m")
@@ -226,7 +226,7 @@ fun OverviewScreen(
                         }
                         Surface(
                             onClick = onOpenApprovals,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.gold.copy(alpha = 0.16f),
                             border = BorderStroke(1.dp, accents.gold),
                             modifier = Modifier.testTag("overview_open_approvals_btn")
@@ -287,7 +287,7 @@ fun OverviewScreen(
                     val label = if (panel == "Checks" && issueCount > 0) "$display  $issueCount" else display
                     Surface(
                         onClick = { activePanel = panel },
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(
                             1.dp,
@@ -487,7 +487,7 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
 private fun OverviewRightNowPill(label: String, value: String, color: Color) {
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

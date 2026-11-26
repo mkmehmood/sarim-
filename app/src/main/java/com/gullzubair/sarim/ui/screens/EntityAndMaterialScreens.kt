@@ -32,14 +32,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -146,7 +146,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                                     val sel = type == t
                                     Surface(
                                         onClick = { type = t },
-                                        shape = RoundedCornerShape(14.dp),
+                                        shape = RoundedCornerShape(20.dp),
                                         color = if (sel) accents.softPillFill else accents.inputFill,
                                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                         modifier = Modifier.defaultMinSize(minHeight = 48.dp)
@@ -171,7 +171,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                         onValueChange = { phone = it.take(32) },
                         label = "Phone number",
                         placeholder = "0300-0000000",
-                        leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ent_phone_input"
                     )
                     Spacer(Modifier.height(10.dp))
@@ -180,7 +180,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                         onValueChange = { walletDetails = it.take(120) },
                         label = "Wallet / account details",
                         placeholder = "Bank IBAN, JazzCash, EasyPaisa...",
-                        leadingIcon = { Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        leadingIcon = { Icon(Icons.Rounded.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ent_wallet_input"
                     )
                 }
@@ -422,7 +422,7 @@ fun EditCustomerScreen(
                         onValueChange = { phone = it.take(32) },
                         label = "Phone number",
                         placeholder = "03XX-XXXXXXX",
-                        leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ec_phone_input"
                     )
                     Spacer(Modifier.height(10.dp))
@@ -432,7 +432,7 @@ fun EditCustomerScreen(
                             value = address,
                             onValueChange = { address = it.take(200) },
                             placeholder = "Area, shop no., etc.",
-                            leadingIcon = { Icon(Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            leadingIcon = { Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             modifier = Modifier.weight(1f)
                         )
                         Surface(
@@ -446,13 +446,13 @@ fun EditCustomerScreen(
                                     gpsLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                                 }
                             },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
                             modifier = Modifier.size(54.dp).testTag("ec_gps_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.MyLocation, contentDescription = "Capture GPS", tint = accents.emerald)
+                                Icon(Icons.Rounded.MyLocation, contentDescription = "Capture GPS", tint = accents.emerald)
                             }
                         }
                     }
@@ -637,7 +637,7 @@ private fun AvatarPickerBadge(
                         contentDescription = "Saved photo",
                         modifier = Modifier.fillMaxSize()
                     )
-                    else -> Icon(Icons.Outlined.Person, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(38.dp))
+                    else -> Icon(Icons.Rounded.Person, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(38.dp))
                 }
             }
             Box(
@@ -649,12 +649,12 @@ private fun AvatarPickerBadge(
                     .border(2.dp, Color.White, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Pick photo", tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Rounded.Add, contentDescription = "Pick photo", tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
         Surface(
             onClick = onPick,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.softPillFill,
             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
             modifier = Modifier.defaultMinSize(minHeight = 40.dp)
@@ -664,14 +664,14 @@ private fun AvatarPickerBadge(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
                 Text("Photo", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = accents.emerald)
             }
         }
         if (onClear != null) {
             Surface(
                 onClick = onClear,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = accents.danger.copy(alpha = 0.1f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
                 modifier = Modifier.defaultMinSize(minHeight = 36.dp).testTag("avatar_remove_photo_btn")
@@ -681,7 +681,7 @@ private fun AvatarPickerBadge(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = accents.danger, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = accents.danger, modifier = Modifier.size(13.dp))
                     Text("Remove", style = MaterialTheme.typography.labelSmall, color = accents.danger)
                 }
             }

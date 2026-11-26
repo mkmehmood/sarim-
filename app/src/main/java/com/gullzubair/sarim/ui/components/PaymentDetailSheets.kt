@@ -85,7 +85,7 @@ fun PaymentTxDetailSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { showPhotoLightbox = true }
                         .testTag("pay_detail_photo")
                 )
@@ -159,7 +159,7 @@ fun PaymentTxDetailSheet(
                             onDismiss()
                             onEditEntry(tx)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.36f).testTag("pay_edit_${tx.id}")
@@ -232,7 +232,7 @@ fun ExpenseTxDetailSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { showPhotoLightbox = true }
                         .testTag("exp_detail_photo")
                 )
@@ -300,7 +300,7 @@ fun ExpenseTxDetailSheet(
                             onDismiss()
                             onEditEntry(exp)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.36f).testTag("exp_edit_${exp.id}")

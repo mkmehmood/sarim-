@@ -21,9 +21,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -98,7 +98,7 @@ fun ApprovalsScreen(
                                 tag = "approvals_confirm_all_btn"
                             ) { pendingList.forEach { vm.reviewPending(it, true) } }
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("approvals_approve_all_btn")
@@ -118,7 +118,7 @@ fun ApprovalsScreen(
                     EmptyStateCard(
                         title = "All caught up",
                         detail = "Nothing needs your approval right now.",
-                        icon = Icons.Default.CheckCircleOutline
+                        icon = Icons.Rounded.CheckCircleOutline
                     )
                 }
             } else {
@@ -164,7 +164,7 @@ fun ApprovalsScreen(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = accents.danger),
                                     modifier = Modifier.weight(1f).height(50.dp).testTag("reject_${item.id}")
                                 ) {
-                                    Icon(Icons.Default.Close, contentDescription = null)
+                                    Icon(Icons.Rounded.Close, contentDescription = null)
                                     Spacer(Modifier.width(4.dp))
                                     Text("Reject")
                                 }
@@ -317,7 +317,7 @@ fun StockTransferScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedTransfer = rec }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -484,7 +484,7 @@ fun PaymentTransferScreen(
                             modifier = Modifier.size(50.dp).testTag("pt_photo_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald)
+                                Icon(Icons.Rounded.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald)
                             }
                         }
                     }
@@ -545,7 +545,7 @@ fun PaymentTransferScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedTransfer = tx }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,

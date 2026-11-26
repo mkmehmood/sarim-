@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Monochrome layer for Android 13+ themed icons. A single-colour reduction of the brand mark:
+    three leaves above a balance scale. The system tints this layer with the wallpaper palette,
+    so only the alpha channel matters. Kept inside the 66dp adaptive-icon safe zone.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Leaves: centre, left, right -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M54,18 C60,24 60,33 54,40 C48,33 48,24 54,18 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M40,28 C48,28 53,33 54,40 C46,40 41,35 40,28 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M68,28 C60,28 55,33 54,40 C62,40 67,35 68,28 Z" />
+
+    <!-- Scale post, beam and foot -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M52.5,40 L55.5,40 L55.5,78 L52.5,78 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M30,46 L78,46 L78,49 L30,49 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M44,78 L64,78 L64,81 L44,81 Z" />
+
+    <!-- Hangers -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M34,49 L26,62 M34,49 L42,62 M74,49 L66,62 M74,49 L82,62" />
+
+    <!-- Pans -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M26,62 L42,62 A8,6 0 0 1 26,62 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M66,62 L82,62 A8,6 0 0 1 66,62 Z" />
+</vector>

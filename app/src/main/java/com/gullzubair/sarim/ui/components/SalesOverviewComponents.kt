@@ -25,10 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,7 +97,7 @@ fun CustomersDirectoryCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.softPillFill
                 ) {
                     Text(
@@ -114,21 +114,21 @@ fun CustomersDirectoryCard(
                     modifier = Modifier.size(44.dp).testTag("sales_export_all_customers_pdf")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.PictureAsPdf,
+                        imageVector = Icons.Rounded.PictureAsPdf,
                         contentDescription = "Download All Customers PDF",
                         tint = accents.cyan
                     )
                 }
                 Surface(
                     onClick = onAddCustomer,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald),
                     modifier = Modifier.size(40.dp).testTag("sales_add_customer_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = Icons.Rounded.Add,
                             contentDescription = "Add New Customer",
                             tint = accents.emerald,
                             modifier = Modifier.size(20.dp)
@@ -143,7 +143,7 @@ fun CustomersDirectoryCard(
             value = searchQuery,
             onValueChange = onSearchChange,
             placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             testTag = "sales_customer_search"
         )
 
@@ -176,7 +176,7 @@ fun CustomersDirectoryCard(
                         else -> accents.gold
                     }
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -308,7 +308,7 @@ fun SalesAnalyticsCard(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 if (customerFilter.isNotBlank()) {
-                    Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = accents.softPillFill) {
                         Text(
                             text = customerFilter.trim(),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -331,7 +331,7 @@ fun SalesAnalyticsCard(
                     val selected = p == selectedPeriod
                     Surface(
                         onClick = { onSelectPeriod(p) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -445,7 +445,7 @@ fun SalesAnalyticsCard(
                         val cr = chartData.creditValues.getOrElse(idx) { 0.0 }
                         Spacer(Modifier.height(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -501,7 +501,7 @@ fun SalesSummaryCard(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
             if (customerFilter.isNotBlank()) {
-                Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
+                Surface(shape = RoundedCornerShape(14.dp), color = accents.softPillFill) {
                     Text(
                         text = customerFilter.trim(),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -524,7 +524,7 @@ fun SalesSummaryCard(
                 val selected = p == selectedPeriod
                 Surface(
                     onClick = { onSelectPeriod(p) },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = if (selected) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                     modifier = Modifier
@@ -558,7 +558,7 @@ fun SalesSummaryCard(
             )
             summary.marginPercent?.let { m ->
                 val chipColor = if (m >= 0) accents.emerald else accents.danger
-                Surface(shape = RoundedCornerShape(10.dp), color = chipColor.copy(alpha = 0.14f)) {
+                Surface(shape = RoundedCornerShape(14.dp), color = chipColor.copy(alpha = 0.14f)) {
                     Text(
                         text = "$m% margin",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -674,7 +674,7 @@ fun SalesHistoryRowCard(
     }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
         border = BorderStroke(1.dp, if (isSelectedDate) accents.cyan.copy(alpha = 0.65f) else accents.borderSubtle),
         modifier = Modifier
@@ -784,7 +784,7 @@ private fun SalesKpiTile(
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

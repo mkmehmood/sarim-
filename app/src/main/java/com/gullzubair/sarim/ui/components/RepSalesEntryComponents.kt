@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -128,7 +128,7 @@ fun RepEntryCard(
             if (isEditing) {
                 Surface(
                     onClick = onCancelEdit,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.danger.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
                     modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("rep_cancel_edit_btn")
@@ -146,7 +146,7 @@ fun RepEntryCard(
                         val selected = entryMode == mode
                         Surface(
                             onClick = { onSelectEntryMode(mode) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier
@@ -185,12 +185,12 @@ fun RepEntryCard(
                             onClearCustomer()
                             showSuggestions = false
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = Color.Transparent,
                         modifier = Modifier.size(36.dp).testTag("rep_clear_cust_btn")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -208,7 +208,7 @@ fun RepEntryCard(
         }
         AnimatedVisibility(visible = showSuggestions && topSuggestions.isNotEmpty()) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
@@ -251,7 +251,7 @@ fun RepEntryCard(
         if (isRepNameCollision) {
             Spacer(Modifier.height(6.dp))
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.danger.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
@@ -272,7 +272,7 @@ fun RepEntryCard(
                 onValueChange = { onCustomerPhoneChange(it.take(32)) },
                 label = "Mobile number",
                 placeholder = "03XX-XXXXXXX",
-                leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 testTag = "rep_new_phone_input"
             )
         }
@@ -306,7 +306,7 @@ fun RepEntryCard(
                             val activeColor = if (key == "CREDIT") accents.gold else accents.emerald
                             Surface(
                                 onClick = { onSelectPaymentType(key) },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = if (selected) activeColor.copy(alpha = 0.14f) else accents.inputFill,
                                 border = BorderStroke(1.dp, if (selected) activeColor else accents.borderSubtle),
                                 modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("rep_pay_$key")
@@ -370,7 +370,7 @@ fun RepEntryCard(
         if (!masked && customerName.trim().isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, if (existingDebt > 0.01) accents.gold.copy(alpha = 0.4f) else accents.emerald.copy(alpha = 0.35f)),
                 modifier = Modifier
@@ -397,7 +397,7 @@ fun RepEntryCard(
         if (hasLoss) {
             Spacer(Modifier.height(8.dp))
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.danger.copy(alpha = 0.14f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
@@ -436,7 +436,7 @@ fun RepEntryCard(
             else -> accents.cyan
         }
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -476,7 +476,7 @@ fun RepBlockingAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = accents.gold)
+                Icon(Icons.Rounded.Warning, contentDescription = null, tint = accents.gold)
                 Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
         },
@@ -509,7 +509,7 @@ fun RepSaveConfirmDialog(
                 }
                 if (!model.warning.isNullOrBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.gold.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()

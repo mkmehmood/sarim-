@@ -217,7 +217,7 @@ fun SalesDetailSheet(
                                 onEditEntry(s)
                             }
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.34f).testTag("sales_edit_${s.id}")

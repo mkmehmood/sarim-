@@ -17,9 +17,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -132,7 +132,7 @@ fun CalculatorPerformanceChartCard(
                 val sel = mode == k
                 Surface(
                     onClick = { mode = k },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (sel) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                     modifier = Modifier.weight(1f).testTag("calc_ind_mode_$k")
@@ -217,7 +217,7 @@ fun CalculatorItemListDialog(
                 )
                 if (suggestions.isNotEmpty() && !suggestions.any { it.equals(nameInput.trim(), true) }) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -251,7 +251,7 @@ fun CalculatorItemListDialog(
                                 Text(pair.first, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.danger)
                                 IconButton(onClick = { onRemoveAt(idx) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Close, contentDescription = "Remove ${pair.first}", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Close, contentDescription = "Remove ${pair.first}", tint = accents.textMuted, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -440,7 +440,7 @@ private fun CalcAccordion(
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onToggle,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         color = accents.softPillFill.copy(alpha = 0.45f),
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {
@@ -448,7 +448,7 @@ private fun CalcAccordion(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                 Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                     contentDescription = title,
                     tint = accents.emerald,
                     modifier = Modifier.size(18.dp)

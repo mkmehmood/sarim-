@@ -27,11 +27,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Balance
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Balance
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -278,7 +278,7 @@ fun StoreManagerScreen(
                                     rateStr = InputGuards.fmtNum(s.salePrice).replace(",", "")
                                     active = s.active
                                 },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = accents.softPillFill,
                                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
                                 modifier = Modifier
@@ -385,7 +385,7 @@ fun FormulaStoreScreen(
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     modifier = Modifier.weight(1f)
                                 )
-                                Surface(color = accents.softPillFill, shape = RoundedCornerShape(10.dp)) {
+                                Surface(color = accents.softPillFill, shape = RoundedCornerShape(14.dp)) {
                                     Text(
                                         text = "${InputGuards.fmtNum(f.costAdjustmentFactor)} UNIT",
                                         style = MaterialTheme.typography.labelSmall,
@@ -529,15 +529,15 @@ fun FormulaStoreScreen(
         ) {
             AnimatedVisibility(visible = speedDialExpanded) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SpeedDialRow(label = "Correction", icon = Icons.Outlined.Build, testTag = "formula_fab_fix") {
+                    SpeedDialRow(label = "Correction", icon = Icons.Rounded.Build, testTag = "formula_fab_fix") {
                         speedDialExpanded = false
                         onOpenFix(firstFormulaId)
                     }
-                    SpeedDialRow(label = "Batching", icon = Icons.Outlined.Balance, testTag = "formula_fab_mix") {
+                    SpeedDialRow(label = "Batching", icon = Icons.Rounded.Balance, testTag = "formula_fab_mix") {
                         speedDialExpanded = false
                         onOpenMix(firstFormulaId)
                     }
-                    SpeedDialRow(label = "Formula", icon = Icons.Outlined.Science, testTag = "formula_fab_new") {
+                    SpeedDialRow(label = "Formula", icon = Icons.Rounded.Science, testTag = "formula_fab_new") {
                         speedDialExpanded = false
                         onEditFormula("")
                     }
@@ -553,7 +553,7 @@ fun FormulaStoreScreen(
                     .testTag("formula_speed_dial_fab")
             ) {
                 Icon(
-                    imageVector = if (speedDialExpanded) Icons.Default.Close else Icons.Default.Add,
+                    imageVector = if (speedDialExpanded) Icons.Rounded.Close else Icons.Rounded.Add,
                     contentDescription = "Formula actions"
                 )
             }
@@ -597,7 +597,7 @@ private fun SpeedDialRow(
             .testTag(testTag)
     ) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.headerFrosted,
             border = BorderStroke(1.dp, accents.borderSubtle),
             shadowElevation = 4.dp
@@ -857,7 +857,7 @@ fun FormulaEditScreen(
             item {
                 Surface(
                     onClick = { ingredients.add(FormulaIngRowState("", "", "", null, null, "", false)) },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.5f)),
                     modifier = Modifier
@@ -879,7 +879,7 @@ fun FormulaEditScreen(
 
             item {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()

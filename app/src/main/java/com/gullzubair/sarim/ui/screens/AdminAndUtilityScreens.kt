@@ -30,30 +30,30 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.Calculate
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.EventBusy
-import androidx.compose.material.icons.outlined.Factory
-import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material.icons.outlined.ReceiptLong
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Store
-import androidx.compose.material.icons.outlined.Vibration
-import androidx.compose.material.icons.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.EventBusy
+import androidx.compose.material.icons.rounded.Factory
+import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Store
+import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -148,18 +148,18 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isAdminSession) {
-                        SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) {
+                        SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Rounded.Store, accents.emerald) {
                             onNavigateRoute(AppRoute.StoreManager)
                         }
-                        SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) {
+                        SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Rounded.Group, accents.cyan) {
                             onNavigateRoute(AppRoute.AppAccounts)
                         }
                     }
-                    SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Outlined.VolumeUp, accents.emerald) {
+                    SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Rounded.VolumeUp, accents.emerald) {
                         onNavigateRoute(AppRoute.SoundHaptics)
                     }
                     if (isAdminSession) {
-                        SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Outlined.Backup, accents.gold) {
+                        SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Rounded.Backup, accents.gold) {
                             onNavigateRoute(AppRoute.BackupRestore)
                         }
                     }
@@ -167,15 +167,15 @@ fun SettingsScreen(
                         SettingsNavTile(
                             title = "Recycle Bin",
                             subtitle = if (allowedBinCount == 0) "Restore deleted records or empty permanently" else "$allowedBinCount deleted item(s)",
-                            icon = Icons.Outlined.DeleteOutline,
+                            icon = Icons.Rounded.DeleteOutline,
                             tint = accents.danger
                         ) { onNavigateRoute(AppRoute.RecycleBin) }
                     }
                     if (isAdminSession) {
-                        SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Outlined.Storage, accents.purple) {
+                        SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Rounded.Storage, accents.purple) {
                             onNavigateRoute(AppRoute.DbStructure)
                         }
-                        SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Outlined.EventBusy, accents.danger) {
+                        SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Rounded.EventBusy, accents.danger) {
                             onNavigateRoute(AppRoute.CloseFinancialYear)
                         }
                     }
@@ -243,7 +243,7 @@ fun SettingsScreen(
                                 color = accents.emerald
                             )
                             Icon(
-                                if (listsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                if (listsExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                                 contentDescription = "Toggle category lists",
                                 tint = accents.emerald
                             )
@@ -362,7 +362,7 @@ private fun EditableTagList(
                     selected = false,
                     onClick = { items.remove(tag) },
                     label = { Text(tag) },
-                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove $tag", modifier = Modifier.size(16.dp)) }
+                    trailingIcon = { Icon(Icons.Rounded.Close, contentDescription = "Remove $tag", modifier = Modifier.size(16.dp)) }
                 )
             }
         }
@@ -387,7 +387,7 @@ private fun EditableTagList(
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Add, contentDescription = "Add $title", tint = accents.emerald)
+                    Icon(Icons.Rounded.Add, contentDescription = "Add $title", tint = accents.emerald)
                 }
             }
         }
@@ -402,7 +402,7 @@ private fun SettingsNavTile(title: String, subtitle: String, icon: ImageVector, 
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(tint.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) }
@@ -411,7 +411,7 @@ private fun SettingsNavTile(title: String, subtitle: String, icon: ImageVector, 
                 Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
         }
     }
 }
@@ -478,7 +478,7 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                     Text("REGISTERED ACCOUNTS", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                     Surface(
                         onClick = { vm.retrySync() },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.headerFrosted,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.defaultMinSize(minHeight = 40.dp)
@@ -516,7 +516,7 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 onClick = { vm.updateMemberRoles(m.uid, m.roles, !m.approved) },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = accents.gold.copy(alpha = 0.12f),
                                 border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.4f))
                             ) {
@@ -542,7 +542,7 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                         if (isOwner) {
                             Surface(
                                 onClick = { vm.revokeInvite(inv.id) },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = accents.danger.copy(alpha = 0.12f),
                                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f))
                             ) {
@@ -589,7 +589,7 @@ private fun RoleGridSelector(allRoles: List<String>, activeRoles: List<String>, 
                     val sel = role in activeRoles
                     Surface(
                         onClick = { onToggle(role) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = if (sel) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -636,7 +636,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                     }
                     Surface(
                         onClick = { FeedbackHelper.triggerHaptic(context, selectedHaptic) },
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -644,7 +644,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                             .testTag("sh_test_btn")
                     ) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Outlined.Vibration, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.Vibration, contentDescription = null, modifier = Modifier.size(16.dp))
                             Text("Test", style = MaterialTheme.typography.labelLarge)
                         }
                     }
@@ -652,13 +652,13 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 SarimCard(modifier = Modifier.clickable { hapticExpanded = !hapticExpanded }, contentPadding = PaddingValues(14.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Vibration, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Rounded.Vibration, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(selectedHaptic.label, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             Text(selectedHaptic.detail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
-                        Icon(if (hapticExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = accents.emerald)
+                        Icon(if (hapticExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = accents.emerald)
                     }
                     AnimatedVisibility(visible = hapticExpanded) {
                         Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -667,7 +667,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedHaptic = level
@@ -681,7 +681,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                         Text(level.label, style = MaterialTheme.typography.titleSmall, color = if (active) accents.emerald else MaterialTheme.colorScheme.onSurface)
                                         Text(level.detail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                     }
-                                    if (active) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                    if (active) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -705,7 +705,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                     }
                     Surface(
                         onClick = { FeedbackHelper.triggerSound(context, selectedSound) },
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -713,7 +713,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                             .testTag("sh_play_btn")
                     ) {
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Outlined.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
                             Text("Play", style = MaterialTheme.typography.labelLarge)
                         }
                     }
@@ -721,13 +721,13 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 SarimCard(modifier = Modifier.clickable { soundExpanded = !soundExpanded }, contentPadding = PaddingValues(14.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.VolumeUp, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Rounded.VolumeUp, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(selectedSound.label, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             Text(selectedSound.detail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
-                        Icon(if (soundExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = accents.emerald)
+                        Icon(if (soundExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = accents.emerald)
                     }
                     AnimatedVisibility(visible = soundExpanded) {
                         Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -736,7 +736,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedSound = level
@@ -750,7 +750,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                         Text(level.label, style = MaterialTheme.typography.titleSmall, color = if (active) accents.emerald else MaterialTheme.colorScheme.onSurface)
                                         Text(level.detail, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                     }
-                                    if (active) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                    if (active) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -840,14 +840,14 @@ fun BackupRestoreScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack:
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(accents.softPillFill), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = accents.emerald)
+                            Icon(Icons.Rounded.Lock, contentDescription = null, tint = accents.emerald)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Encrypted Backup (.gznd)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             Text("Password-protected GZND_ENC_V4 archive compatible with the web app", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -858,14 +858,14 @@ fun BackupRestoreScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack:
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(accents.cyan.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = accents.cyan)
+                            Icon(Icons.Rounded.CloudUpload, contentDescription = null, tint = accents.cyan)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Plain JSON Backup (.json)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             Text("Save an unencrypted local snapshot of all collections", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
                     }
                 }
             }
@@ -880,14 +880,14 @@ fun BackupRestoreScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack:
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(accents.gold.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.Backup, contentDescription = null, tint = accents.gold)
+                            Icon(Icons.Rounded.Backup, contentDescription = null, tint = accents.gold)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Restore from Phone (.json / .gznd)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             Text("Load and merge a previously saved JSON or encrypted .gznd backup", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                         }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
                     }
                 }
             }
@@ -1001,11 +1001,11 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
                 Box(
                     Modifier
                         .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(accents.danger.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.EventBusy, contentDescription = null, tint = accents.danger, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.EventBusy, contentDescription = null, tint = accents.danger, modifier = Modifier.size(18.dp))
                 }
             }
         )
@@ -1014,7 +1014,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Production",
-                    Icons.Outlined.Inventory2,
+                    Icons.Rounded.Inventory2,
                     accents.emerald,
                     "${prodActive.size} rec",
                     "${snapshot.stores.count { it.deletedAt == null }} store bal.",
@@ -1024,7 +1024,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Sales",
-                    Icons.Outlined.ReceiptLong,
+                    Icons.Rounded.ReceiptLong,
                     accents.emerald,
                     "${salesActive.size} rec",
                     "${snapshot.customers.count { it.deletedAt == null }} balances",
@@ -1034,7 +1034,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Rep Clients",
-                    Icons.Outlined.Group,
+                    Icons.Rounded.Group,
                     accents.cyan,
                     "${repActive.size} rec",
                     "${snapshot.clients.count { it.deletedAt == null }} clients",
@@ -1044,7 +1044,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Calculator",
-                    Icons.Outlined.Calculate,
+                    Icons.Rounded.Calculate,
                     accents.cyan,
                     "${calcActive.size} rec",
                     "returns -> Prod",
@@ -1054,7 +1054,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Payments",
-                    Icons.Outlined.Payments,
+                    Icons.Rounded.Payments,
                     accents.gold,
                     "${txActive.size} rec",
                     "${snapshot.entities.count { it.deletedAt == null }} entities",
@@ -1064,7 +1064,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Factory",
-                    Icons.Outlined.Factory,
+                    Icons.Rounded.Factory,
                     accents.purple,
                     "${factoryActive.size} rec",
                     "${snapshot.formulas.size} formulas",
@@ -1077,7 +1077,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             item {
                 CloseFyCard(
                     "Stock Returns",
-                    Icons.Default.Restore,
+                    Icons.Rounded.Restore,
                     accents.danger,
                     "$returnsCount rec",
                     "per store",
@@ -1086,14 +1086,14 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             }
             item {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = accents.danger.copy(alpha = 0.08f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(36.dp).clip(CircleShape).background(accents.danger.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = accents.danger, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = accents.danger, modifier = Modifier.size(18.dp))
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
@@ -1120,7 +1120,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(0.55f).height(50.dp), shape = RoundedCornerShape(26.dp)) {
+                OutlinedButton(onClick = onBack, modifier = Modifier.weight(0.55f).height(50.dp), shape = RoundedCornerShape(28.dp)) {
                     Text("Cancel")
                 }
                 SarimDangerButton(
@@ -1150,10 +1150,10 @@ private fun CloseFyCard(title: String, icon: ImageVector, accent: Color, countBa
                         Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(color = accents.gold.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
+                        Surface(color = accents.gold.copy(alpha = 0.15f), shape = RoundedCornerShape(14.dp)) {
                             Text(countBadge, style = MaterialTheme.typography.labelSmall, color = accents.gold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                         }
-                        Surface(color = accent.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
+                        Surface(color = accent.copy(alpha = 0.15f), shape = RoundedCornerShape(14.dp)) {
                             Text(targetBadge, style = MaterialTheme.typography.labelSmall, color = accent, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                         }
                     }
@@ -1263,7 +1263,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                                     .size(48.dp)
                                     .testTag("bin_restore_${t.recordId}")
                             ) {
-                                Icon(Icons.Default.Restore, contentDescription = "Restore record", tint = accents.emerald)
+                                Icon(Icons.Rounded.Restore, contentDescription = "Restore record", tint = accents.emerald)
                             }
                             if (session.mode == "admin") {
                                 IconButton(
@@ -1272,7 +1272,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                                         .size(48.dp)
                                         .testTag("bin_purge_${t.recordId}")
                                 ) {
-                                    Icon(Icons.Default.DeleteForever, contentDescription = "Delete forever", tint = accents.danger)
+                                    Icon(Icons.Rounded.DeleteForever, contentDescription = "Delete forever", tint = accents.danger)
                                 }
                             }
                         }

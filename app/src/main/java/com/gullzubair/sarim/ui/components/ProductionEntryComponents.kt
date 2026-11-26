@@ -1,12 +1,12 @@
 package com.gullzubair.sarim.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -34,9 +34,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -118,7 +118,7 @@ fun ProductionEntryCard(
             if (isEditing) {
                 Surface(
                     onClick = onCancelEdit,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = accents.danger.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
                     modifier = Modifier.testTag("prod_cancel_edit_btn")
@@ -137,7 +137,7 @@ fun ProductionEntryCard(
 
         // Formula Units Available Banner (#unitsAvailableIndicator)
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, availableColor.copy(alpha = 0.45f)),
             modifier = Modifier
@@ -158,7 +158,7 @@ fun ProductionEntryCard(
                 )
                 Spacer(Modifier.width(8.dp))
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = availableColor.copy(alpha = 0.14f)
                 ) {
                     val availText = if (selectedStore == null) {
@@ -262,7 +262,7 @@ fun ProductionEntryCard(
                     val selected = selectedStore?.key == st.key
                     Surface(
                         onClick = { onSelectStore(st) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -354,7 +354,7 @@ fun ProductionEntryCard(
                         Surface(
                             onClick = onAttachPhotoClick,
                             enabled = photoSlots.size < 6,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
                             modifier = Modifier
@@ -363,7 +363,7 @@ fun ProductionEntryCard(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.Default.CameraAlt,
+                                    Icons.Rounded.CameraAlt,
                                     contentDescription = "Attach photo",
                                     tint = accents.emerald,
                                     modifier = Modifier.size(20.dp)
@@ -397,7 +397,7 @@ fun ProductionEntryCard(
                                     .testTag("prod_clear_photos_btn")
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
+                                    Icons.Rounded.Close,
                                     contentDescription = "Remove attached photos",
                                     tint = accents.danger
                                 )
@@ -424,7 +424,7 @@ fun ProductionEntryCard(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable { onPreviewPhotoAt(idx) }
                                 .testTag("prod_photo_thumb_$idx")
                         )
@@ -443,7 +443,7 @@ fun ProductionEntryCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
+                                    Icons.Rounded.Close,
                                     contentDescription = "Remove photo ${idx + 1}",
                                     tint = Color.White,
                                     modifier = Modifier.size(12.dp)
@@ -459,7 +459,7 @@ fun ProductionEntryCard(
         if (!hideMoneyPanels) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -489,7 +489,7 @@ fun ProductionEntryCard(
             // Profit Result Box (#prod-profit-block)
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = accents.softPillFill.copy(alpha = 0.55f),
                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
@@ -523,7 +523,7 @@ fun ProductionEntryCard(
         if (hasInsufficientUnits) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = accents.danger.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.5f)),
                 modifier = Modifier
@@ -624,9 +624,9 @@ fun ProductionHistoryRowCard(
         else -> accents.danger
     }
     val leadIcon = when {
-        rec.isTransfer -> Icons.Default.SwapHoriz
-        rec.isReturn -> Icons.Default.Replay
-        else -> Icons.Default.Inventory2
+        rec.isTransfer -> Icons.Rounded.SwapHoriz
+        rec.isReturn -> Icons.Rounded.Replay
+        else -> Icons.Rounded.Inventory2
     }
     val canEdit = onEdit != null && !rec.isMerged && !rec.isReturn && !rec.isTransfer
     val canDelete = !rec.isMerged
@@ -668,7 +668,7 @@ fun ProductionHistoryRowCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .clickable(onClick = onToggleExpand)
                     .testTag("prod_hist_head_${rec.id}"),
                 verticalAlignment = Alignment.CenterVertically
@@ -774,7 +774,7 @@ fun ProductionHistoryRowCard(
                                     contentDescription = "Product photo ${idx + 1}",
                                     modifier = Modifier
                                         .size(64.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .clickable { onOpenLightbox(recPhotos, idx) }
                                         .testTag("prod_hist_photo_${rec.id}_$idx")
                                 )
@@ -785,13 +785,13 @@ fun ProductionHistoryRowCard(
                     // actions row (web `.tbl-action-row`: Edit + Delete)
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HistoryActionButton("Details", Icons.Default.Info, accents.textMuted, Modifier.weight(1f), "prod_hist_details_${rec.id}", onOpenDetails)
+                        HistoryActionButton("Details", Icons.Rounded.Info, accents.textMuted, Modifier.weight(1f), "prod_hist_details_${rec.id}", onOpenDetails)
                         if (canEdit) {
-                            HistoryActionButton("Edit", Icons.Default.Edit, accents.emerald, Modifier.weight(1f), "prod_hist_edit_${rec.id}") { onEdit?.invoke() }
+                            HistoryActionButton("Edit", Icons.Rounded.Edit, accents.emerald, Modifier.weight(1f), "prod_hist_edit_${rec.id}") { onEdit?.invoke() }
                         }
                         if (canDelete) {
                             HistoryActionButton(
-                                if (rec.isTransfer) "Recycle" else "Delete", Icons.Default.Delete, accents.danger,
+                                if (rec.isTransfer) "Recycle" else "Delete", Icons.Rounded.Delete, accents.danger,
                                 Modifier.weight(1f), "prod_hist_delete_${rec.id}", onDelete
                             )
                         }
@@ -820,7 +820,7 @@ private fun HistoryMetricTile(label: String, value: String, color: Color, modifi
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(accents.inputFill.copy(alpha = 0.7f))
             .padding(horizontal = 10.dp, vertical = 7.dp)
     ) {
@@ -840,7 +840,7 @@ private fun HistoryActionButton(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = color.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
         modifier = modifier.testTag(tag)
