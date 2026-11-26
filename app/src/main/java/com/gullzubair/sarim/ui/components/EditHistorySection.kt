@@ -121,7 +121,7 @@ fun EditHistorySection(
                 @Suppress("UNCHECKED_CAST")
                 val changes = (h["changes"] as? List<Map<String, Any?>>).orEmpty()
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -168,7 +168,7 @@ fun EditHistorySection(
             }
             if (createdStr.isNotBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = accents.softPillFill.copy(alpha = 0.5f),
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()

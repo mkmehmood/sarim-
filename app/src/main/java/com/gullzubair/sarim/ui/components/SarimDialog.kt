@@ -193,7 +193,10 @@ fun SarimConfirmDialog(
         Box(Modifier.padding(16.dp).widthIn(max = 400.dp).fillMaxWidth()) {
             Surface(
                 shape = RoundedCornerShape(32.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                tonalElevation = 6.dp,
+                shadowElevation = 14.dp,
+                border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.background(Brush.linearGradient(listOf(g1.copy(alpha = 0.12f), Color.Transparent)))) {
@@ -203,7 +206,7 @@ fun SarimConfirmDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Box(
-                            Modifier.size(50.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(20.dp)),
+                            Modifier.size(50.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(16.dp)),
                             contentAlignment = Alignment.Center
                         ) { Icon(toneIcon(resolved, title, confirmText), null, tint = ink, modifier = Modifier.size(26.dp)) }
                         Surface(
@@ -232,7 +235,7 @@ fun SarimConfirmDialog(
                         checkbox?.let { cb ->
                             Surface(
                                 onClick = { onCheckboxChange(!cb.checked) },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = Color.Transparent,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.fillMaxWidth()
@@ -299,7 +302,7 @@ private fun DialogBlockView(blk: DialogBlock, g1: Color, strong: Color, faint: C
         }
         is DialogBlock.Callout -> {
             val c = if (blk.kind == "danger") accents.danger else accents.gold
-            Surface(shape = RoundedCornerShape(16.dp), color = c.copy(alpha = 0.12f), border = BorderStroke(1.dp, c.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(12.dp), color = c.copy(alpha = 0.12f), border = BorderStroke(1.dp, c.copy(alpha = 0.4f))) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(blk.label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = c)
                     Text(blk.text, fontSize = 13.sp, color = strong)

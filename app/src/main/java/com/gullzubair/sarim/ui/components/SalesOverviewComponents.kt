@@ -210,7 +210,7 @@ fun CustomersDirectoryCard(
             )
         } else {
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -446,7 +446,7 @@ fun SalesAnalyticsCard(
 
         Spacer(Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -582,7 +582,7 @@ fun SalesAnalyticsCard(
                             val cr = chartData.creditValues.getOrElse(idx) { 0.0 }
                             Spacer(Modifier.height(8.dp))
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.fillMaxWidth()
@@ -688,7 +688,7 @@ fun SalesSummaryCard(
 
         Spacer(Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -843,7 +843,7 @@ fun SalesHistoryRowCard(
 
     val isUnpaidCredit = s.paymentType == "CREDIT" && !s.creditReceived && !s.isMerged
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
         border = BorderStroke(
             1.dp,
@@ -961,7 +961,7 @@ private fun SalesKpiTile(
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

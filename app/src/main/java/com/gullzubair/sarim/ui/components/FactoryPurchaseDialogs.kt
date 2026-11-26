@@ -86,7 +86,7 @@ fun FactoryBatchDetailSheet(
                 Spacer(Modifier.height(12.dp))
                 val mintBg = if (accents.isDark) accents.softPillFill else Color(0xFFECFDF7).copy(alpha = 0.88f)
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = mintBg,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.28f)),
                     modifier = Modifier.fillMaxWidth()
@@ -229,7 +229,7 @@ fun MaterialPurchaseLotsSheet(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     lots.forEach { lot ->
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()

@@ -355,7 +355,7 @@ fun StoreComparisonChartCard(
 
         Spacer(Modifier.height(14.dp))
         Surface(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(18.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -532,7 +532,7 @@ fun MfgAnalyticsSection(
 
         Spacer(Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(18.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -682,7 +682,7 @@ fun MfgAnalyticsSection(
                         if (idx in analytics.labels.indices) {
                             Spacer(Modifier.height(8.dp))
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.fillMaxWidth()
@@ -848,7 +848,7 @@ private fun SxCustomerBreakdown(
     val accents = LocalSarimAccents.current
     var expanded by remember { mutableStateOf(false) }
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = accents.softPillFill.copy(alpha = 0.35f),
         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
         modifier = Modifier

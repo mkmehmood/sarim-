@@ -112,12 +112,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val SplashMintHalo = Color(0xFFC6EFDC)
-private val SplashEmerald = Color(0xFF00704F)
-private val SplashSunGold = Color(0xFFF5BD3D)
+private val SplashMintHalo = Color(0xFFD6F3EA)
+private val SplashEmerald = Color(0xFF0A8754)
+private val SplashSunGold = Color(0xFFF59E0B)
 private val SplashTrackGray = Color(0xFF94A3B8)
-private val InkPrimary = Color(0xFF171D1A)
-private val InkSecondary = Color(0xFF3F4943)
+private val InkPrimary = Color(0xFF0F172A)
+private val InkSecondary = Color(0xFF475569)
 
 private val SPLASH_QUOTES = listOf(
     "The details are not the details. They make the design." to "Charles Eames",
@@ -182,14 +182,14 @@ private val SPLASH_QUOTES = listOf(
     "The way to get started is to quit talking and begin doing." to "Walt Disney"
 )
 
-private val LoginMintTop = Color(0xFFF5FBF6)
-private val LoginMintMid = Color(0xFFE3EAE4)
-private val LoginBrandTeal = Color(0xFF00704F)
-private val LoginButtonDark = Color(0xFF00704F)
-private val LoginButtonBright = Color(0xFF00704F)
-private val InputBg = Color(0xFFE3EAE4)
-private val InputBorder = Color(0xFFBFC9C2)
-private val InputIconBg = Color(0xFFC6EFDC)
+private val LoginMintTop = Color(0xFFEAF5F0)
+private val LoginMintMid = Color(0xFFD9EDE4)
+private val LoginBrandTeal = Color(0xFF0F766E)
+private val LoginButtonDark = Color(0xFF065F46)
+private val LoginButtonBright = Color(0xFF107A57)
+private val InputBg = Color(0xFFF4F7F5)
+private val InputBorder = Color(0xFFDFE7E2)
+private val InputIconBg = Color(0xFFE7F3ED)
 private val PlaceholderGray = Color(0xFF94A3B8)
 
 @Composable
@@ -645,12 +645,12 @@ private fun AuthInputField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(InputBg)
                 .border(
                     width = if (focused) 1.5.dp else 1.dp,
                     color = if (focused) SplashEmerald else InputBorder,
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(18.dp)
                 )
                 .padding(horizontal = 10.dp)
         ) {
@@ -817,7 +817,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(28.dp),
+                        shape = RoundedCornerShape(26.dp),
                         shadowElevation = 10.dp,
                         color = Color.White,
                         modifier = Modifier
@@ -826,7 +826,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             .border(
                                 width = 1.dp,
                                 color = Color.White.copy(alpha = 0.85f),
-                                shape = RoundedCornerShape(28.dp)
+                                shape = RoundedCornerShape(26.dp)
                             )
                     ) {
                         Image(
@@ -835,7 +835,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(28.dp))
+                                .clip(RoundedCornerShape(26.dp))
                         )
                     }
 
@@ -1067,13 +1067,13 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             Spacer(Modifier.height(12.dp))
                             Surface(
                                 color = Color(0xFFFEF2F2),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .border(
                                         1.dp,
                                         Color(0xFFFCA5A5),
-                                        RoundedCornerShape(16.dp)
+                                        RoundedCornerShape(12.dp)
                                     )
                             ) {
                                 Text(

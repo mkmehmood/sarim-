@@ -85,7 +85,7 @@ fun PaymentTxDetailSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { showPhotoLightbox = true }
                         .testTag("pay_detail_photo")
                 )
@@ -232,7 +232,7 @@ fun ExpenseTxDetailSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { showPhotoLightbox = true }
                         .testTag("exp_detail_photo")
                 )

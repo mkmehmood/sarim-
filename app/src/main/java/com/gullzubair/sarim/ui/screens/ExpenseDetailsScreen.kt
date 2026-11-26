@@ -318,7 +318,7 @@ fun ExpenseDetailsScreen(
                             if (!exp.isMerged) {
                                 Surface(
                                     onClick = { editingExpense = exp },
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = accents.softPillFill,
                                     border = BorderStroke(1.dp, accents.emerald),
                                     modifier = Modifier

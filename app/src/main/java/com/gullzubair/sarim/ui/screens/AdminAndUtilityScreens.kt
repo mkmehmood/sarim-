@@ -230,7 +230,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = 48.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     val next = !bioEnabled
                                     vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = next))
@@ -341,7 +341,7 @@ private fun SettingsRowButton(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 48.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .let { if (testTag != null) it.testTag(testTag) else it }
             .padding(horizontal = 4.dp, vertical = 10.dp),
@@ -767,7 +767,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                     }
                     Surface(
                         onClick = { FeedbackHelper.triggerHaptic(context, selectedHaptic) },
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -798,7 +798,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedHaptic = level
@@ -836,7 +836,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                     }
                     Surface(
                         onClick = { FeedbackHelper.triggerSound(context, selectedSound) },
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -867,7 +867,7 @@ fun SoundAndHapticsScreen(onBack: () -> Unit) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (active) accents.softPillFill else Color.Transparent)
                                         .clickable {
                                             selectedSound = level
@@ -1209,7 +1209,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
             }
             item {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = accents.danger.copy(alpha = 0.08f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
@@ -1247,7 +1247,7 @@ fun CloseFinancialYearScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, on
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(0.55f).height(50.dp), shape = RoundedCornerShape(28.dp)) {
+                OutlinedButton(onClick = onBack, modifier = Modifier.weight(0.55f).height(50.dp), shape = RoundedCornerShape(26.dp)) {
                     Text("Cancel")
                 }
                 SarimDangerButton(
@@ -1277,10 +1277,10 @@ private fun CloseFyCard(title: String, icon: ImageVector, accent: Color, countBa
                         Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(color = accents.gold.copy(alpha = 0.15f), shape = RoundedCornerShape(14.dp)) {
+                        Surface(color = accents.gold.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
                             Text(countBadge, style = MaterialTheme.typography.labelSmall, color = accents.gold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                         }
-                        Surface(color = accent.copy(alpha = 0.15f), shape = RoundedCornerShape(14.dp)) {
+                        Surface(color = accent.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
                             Text(targetBadge, style = MaterialTheme.typography.labelSmall, color = accent, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                         }
                     }
@@ -1476,7 +1476,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
 
             item {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (accents.isDark) accents.danger.copy(alpha = 0.08f) else Color(0xFFFFF2F2),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()

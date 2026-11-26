@@ -197,7 +197,7 @@ fun RepEntryCard(
                                 onClearCustomer()
                                 showSuggestions = false
                             },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = Color.Transparent,
                             modifier = Modifier.size(48.dp).testTag("rep_clear_cust_btn")
                         ) {
@@ -223,7 +223,7 @@ fun RepEntryCard(
         AnimatedVisibility(visible = showSuggestions && topSuggestions.isNotEmpty()) {
             val query = customerName.trim()
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = accents.cardElevated,
                 shadowElevation = 6.dp,
                 border = BorderStroke(1.dp, accents.borderSubtle),
@@ -279,7 +279,7 @@ fun RepEntryCard(
         if (isRepNameCollision) {
             Spacer(Modifier.height(6.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = accents.danger.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
@@ -402,7 +402,7 @@ fun RepEntryCard(
         if (!masked && customerName.trim().isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, if (existingDebt > 0.01) accents.gold.copy(alpha = 0.4f) else accents.emerald.copy(alpha = 0.35f)),
                 modifier = Modifier
@@ -429,7 +429,7 @@ fun RepEntryCard(
         if (hasLoss) {
             Spacer(Modifier.height(8.dp))
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = accents.danger.copy(alpha = 0.14f),
                 border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
@@ -460,7 +460,7 @@ fun RepEntryCard(
             else -> InputGuards.formatMoney(previewTotalValue, currency, masked)
         }
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -533,7 +533,7 @@ fun RepSaveConfirmDialog(
                 }
                 if (!model.warning.isNullOrBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = accents.gold.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()

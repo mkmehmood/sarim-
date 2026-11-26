@@ -121,7 +121,7 @@ fun ProductionEntryCard(
             if (isEditing) {
                 Surface(
                     onClick = onCancelEdit,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.danger.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
                     modifier = Modifier.testTag("prod_cancel_edit_btn")
@@ -236,7 +236,7 @@ fun ProductionEntryCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .defaultMinSize(minHeight = 52.dp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(18.dp))
                         .background(accents.inputFill.copy(alpha = 0.65f))
                         .dashedBorder(width = 1.2.dp, color = accents.inputBorder, cornerRadius = 18.dp)
                         .padding(horizontal = 14.dp, vertical = 14.dp)
@@ -451,7 +451,7 @@ fun ProductionEntryCard(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .clickable { onPreviewPhotoAt(idx) }
                                 .testTag("prod_photo_thumb_$idx")
                         )
@@ -486,7 +486,7 @@ fun ProductionEntryCard(
         if (!hideMoneyPanels) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -516,7 +516,7 @@ fun ProductionEntryCard(
             // Profit Result Box (#prod-profit-block)
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.softPillFill.copy(alpha = 0.55f),
                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
@@ -550,7 +550,7 @@ fun ProductionEntryCard(
         if (hasInsufficientUnits) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = if (accents.isDark) Color(0xFF1F1606) else Color(0xFFFFFBF2),
                 border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.7f)),
                 modifier = Modifier
@@ -697,7 +697,7 @@ fun ProductionHistoryRowCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .clickable(onClick = onToggleExpand)
                     .testTag("prod_hist_head_${rec.id}"),
                 verticalAlignment = Alignment.CenterVertically
@@ -804,7 +804,7 @@ fun ProductionHistoryRowCard(
                                     contentDescription = "Product photo ${idx + 1}",
                                     modifier = Modifier
                                         .size(64.dp)
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .clickable { onOpenLightbox(recPhotos, idx) }
                                         .testTag("prod_hist_photo_${rec.id}_$idx")
                                 )
@@ -850,7 +850,7 @@ private fun HistoryMetricTile(label: String, value: String, color: Color, modifi
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(accents.inputFill.copy(alpha = 0.7f))
             .padding(horizontal = 10.dp, vertical = 7.dp)
     ) {
@@ -870,7 +870,7 @@ private fun HistoryActionButton(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = color.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
         modifier = modifier.testTag(tag)

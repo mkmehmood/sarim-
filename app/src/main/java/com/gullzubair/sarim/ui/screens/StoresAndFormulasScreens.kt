@@ -241,9 +241,9 @@ fun StoreManagerScreen(
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
-                                    .clip(RoundedCornerShape(20.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(accents.softPillFill)
-                                    .border(1.dp, accents.emerald.copy(alpha = 0.35f), RoundedCornerShape(20.dp)),
+                                    .border(1.dp, accents.emerald.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(badge, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
@@ -279,7 +279,7 @@ fun StoreManagerScreen(
                                     rateStr = InputGuards.fmtNum(s.salePrice).replace(",", "")
                                     active = s.active
                                 },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = accents.softPillFill,
                                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
                                 modifier = Modifier
@@ -593,7 +593,7 @@ private fun SpeedDialRow(
             .testTag(testTag)
     ) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = BorderStroke(1.dp, accents.borderSubtle),
             shadowElevation = 6.dp
@@ -605,7 +605,7 @@ private fun SpeedDialRow(
             )
         }
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.emerald,
             contentColor = if (accents.isDark) Color(0xFF022011) else Color.White,
             shadowElevation = 6.dp,
@@ -836,7 +836,7 @@ fun FormulaEditScreen(
 
                         Surface(
                             onClick = { if (ingredients.size > 1) ingredients.removeAt(idx) },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.danger.copy(alpha = 0.14f),
                             modifier = Modifier
                                 .padding(top = 18.dp)
@@ -853,7 +853,7 @@ fun FormulaEditScreen(
             item {
                 Surface(
                     onClick = { ingredients.add(FormulaIngRowState("", "", "", null, null, "", false)) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.5f)),
                     modifier = Modifier
@@ -875,7 +875,7 @@ fun FormulaEditScreen(
 
             item {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()

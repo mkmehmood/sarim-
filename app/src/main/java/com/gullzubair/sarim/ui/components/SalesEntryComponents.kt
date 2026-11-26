@@ -155,7 +155,7 @@ fun SalesEntryCard(
             )
             if (isEditing && !editingId.isNullOrBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier
@@ -230,7 +230,7 @@ fun SalesEntryCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 52.dp)
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(18.dp))
                             .background(accents.inputFill.copy(alpha = 0.65f))
                             .dashedBorder(width = 1.2.dp, color = accents.inputBorder, cornerRadius = 18.dp)
                             .padding(horizontal = 14.dp, vertical = 14.dp)
@@ -286,7 +286,7 @@ fun SalesEntryCard(
                 val query = customerName.trim()
                 Spacer(Modifier.height(6.dp))
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.cardElevated,
                     shadowElevation = 6.dp,
                     border = BorderStroke(1.dp, accents.borderSubtle),
@@ -465,7 +465,7 @@ fun SalesEntryCard(
         if (!isSalesRestricted && customerName.isNotBlank() && !isRepReturnMode) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier
@@ -511,7 +511,7 @@ fun SalesEntryCard(
                 val repRetVal = repReturnedStr.toDoubleOrNull() ?: 0.0
                 val totalBack = InputGuards.round3(repExpVal + repRetVal)
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -547,7 +547,7 @@ fun SalesEntryCard(
                 if (!isSalesRestricted) {
                     val afterBal = InputGuards.round2(max(0.0, existingCredit - colVal - goodsCreditPlan.value))
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -675,7 +675,7 @@ fun SalesEntryCard(
                 // Result box (web #sale-result-card): stacked rows + dashed divider + stock tile
                 Spacer(Modifier.height(10.dp))
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -729,7 +729,7 @@ fun SalesEntryCard(
         if (isEditing) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.gold.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
@@ -780,7 +780,7 @@ private fun SalesTogglePill(label: String, selected: Boolean, testTag: String, o
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = if (selected) accents.softPillFill else accents.inputFill,
         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
         modifier = Modifier
@@ -849,7 +849,7 @@ fun SalesStockTile(stockTile: SalesAnalyticsEngine.DateStockTileModel) {
         else -> accents.emerald
     }
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = toneColor.copy(alpha = 0.08f),
         border = BorderStroke(1.dp, toneColor.copy(alpha = 0.45f)),
         modifier = Modifier
@@ -978,7 +978,7 @@ fun SalesSaveConfirmDialog(
                 }
                 if (!model.warning.isNullOrBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = accents.gold.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()

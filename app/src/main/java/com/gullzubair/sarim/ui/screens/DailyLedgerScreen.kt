@@ -184,7 +184,7 @@ fun DailyLedgerScreen(
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(pdfBrush)
                                 .clickable {
                                     val rows = filteredEntries.reversed().map { e ->
@@ -315,7 +315,7 @@ fun DailyLedgerScreen(
                             }
                             Surface(
                                 onClick = { entryType = type },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = bgCol,
                                 border = BorderStroke(1.dp, borderCol),
                                 modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("ledger_type_${type.lowercase()}")
@@ -534,7 +534,7 @@ fun DailyLedgerScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedVoucher = item }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -652,7 +652,7 @@ fun DailyLedgerScreen(
                                 notes = v.note
                                 selectedVoucher = null
                             },
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(22.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald),
                             modifier = Modifier.height(50.dp).weight(0.28f)

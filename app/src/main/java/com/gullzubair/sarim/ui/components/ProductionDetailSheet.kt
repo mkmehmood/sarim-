@@ -161,7 +161,7 @@ fun ProductionDetailSheet(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .size(76.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable { onOpenLightbox(photos, idx, rec) }
                                 .testTag("prod_sheet_photo_$idx")
                         )

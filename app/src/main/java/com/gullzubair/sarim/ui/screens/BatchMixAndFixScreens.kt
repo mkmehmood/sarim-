@@ -185,7 +185,7 @@ fun BatchMixScreen(
 
                 item {
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -211,7 +211,7 @@ fun BatchMixScreen(
                         )
                         Spacer(Modifier.height(6.dp))
                         Surface(
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(18.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -516,7 +516,7 @@ fun BatchFixScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = 48.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable { customMixedExpanded = !customMixedExpanded }
                                 .padding(horizontal = 4.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -600,7 +600,7 @@ fun BatchFixScreen(
                                     InputGuards.fmtNum(row.add * factor).replace(",", "")
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = accents.inputFill,
                                     border = BorderStroke(1.dp, accents.borderSubtle),
                                     modifier = Modifier.fillMaxWidth()

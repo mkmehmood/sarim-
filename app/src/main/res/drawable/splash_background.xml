@@ -7,9 +7,9 @@
                 android:gradientRadius="360dp"
                 android:centerX="0.5"
                 android:centerY="0.46"
-                android:startColor="#C6EFDC"
-                android:centerColor="#E3F4EC"
-                android:endColor="#F5FBF6" />
+                android:startColor="#E0F5EE"
+                android:centerColor="#F4FBF8"
+                android:endColor="#FFFFFF" />
         </shape>
     </item>
 </layer-list>

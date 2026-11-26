@@ -238,7 +238,7 @@ fun OverviewScreen(
                         }
                         Surface(
                             onClick = onOpenApprovals,
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.gold.copy(alpha = 0.16f),
                             border = BorderStroke(1.dp, accents.gold),
                             modifier = Modifier.testTag("overview_open_approvals_btn")

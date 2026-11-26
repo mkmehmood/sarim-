@@ -126,7 +126,7 @@ fun AdminRepViewCard(
 
         if (routeStops.isEmpty()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -147,7 +147,7 @@ fun AdminRepViewCard(
             val otherColor = accents.purple
 
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -229,7 +229,7 @@ fun AdminRepViewCard(
                             val uri = Uri.parse("geo:${stop.lat},${stop.lng}?q=${stop.lat},${stop.lng}(${Uri.encode(stop.label)})")
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth().testTag("rep_route_stop_$idx")
@@ -446,7 +446,7 @@ fun RepCustomersDirectoryCard(
 
         Spacer(Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
@@ -493,7 +493,7 @@ fun RepCustomersDirectoryCard(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .clickable { onOpenCustomer(item.name) }
                                     .padding(horizontal = 4.dp, vertical = 6.dp)
                                     .testTag("rep_client_card_$idx"),
@@ -666,7 +666,7 @@ fun RepHistoryRowCard(
 
     val isUnpaidCredit = r.paymentType == "CREDIT" && !r.creditReceived && !r.isMerged
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
         border = BorderStroke(
             1.dp,
@@ -761,7 +761,7 @@ private fun RepStatBox(
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

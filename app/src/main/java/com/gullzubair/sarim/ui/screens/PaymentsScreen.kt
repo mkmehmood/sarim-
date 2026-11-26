@@ -467,7 +467,7 @@ fun PaymentsScreen(
                         )
                         if (isEditing) {
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle)
                             ) {
@@ -531,7 +531,7 @@ fun PaymentsScreen(
                     val entMatches = activeEntities.filter { !it.isExpenseEntity && it.name.lowercase().contains(q) }
                     Spacer(Modifier.height(6.dp))
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.cardElevated,
                         shadowElevation = 6.dp,
                         border = BorderStroke(1.dp, accents.borderSubtle),
@@ -887,7 +887,7 @@ fun PaymentsScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = navyRowBg,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -1010,7 +1010,7 @@ fun PaymentsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
                         modifier = Modifier.fillMaxWidth()
@@ -1041,7 +1041,7 @@ fun PaymentsScreen(
                                 )
                                 val netCashTone = if (tracker.netCash >= 0) accents.emerald else accents.danger
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = if (tracker.netCash >= 0) accents.softPillFill else accents.danger.copy(alpha = 0.14f)
                                 ) {
                                     Text(
@@ -1057,7 +1057,7 @@ fun PaymentsScreen(
 
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = creditsBoxBg,
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -1083,7 +1083,7 @@ fun PaymentsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = accents.gold.copy(alpha = 0.14f)
                                 ) {
                                     Text(
@@ -1283,7 +1283,7 @@ fun PaymentsScreen(
 
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -1322,7 +1322,7 @@ fun PaymentsScreen(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clip(RoundedCornerShape(16.dp))
+                                                .clip(RoundedCornerShape(12.dp))
                                                 .clickable { onOpenEntityDetail(row.entity.name) }
                                                 .padding(vertical = 9.dp, horizontal = 4.dp)
                                                 .testTag("entity_card_${row.entity.id}"),
@@ -1388,7 +1388,7 @@ fun PaymentsScreen(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clip(RoundedCornerShape(16.dp))
+                                                .clip(RoundedCornerShape(12.dp))
                                                 .clickable { onOpenExpenseDetail(grp.name) }
                                                 .padding(vertical = 9.dp, horizontal = 4.dp)
                                                 .testTag("unified_exp_${grp.name}"),
@@ -1522,7 +1522,7 @@ fun PaymentsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedTx = tx }
                                     .padding(vertical = 8.dp, horizontal = 4.dp)
                                     .testTag("pay_row_${tx.id}"),
@@ -1719,7 +1719,7 @@ private fun BreakdownRow(
     }
     if (rowBg != null) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(10.dp),
             color = rowBg,
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
         ) { content() }
