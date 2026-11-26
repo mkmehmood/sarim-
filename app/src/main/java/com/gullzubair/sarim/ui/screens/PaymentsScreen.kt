@@ -74,6 +74,9 @@ import com.gullzubair.sarim.ui.components.deleteConfirmMessage
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.components.DialogTone
 import com.gullzubair.sarim.domain.DateUtils
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextAlign
+import com.gullzubair.sarim.ui.components.blockingAlert
 
 private sealed interface PaymentHistoryItem {
     val id: String
@@ -112,7 +115,7 @@ fun PaymentsScreen(
     val channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
 
     var subTab by remember(hidesHistory) { mutableIntStateOf(0) }
-    var txKind by remember { mutableStateOf("EXPENSE") }
+    var txKind by remember { mutableStateOf("OUT") }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedEntity by remember { mutableStateOf<EntityRecord?>(null) }
     var customName by remember { mutableStateOf("") }
@@ -222,79 +225,133 @@ fun PaymentsScreen(
                     item { TabHeading("Payments") }
                     if (hidesHistory) item { Spacer(Modifier.height(6.dp)) }
                     item {
+                        val q = customName.trim().lowercase()
+                        val expenseNames = remember(snapshot.settings.expenseCategories) { snapshot.settings.expenseCategories.filter { it.isNotBlank() } }
+                        val entityMatchExact = selectedEntity != null
+                        val expenseMatchExact = !entityMatchExact && q.isNotEmpty() && expenseNames.any { it.equals(customName.trim(), true) }
+                        // Web selectExpense(): a known entity dims Operating Expense; a known expense name dims IN / OUT.
+                        val operatingLocked = entityMatchExact
+                        val paymentLocked = expenseMatchExact
                         SarimCard {
-                            if (isEditing) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (editingExp != null) "Editing Expense" else "Editing Payment", style = MaterialTheme.typography.titleMedium, color = accents.cyan)
-                                    Surface(
-                                        onClick = { showDiscardEdit = true },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = accents.danger.copy(alpha = 0.12f),
-                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
-                                        modifier = Modifier.testTag("pay_cancel_edit_btn")
-                                    ) {
-                                        Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                                    }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        if (editingExp != null) "Editing Expense" else if (editingTx != null) "Editing Payment" else "Transaction Manager",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = if (isEditing) accents.cyan else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text("ID: ${editingTx?.id ?: editingExp?.id ?: "\u2014"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)
                                 }
-                                Spacer(Modifier.height(10.dp))
+                                Surface(
+                                    onClick = {
+                                        if (isEditing) {
+                                            showDiscardEdit = true
+                                        } else {
+                                            resetForm()
+                                            customName = ""
+                                            selectedEntity = null
+                                            txKind = "OUT"
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = accents.inputFill,
+                                    border = BorderStroke(1.dp, accents.borderSubtle),
+                                    modifier = Modifier.testTag(if (isEditing) "pay_cancel_edit_btn" else "pay_clear_btn")
+                                ) {
+                                    Text(if (isEditing) "Cancel Edit" else "Clear", style = MaterialTheme.typography.labelMedium, color = accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                                }
                             }
-                            if (!isEditing) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf("EXPENSE" to "Expense", "IN" to "Payment IN", "OUT" to "Payment OUT").forEach { (key, title) ->
-                                        val selected = txKind == key
-                                        Surface(
-                                            onClick = { txKind = key },
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = if (selected) accents.softPillFill else accents.inputFill,
-                                            border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                                            modifier = Modifier.weight(1f).testTag("pay_type_${key.lowercase()}")
-                                        ) {
-                                            Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                                                Text(title, style = MaterialTheme.typography.labelLarge, color = if (selected) accents.emerald else accents.textMuted)
+                            Spacer(Modifier.height(12.dp))
+                            DatePickerField("Date", date, { date = it }, "pay_date")
+                            Spacer(Modifier.height(10.dp))
+                            SarimPillInput(
+                                value = customName,
+                                onValueChange = { v ->
+                                    customName = v.take(80)
+                                    val hit = activeEntities.firstOrNull { !it.isExpenseEntity && it.name.equals(v.trim(), true) }
+                                    selectedEntity = hit
+                                    if (!isEditing) {
+                                        if (hit != null && txKind == "EXPENSE") txKind = "OUT"
+                                        else if (hit == null && expenseNames.any { it.equals(v.trim(), true) } && txKind != "EXPENSE") txKind = "EXPENSE"
+                                    }
+                                },
+                                label = "NAME/ENTITY",
+                                placeholder = "Search expenses or entities...",
+                                testTag = "pay_name_input"
+                            )
+                            if (q.isNotEmpty() && !isEditing && !entityMatchExact && !expenseMatchExact) {
+                                val expMatches = expenseNames.filter { it.lowercase().contains(q) }
+                                val entMatches = activeEntities.filter { !it.isExpenseEntity && it.name.lowercase().contains(q) }
+                                Spacer(Modifier.height(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = accents.inputFill,
+                                    border = BorderStroke(1.dp, accents.borderSubtle),
+                                    modifier = Modifier.fillMaxWidth().testTag("pay_search_results")
+                                ) {
+                                    Column(Modifier.padding(vertical = 6.dp)) {
+                                        Text("EXPENSES", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                        if (expMatches.isEmpty()) {
+                                            Text("No matching expenses \u2014 will create new", style = MaterialTheme.typography.bodySmall, color = accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                        }
+                                        expMatches.take(6).forEach { nm ->
+                                            val n = activeExpenses.count { it.name == nm }
+                                            Row(
+                                                Modifier.fillMaxWidth().clickable {
+                                                    customName = nm; selectedEntity = null; if (txKind != "EXPENSE") txKind = "EXPENSE"
+                                                }.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(nm, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                                Text("$n expense records", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                            }
+                                        }
+                                        Text("ENTITIES", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                        if (entMatches.isEmpty()) {
+                                            Text("No matching entities \u2014 will create new", style = MaterialTheme.typography.bodySmall, color = accents.textMuted, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                        }
+                                        entMatches.take(6).forEach { ent ->
+                                            val n = activeTx.count { it.entityId == ent.id }
+                                            Row(
+                                                Modifier.fillMaxWidth().clickable {
+                                                    customName = ent.name; selectedEntity = ent; if (txKind == "EXPENSE") txKind = "OUT"
+                                                }.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(ent.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                                Text(if (n > 0) "$n transactions" else "", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                             }
                                         }
                                     }
                                 }
-                                Spacer(Modifier.height(10.dp))
                             }
-                            DatePickerField("Date", date, { date = it }, "pay_date")
                             Spacer(Modifier.height(10.dp))
-                            if (txKind == "EXPENSE") {
-                                PickerField(
-                                    label = "Expense Category",
-                                    selectedLabel = expCategory.ifBlank { "Pick Category" },
-                                    items = snapshot.settings.expenseCategories,
-                                    itemLabel = { it },
-                                    onSelect = { picked ->
-                                        expCategory = picked
-                                        if (customName.isBlank()) customName = picked
-                                    },
-                                    testTag = "pay_exp_cat_picker"
-                                )
-                                Spacer(Modifier.height(8.dp))
-                            }
-                            if (activeEntities.isNotEmpty() && editingExp == null) {
-                                PickerField(
-                                    label = if (txKind == "EXPENSE") "Optional Linked Entity" else "Select Entity (${activeEntities.size})",
-                                    selectedLabel = selectedEntity?.let { "${it.name} (${it.type})" } ?: "Pick Party / Supplier / Staff",
-                                    items = activeEntities,
-                                    itemLabel = { "${it.name} • ${it.type.uppercase()}" },
-                                    onSelect = { selectedEntity = it; if (txKind != "EXPENSE" || customName.isBlank()) customName = it.name },
-                                    testTag = "pay_entity_picker"
-                                )
-                                Spacer(Modifier.height(8.dp))
-                            }
-                            SarimPillInput(
-                                value = customName,
-                                onValueChange = { customName = it.take(80); if (selectedEntity?.name != it) selectedEntity = null },
-                                label = if (txKind == "EXPENSE") "EXPENSE TITLE" else "ENTITY / PAYEE NAME",
-                                placeholder = if (txKind == "EXPENSE") "e.g. Fuel, Wages, Rent" else "Enter party or supplier",
-                                testTag = "pay_name_input"
-                            )
+                            DecimalField("Amount", amountStr, { amountStr = it }, "pay_amount_input")
                             Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                PickerField("Channel", channel, channels, { it }, { channel = it }, "pay_channel_picker", Modifier.weight(1f))
-                                DecimalField("Amount", amountStr, { amountStr = it }, "pay_amount_input", Modifier.weight(1f))
+                            SarimPillInput(notes, { notes = it.take(500) }, label = "DESCRIPTION (OPTIONAL)", placeholder = "Add details...", testTag = "pay_notes_input")
+                            Spacer(Modifier.height(12.dp))
+                            Text("Transaction Type", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
+                            Spacer(Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(
+                                    Triple("EXPENSE", "Operating Expense", operatingLocked),
+                                    Triple("IN", "Payment IN\n(Cash In +)", paymentLocked),
+                                    Triple("OUT", "Payment OUT\n(Cash Out \u2212)", paymentLocked)
+                                ).forEach { (key, title, locked) ->
+                                    val selected = txKind == key
+                                    val canTap = !isEditing && !locked
+                                    Surface(
+                                        onClick = { if (canTap) txKind = key },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (selected) accents.softPillFill else accents.inputFill,
+                                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                        modifier = Modifier.weight(1f).alpha(if (locked || (isEditing && !selected)) 0.4f else 1f).testTag("pay_type_${key.lowercase()}")
+                                    ) {
+                                        Box(Modifier.padding(vertical = 9.dp, horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                                            Text(title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, color = if (selected) accents.emerald else accents.textMuted)
+                                        }
+                                    }
+                                }
                             }
                             if (cashShort) {
                                 Spacer(Modifier.height(6.dp))
@@ -305,65 +362,88 @@ fun PaymentsScreen(
                                 Text("Supplier FIFO Payable Settlement", style = MaterialTheme.typography.titleSmall, color = accents.cyan)
                                 fifoPreview.forEach { lot ->
                                     Text(
-                                        "${lot.date} • ${lot.materialName}: settles ${InputGuards.formatMoney(lot.appliedPayment, currency, masked)} (left ${InputGuards.formatMoney(lot.afterPayable, currency, masked)})",
+                                        "${lot.date} \u2022 ${lot.materialName}: settles ${InputGuards.formatMoney(lot.appliedPayment, currency, masked)} (left ${InputGuards.formatMoney(lot.afterPayable, currency, masked)})",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = accents.textMuted
                                     )
                                 }
                             }
-                            if (!isEditing) {
+                            if (!isEditing && txKind != "EXPENSE") {
                                 Spacer(Modifier.height(8.dp))
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Mirror in Daily Ledger", style = MaterialTheme.typography.bodyMedium)
-                                    Switch(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("pay_ledger_switch"))
+                                Row(Modifier.fillMaxWidth().clickable { addToLedger = !addToLedger }, verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.material3.Checkbox(checked = addToLedger, onCheckedChange = { addToLedger = it }, modifier = Modifier.testTag("pay_ledger_switch"))
+                                    Text("Add to Daily Ledger", style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
-                            SarimPillInput(notes, { notes = it.take(500) }, label = "NOTES", placeholder = "Optional description", testTag = "pay_notes_input")
                             Spacer(Modifier.height(14.dp))
                             SarimGradientButton(
                                 text = when {
                                     editingExp != null -> "Update Expense"
                                     editingTx != null -> "Update Payment"
-                                    else -> "Save $txKind"
+                                    else -> "Save Transaction"
                                 },
                                 onClick = {
+                                    val nm = customName.trim()
+                                    val isExp = txKind == "EXPENSE"
+                                    val issue = when {
+                                        nm.isEmpty() -> "Please enter name/entity"
+                                        else -> InputGuards.dateIssue(date, todayIso).ifEmpty { InputGuards.nameIssue(nm, "Name") }
+                                    }
+                                    if (issue.isNotEmpty()) {
+                                        confirmReq = blockingAlert("Warning", issue); return@SarimGradientButton
+                                    }
+                                    if (amount <= 0.0) {
+                                        confirmReq = blockingAlert("Warning", "Please enter valid amount"); return@SarimGradientButton
+                                    }
                                     if (isEditing) {
-                                        showEditDiff = true
-                                    } else {
-                                        val isExp = txKind == "EXPENSE"
-                                        val who = selectedEntity?.name ?: customName.trim()
-                                        val details = buildList {
-                                            add((if (isExp) "Expense" else "Account") to who)
-                                            if (!isExp) add("Direction" to (if (txKind == "IN") "Money In" else "Money Out"))
-                                            add("Amount" to InputGuards.formatMoney(amount, currency, masked))
-                                            add("Date" to DateUtils.formatPretty(date))
-                                            add("Channel" to channel)
-                                            if (isExp) add("Category" to expCategory)
-                                            if (notes.isNotBlank()) add("Note" to notes.trim())
-                                            if (addToLedger) add("Daily Ledger" to "Will be mirrored")
-                                        }
-                                        confirmReq = saveConfirmRequest(
-                                            label = if (isExp) "Expense" else "Payment",
-                                            details = details,
-                                            gated = session.mode != "admin",
-                                            tag = "pay_confirm_save_btn"
-                                        ) {
-                                            vm.submitPaymentOrExpense(
-                                                date = date,
-                                                kind = txKind,
-                                                entity = selectedEntity,
-                                                name = customName,
-                                                category = if (isExp) expCategory else (selectedEntity?.type ?: "party"),
-                                                channel = channel,
-                                                amount = amount,
-                                                addToLedger = addToLedger,
-                                                notes = notes
-                                            )
-                                            resetForm()
+                                        showEditDiff = true; return@SarimGradientButton
+                                    }
+                                    if (!isExp && selectedEntity == null && expenseNames.any { it.equals(nm, true) }) {
+                                        confirmReq = blockingAlert(
+                                            "Something went wrong",
+                                            "\"$nm\" is an operating expense category, not an entity. Switch to Operating Expense mode or use a different name.",
+                                            DialogTone.Error
+                                        ); return@SarimGradientButton
+                                    }
+                                    if (txKind == "OUT" || isExp) {
+                                        val offset = if (txKind == "OUT") fifoPreview.sumOf { it.appliedPayment } else 0.0
+                                        val required = amount - offset
+                                        if (availCash + 0.005 < required) {
+                                            confirmReq = blockingAlert(
+                                                "Low cash in hand",
+                                                "Insufficient cash in hand. Available: ${InputGuards.formatMoney(maxOf(0.0, availCash), currency, masked)} \u2014 Required: ${InputGuards.formatMoney(required, currency, masked)}",
+                                                DialogTone.Error
+                                            ); return@SarimGradientButton
                                         }
                                     }
+                                    val details = buildList {
+                                        add("Expense" to nm)
+                                        add("Amount" to InputGuards.formatMoney(amount, currency, masked))
+                                        add("Date" to DateUtils.formatPretty(date))
+                                        if (notes.isNotBlank()) add("Note" to notes.trim())
+                                    }
+                                    confirmReq = saveConfirmRequest(
+                                        label = "Expense",
+                                        details = details,
+                                        gated = session.mode != "admin",
+                                        tag = "pay_confirm_save_btn"
+                                    ) {
+                                        vm.submitPaymentOrExpense(
+                                            date = date,
+                                            kind = txKind,
+                                            entity = selectedEntity,
+                                            name = nm,
+                                            category = if (isExp) nm else (selectedEntity?.type ?: "party"),
+                                            channel = channel,
+                                            amount = amount,
+                                            addToLedger = addToLedger && !isExp,
+                                            notes = notes
+                                        )
+                                        resetForm()
+                                        customName = ""
+                                        selectedEntity = null
+                                    }
                                 },
-                                enabled = (customName.isNotBlank() || selectedEntity != null) && amount > 0.0,
                                 testTag = "pay_save_btn"
                             )
                         }

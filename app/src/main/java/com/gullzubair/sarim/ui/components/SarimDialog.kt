@@ -345,7 +345,8 @@ data class ConfirmRequest(
     val danger: Boolean = false,
     val tone: DialogTone? = null,
     val tag: String = "confirm_dialog_btn",
-    val onConfirm: () -> Unit
+    val alertOnly: Boolean = false,
+    val onConfirm: () -> Unit = {}
 )
 
 @Composable
@@ -358,6 +359,7 @@ fun ConfirmRequestHost(request: ConfirmRequest?, onClear: () -> Unit) {
         cancelText = request.cancelText,
         danger = request.danger,
         tone = request.tone,
+        alertOnly = request.alertOnly,
         onConfirm = {
             onClear()
             request.onConfirm()
@@ -392,3 +394,7 @@ fun saveConfirmRequest(
     tag = tag,
     onConfirm = onConfirm
 )
+
+/** Web notifyBlocking(): a one-button message. Tone defaults to Warning; pass DialogTone.Error for hard failures. */
+fun blockingAlert(title: String, message: String, tone: DialogTone = DialogTone.Warning, confirmText: String = "OK"): ConfirmRequest =
+    ConfirmRequest(title = title, message = message, confirmText = confirmText, tone = tone, alertOnly = true)
