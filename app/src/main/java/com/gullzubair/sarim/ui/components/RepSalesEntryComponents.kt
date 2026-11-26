@@ -449,7 +449,7 @@ fun RepEntryCard(
         val resultLabel = when {
             editingSpecialType == "REP_RETURN" -> "Return Value:"
             entryMode == RepEntryMode.COLLECTION -> "New Balance After Collection:"
-            else -> "Total Sale Value:"
+            else -> "Transaction Value:"
         }
         val resultVal = when {
             editingSpecialType == "REP_RETURN" -> InputGuards.formatMoney(previewTotalValue, currency, masked)
@@ -460,8 +460,8 @@ fun RepEntryCard(
             else -> InputGuards.formatMoney(previewTotalValue, currency, masked)
         }
         Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = accents.softPillFill.copy(alpha = 0.55f),
+            shape = RoundedCornerShape(16.dp),
+            color = accents.inputFill,
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
         ) {

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +28,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PersonOutline
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -186,14 +189,14 @@ internal fun CustomerLedgerBody(
             val isMoneyOut = s.paymentType == "MONEY_OUT"
             val isOldDebt = s.transactionType == "OLD_DEBT"
             val title = when {
-                isOldDebt -> "OLD DEBT"
-                isRepRet -> "REP RETURN"
-                s.paymentType == "PARTIAL_PAYMENT" -> "PARTIAL PAYMENT"
-                isColl -> "COLLECTION"
-                isMoneyOut -> "MONEY OUT"
-                isRep -> "REP ${s.paymentType}"
-                s.paymentType == "CREDIT" -> "CREDIT SALE"
-                else -> "CASH SALE"
+                isOldDebt -> "Old debt"
+                isRepRet -> "Rep return"
+                s.paymentType == "PARTIAL_PAYMENT" -> "Partial payment"
+                isColl -> "Collection"
+                isMoneyOut -> "Money out"
+                isRep -> "Rep ${s.paymentType.lowercase().replaceFirstChar { it.uppercase() }}"
+                s.paymentType == "CREDIT" -> "Credit sale"
+                else -> "Cash sale"
             }
             val qty = if (s.quantity > 0.0) s.quantity else s.returnedQty
             val sub = buildString {
@@ -378,18 +381,27 @@ internal fun CustomerLedgerBody(
                         DecodedDataUrlImage(
                             dataUrl = photoUri,
                             contentDescription = "$customerName photo",
-                            modifier = Modifier.size(40.dp).clip(CircleShape).align(Alignment.Center)
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .border(2.dp, accents.emerald, CircleShape)
+                                .align(Alignment.Center)
                         )
                     } else {
                         Box(
-                            modifier = Modifier.size(40.dp).clip(CircleShape).background(accents.softPillFill).align(Alignment.Center),
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(accents.softPillFill)
+                                .border(2.dp, accents.emerald, CircleShape)
+                                .align(Alignment.Center),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = customerName.split(" ").filter { it.isNotBlank() }.take(2)
-                                    .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "C" },
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = accents.emerald
+                            Icon(
+                                imageVector = Icons.Rounded.PersonOutline,
+                                contentDescription = null,
+                                tint = accents.emerald,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -412,8 +424,16 @@ internal fun CustomerLedgerBody(
             },
             trailingContent = {
                 Box {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp).testTag("customer_menu_btn")) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More actions", tint = accents.textMuted)
+                    Surface(
+                        onClick = { menuOpen = true },
+                        shape = CircleShape,
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.size(40.dp).testTag("customer_menu_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "More actions", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                        }
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         if (phone.isNotBlank()) {
@@ -453,58 +473,55 @@ internal fun CustomerLedgerBody(
 
             // 1. Summary panel
             item {
-                val debtColor = if (balance > 0.005) accents.danger else accents.emerald
+                val debtColor = if (balance > 0.005) accents.gold else accents.emerald
                 SarimCard {
-                    Text("Current debt", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
+                    Text("Current debt", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = InputGuards.formatMoney(balance, currency, masked),
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
                         color = debtColor
                     )
                     if (n > 0) {
-                        Spacer(Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Surface(
-                                onClick = { showQty = !showQty },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.inputFill,
-                                border = BorderStroke(1.dp, accents.borderSubtle),
-                                modifier = Modifier.weight(1f).testTag("customer_sale_chip")
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showQty = !showQty }
+                                    .padding(vertical = 4.dp)
+                                    .testTag("customer_sale_chip"),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.width(3.dp).height(30.dp).clip(CircleShape).background(accents.emerald))
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            if (showQty) "TOTAL QUANTITY" else "TOTAL SALE",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            color = accents.textMuted
-                                        )
-                                        Text(
-                                            text = if (showQty) InputGuards.formatKg(totalKg) else InputGuards.formatMoney(totalSale, currency, masked),
-                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.cyan
-                                        )
-                                    }
+                                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(accents.emerald))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        if (showQty) "TOTAL QUANTITY" else "TOTAL SALE",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = accents.textMuted
+                                    )
+                                    Text(
+                                        text = if (showQty) InputGuards.formatKg(totalKg) else InputGuards.formatMoney(totalSale, currency, masked),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.inputFill,
-                                border = BorderStroke(1.dp, accents.borderSubtle),
-                                modifier = Modifier.weight(1f)
+                            Row(
+                                modifier = Modifier.weight(1f).padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.width(3.dp).height(30.dp).clip(CircleShape).background(accents.emerald))
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text("RECEIVED", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
-                                        Text(
-                                            text = InputGuards.formatMoney(totalGot, currency, masked),
-                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.emerald
-                                        )
-                                    }
+                                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(accents.emerald))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text("RECEIVED", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
+                                    Text(
+                                        text = InputGuards.formatMoney(totalGot, currency, masked),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = accents.emerald
+                                    )
                                 }
                             }
                         }
@@ -585,7 +602,7 @@ internal fun CustomerLedgerBody(
                             val on = effFilter == k
                             Surface(
                                 onClick = { filter = k },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(999.dp),
                                 color = if (on) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (on) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.testTag("customer_filter_$k")
@@ -593,8 +610,8 @@ internal fun CustomerLedgerBody(
                                 Text(
                                     label,
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
-                                    color = if (on) accents.emerald else accents.textMuted,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    color = if (on) accents.emerald else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp)
                                 )
                             }
                         }
@@ -648,34 +665,37 @@ internal fun CustomerLedgerBody(
                     when (item) {
                         is LedgerListItem.MonthHead -> {
                             val m = item.month
-                            Surface(
-                                onClick = {
-                                    collapsedMonths = if (m.key in collapsedMonths) collapsedMonths - m.key else collapsedMonths + m.key
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.inputFill,
-                                border = BorderStroke(1.dp, accents.borderSubtle),
-                                modifier = Modifier.fillMaxWidth().testTag("customer_month_${m.key}")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        collapsedMonths = if (m.key in collapsedMonths) collapsedMonths - m.key else collapsedMonths + m.key
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                                    .testTag("customer_month_${m.key}"),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(monthName(m.key).uppercase(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                    Text(
+                                        "Sold ${InputGuards.formatMoney(m.sold, currency, masked)} · Received ${InputGuards.formatMoney(m.got, currency, masked)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accents.textMuted
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        "${InputGuards.formatKg(m.kg)} sold",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = accents.textMuted
+                                    )
                                     Icon(
                                         if (item.collapsed) Icons.AutoMirrored.Rounded.KeyboardArrowRight else Icons.Rounded.KeyboardArrowDown,
                                         contentDescription = null,
-                                        tint = accents.textMuted,
+                                        tint = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(Modifier.width(6.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(monthName(m.key), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                        Text(
-                                            "${m.count} entries • ${InputGuards.formatKg(m.kg)} sold • Sold ${InputGuards.formatMoney(m.sold, currency, masked)} • Rec ${InputGuards.formatMoney(m.got, currency, masked)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = accents.textMuted
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -687,23 +707,18 @@ internal fun CustomerLedgerBody(
                             val dayDow = parsedDay?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.ENGLISH) ?: ""
                             SarimCard {
                                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Surface(
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = accents.softPillFill,
-                                        border = BorderStroke(1.dp, accents.borderSubtle),
-                                        modifier = Modifier.size(width = 44.dp, height = 48.dp)
+                                    Column(
+                                        modifier = Modifier.width(34.dp).padding(top = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(dayNum, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = MaterialTheme.colorScheme.onSurface)
-                                            Text(dayDow, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
-                                        }
+                                        Text(dayNum, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = MaterialTheme.colorScheme.onSurface)
+                                        Text(dayDow, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
                                     }
                                     Column(modifier = Modifier.weight(1f)) {
                                         item.visible.forEachIndexed { i, e ->
                                             val canOpen = !e.isRep
+                                            val dotColor = if (e.isIn || e.cat == "cash") accents.emerald else accents.gold
+                                            val isPaidCredit = e.cat == "credit" && e.sale.creditReceived && !e.sale.isMerged
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -714,16 +729,20 @@ internal fun CustomerLedgerBody(
                                             ) {
                                                 Column(Modifier.weight(1f)) {
                                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(Modifier.size(8.dp).clip(CircleShape).background(dotColor))
                                                         Text(e.title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                                                         if (e.unpaid) {
-                                                            Surface(shape = RoundedCornerShape(999.dp), color = accents.gold.copy(alpha = 0.16f)) {
-                                                                Text(
-                                                                    "PENDING",
-                                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                                                    color = accents.gold,
-                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                                )
-                                                            }
+                                                            Text(
+                                                                "PENDING",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                                                color = accents.gold
+                                                            )
+                                                        } else if (isPaidCredit) {
+                                                            Text(
+                                                                "PAID",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                                                color = accents.emerald
+                                                            )
                                                         }
                                                     }
                                                     if (e.sub.isNotBlank()) {
@@ -737,7 +756,7 @@ internal fun CustomerLedgerBody(
                                                         color = if (e.isIn) accents.emerald else MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Text(
-                                                        text = "Bal ${InputGuards.formatMoney(e.balAfter, currency, masked)}",
+                                                        text = InputGuards.formatMoney(e.balAfter, currency, masked),
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = accents.textMuted
                                                     )
@@ -757,7 +776,7 @@ internal fun CustomerLedgerBody(
                                         ) {
                                             Text(
                                                 text = if (d.items.size > 1) {
-                                                    "${InputGuards.formatKg(d.kg)} sold • Sold ${InputGuards.formatMoney(d.sold, currency, masked)} • Rec ${InputGuards.formatMoney(d.got, currency, masked)}"
+                                                    "${InputGuards.formatKg(d.kg)} sold | Sold: ${InputGuards.formatMoney(d.sold, currency, masked)} | Received: ${InputGuards.formatMoney(d.got, currency, masked)}"
                                                 } else "",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = accents.textMuted,
@@ -767,15 +786,21 @@ internal fun CustomerLedgerBody(
                                                 onClick = { shareDay(d) },
                                                 shape = RoundedCornerShape(999.dp),
                                                 color = accents.softPillFill,
-                                                border = BorderStroke(1.dp, accents.emerald),
+                                                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
                                                 modifier = Modifier.testTag("customer_share_${d.key}")
                                             ) {
-                                                Text(
-                                                    "Invoice",
-                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                                    color = accents.emerald,
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(Icons.Rounded.Share, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
+                                                    Text(
+                                                        "Invoice",
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                        color = accents.emerald
+                                                    )
+                                                }
                                             }
                                         }
                                     }

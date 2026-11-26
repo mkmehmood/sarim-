@@ -314,37 +314,22 @@ private fun WorkspaceNavContainer(
                             )
                         )
                 ) {
-                    // Drawer Brand Header
+                    // Drawer Brand Header (matches 08-sidebar)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(horizontal = 18.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = 22.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        SarimIconBadge(
-                            icon = Icons.Rounded.Eco,
-                            tint = accents.emerald,
-                            size = 40.dp,
-                            cornerRadius = 14.dp,
-                            iconSize = 21.dp
+                        Text(
+                            text = "GULL AND ZUBAIR",
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.5.sp,
+                            letterSpacing = 1.4.sp,
+                            color = accents.emerald
                         )
-                        Column {
-                            Text(
-                                text = "GULL AND ZUBAIR",
-                                fontFamily = JakartaFont,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp,
-                                letterSpacing = 1.4.sp,
-                                color = accents.emerald
-                            )
-                            Text(
-                                text = "Workspace",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = accents.textMuted
-                            )
-                        }
                     }
                     HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
 
@@ -458,7 +443,7 @@ private fun WorkspaceNavContainer(
                     ) {
                         val settingsSelected = currentRouteName.contains("Settings")
                         DrawerRowItem(
-                            label = "Settings",
+                            label = "SETTINGS",
                             icon = if (settingsSelected) Icons.Rounded.Settings else Icons.Outlined.Settings,
                             iconTint = accents.emerald,
                             selected = settingsSelected,
@@ -466,7 +451,7 @@ private fun WorkspaceNavContainer(
                             onClick = { navigateTo(AppRoute.Settings) }
                         )
                         DrawerRowItem(
-                            label = "Logout",
+                            label = "LOGOUT",
                             icon = Icons.AutoMirrored.Rounded.Logout,
                             iconTint = accents.danger,
                             textColor = accents.danger,
@@ -492,14 +477,14 @@ private fun WorkspaceNavContainer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .shadow(
-                                elevation = if (accents.isDark) 0.dp else 7.dp,
+                                elevation = if (accents.isDark) 10.dp else 7.dp,
                                 shape = headerShape,
-                                ambientColor = Color(0x160891B2),
-                                spotColor = Color(0x160891B2)
+                                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.22f else 0.16f),
+                                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.16f)
                             ),
                         color = accents.headerFrosted,
                         shape = headerShape,
-                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.72f))
+                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.85f))
                     ) {
                         Row(
                             modifier = Modifier
@@ -805,9 +790,13 @@ private fun DrawerRowItem(
     textColor: Color? = null
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(999.dp)
     val bgColor by animateColorAsState(
-        targetValue = if (selected) accents.softPillFill else Color.Transparent,
+        targetValue = if (selected) {
+            if (accents.isDark) Color(0xFF0A2218) else accents.softPillFill
+        } else {
+            Color.Transparent
+        },
         animationSpec = SarimMotion.ColorSpring,
         label = "drawer_row_bg"
     )
@@ -819,19 +808,17 @@ private fun DrawerRowItem(
             .clip(shape)
             .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
             .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SarimIconBadge(
-            icon = icon,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
             tint = resolvedTint,
-            containerColor = if (selected) accents.emerald.copy(alpha = 0.22f) else iconTint.copy(alpha = 0.11f),
-            size = 34.dp,
-            cornerRadius = 11.dp,
-            iconSize = 18.dp
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Text(
             text = label,
             fontFamily = JakartaFont,

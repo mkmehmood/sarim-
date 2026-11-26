@@ -398,12 +398,12 @@ fun EditCustomerScreen(
                                 value = name,
                                 onValueChange = { name = it.take(80) },
                                 label = "Customer Name",
-                                placeholder = "Customer name",
+                                placeholder = "Type name to search or add...",
                                 testTag = "ec_name_input"
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = if (existing.id.isNotBlank()) "Editing the name will update all records for this customer" else "",
+                                text = if (existing.id.isNotBlank()) "Editing the name will update all records for this customer" else "Search existing customers or type a new name to add.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = accents.textMuted
                             )
@@ -462,9 +462,9 @@ fun EditCustomerScreen(
                 SarimCard {
                     Text("Account", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.height(10.dp))
-                    DecimalField("Previous balance (old debt)", openingStr, { openingStr = it }, "ec_opening_input", suffix = currency)
+                    DecimalField("Previous balance (old debt)", openingStr, { openingStr = it }, "ec_opening_input", prefix = currency, placeholder = "0")
                     Spacer(Modifier.height(10.dp))
-                    DecimalField("Custom sale price", customRateStr, { customRateStr = it }, "ec_rate_input", suffix = "/kg")
+                    DecimalField("Custom sale price", customRateStr, { customRateStr = it }, "ec_rate_input", prefix = currency, suffix = "/kg", placeholder = "Factory default")
                     Spacer(Modifier.height(10.dp))
                     SarimPillInput(
                         value = bookPageStr,
@@ -473,6 +473,8 @@ fun EditCustomerScreen(
                         placeholder = "e.g. 45",
                         testTag = "ec_page_input"
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text("Shown as a small badge on the customer avatar.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             }
 
@@ -664,7 +666,7 @@ private fun AvatarPickerBadge(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
-                Text("Photo", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = accents.emerald)
+                Text("Camera", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = accents.emerald)
             }
         }
         if (onClear != null) {

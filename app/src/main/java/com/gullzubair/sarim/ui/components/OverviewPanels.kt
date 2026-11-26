@@ -575,13 +575,19 @@ private fun OverviewOwedTile(label: String, value: String, sub: String, color: C
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = color.copy(alpha = 0.10f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.40f))
+        shape = RoundedCornerShape(16.dp),
+        color = accents.inputFill,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.42f))
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)
-            Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.4.sp, fontWeight = FontWeight.Bold),
+                color = accents.textMuted,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 2)
         }
     }

@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.PhotoBlob
 import com.gullzubair.sarim.data.model.ProductionRecord
 import com.gullzubair.sarim.data.model.StoreConfig
@@ -62,6 +63,7 @@ import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.ProductionAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import kotlin.math.abs
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -111,7 +113,9 @@ fun ProductionEntryCard(
         ) {
             Text(
                 text = if (isEditing) "Edit Production Entry" else "New Entry",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
                 color = accents.emerald
             )
             if (isEditing) {
@@ -136,9 +140,9 @@ fun ProductionEntryCard(
 
         // Formula Units Available Banner (#unitsAvailableIndicator)
         Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = accents.inputFill,
-            border = BorderStroke(1.dp, availableColor.copy(alpha = 0.45f)),
+            shape = RoundedCornerShape(999.dp),
+            color = accents.softPillFill.copy(alpha = 0.45f),
+            border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("prod_units_available_banner")
@@ -146,39 +150,33 @@ fun ProductionEntryCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Formula Units Available:",
                     style = MaterialTheme.typography.labelMedium,
-                    color = accents.textMuted
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = availableColor.copy(alpha = 0.14f)
-                ) {
-                    val availText = if (selectedStore == null) {
-                        "Calculating..."
-                    } else {
-                        buildString {
-                            append("${InputGuards.fmtNum(dynamicCost.availableUnits)} units available")
-                            if (dynamicCost.formulaName.isNotBlank()) {
-                                append(" · ${dynamicCost.formulaName}")
-                            }
+                val availText = if (selectedStore == null) {
+                    "Calculating..."
+                } else {
+                    buildString {
+                        append("${InputGuards.fmtNum(dynamicCost.availableUnits)} units available")
+                        if (dynamicCost.formulaName.isNotBlank()) {
+                            append(" · ${dynamicCost.formulaName}")
                         }
                     }
-                    Text(
-                        text = availText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = availableColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
                 }
+                Text(
+                    text = availText,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = availableColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -552,9 +550,9 @@ fun ProductionEntryCard(
         if (hasInsufficientUnits) {
             Spacer(Modifier.height(10.dp))
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = accents.danger.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(14.dp),
+                color = if (accents.isDark) Color(0xFF1F1606) else Color(0xFFFFFBF2),
+                border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.7f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("prod_insufficient_units_warn")
@@ -562,7 +560,7 @@ fun ProductionEntryCard(
                 Text(
                     text = "Insufficient formula units available! Please reduce formula units used.",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = accents.danger,
+                    color = accents.gold,
                     modifier = Modifier.padding(12.dp)
                 )
             }
@@ -678,20 +676,22 @@ fun ProductionHistoryRowCard(
     val note = rec.returnNote.ifBlank { rec.transferNote }
 
     SarimCard(
-        accentBorder = if (isSelectedDate) accents.emerald.copy(alpha = 0.45f) else null,
+        accentBorder = if (isSelectedDate) accents.cyan.copy(alpha = 0.45f) else null,
         contentPadding = PaddingValues(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         modifier = Modifier.testTag("prod_hist_card_${rec.id}")
     ) {
         Column(
-            modifier = Modifier.drawBehind {
-                // web `.hc-card::before` — 3dp tone bar on the left edge
-                drawRoundRect(
-                    color = tone.copy(alpha = 0.85f),
-                    topLeft = Offset(-15.dp.toPx(), 2.dp.toPx()),
-                    size = Size(3.dp.toPx(), (size.height - 4.dp.toPx()).coerceAtLeast(0f)),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                )
-            }
+            modifier = Modifier
+                .then(if (isSelectedDate) Modifier.cyanDotMatrixPattern(accents.cyan, accents.cyan) else Modifier)
+                .drawBehind {
+                    // web `.hc-card::before` — 3dp tone bar on the left edge
+                    drawRoundRect(
+                        color = tone.copy(alpha = 0.85f),
+                        topLeft = Offset(-15.dp.toPx(), 2.dp.toPx()),
+                        size = Size(3.dp.toPx(), (size.height - 4.dp.toPx()).coerceAtLeast(0f)),
+                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                    )
+                }
         ) {
             // ---- head (tap to expand/collapse)
             Row(

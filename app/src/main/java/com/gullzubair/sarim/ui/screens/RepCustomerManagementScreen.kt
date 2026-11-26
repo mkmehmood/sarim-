@@ -474,11 +474,20 @@ fun RepCustomerManagementScreen(
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(REP_MODE_FILTERS) { (key, label) ->
-                        FilterChip(
-                            selected = modeFilter == key,
+                        val on = modeFilter == key
+                        Surface(
                             onClick = { modeFilter = key },
-                            label = { Text(label) }
-                        )
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (on) accents.softPillFill else accents.inputFill,
+                            border = BorderStroke(1.dp, if (on) accents.emerald else accents.borderSubtle)
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
+                                color = if (on) accents.emerald else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp)
+                            )
+                        }
                     }
                 }
             }

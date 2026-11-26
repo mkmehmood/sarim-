@@ -20,21 +20,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.ArrowDropUp
-import androidx.compose.material.icons.rounded.FactCheck
-import androidx.compose.material.icons.rounded.Factory
-import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.Layers
-import androidx.compose.material.icons.rounded.PointOfSale
-import androidx.compose.material.icons.rounded.ReceiptLong
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.TrendingUp
-import androidx.compose.material.icons.rounded.Warehouse
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -49,11 +39,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,7 +64,7 @@ import com.gullzubair.sarim.ui.components.OverviewSalesPanel
 import com.gullzubair.sarim.ui.components.OverviewStockPanel
 import com.gullzubair.sarim.ui.components.RepairLinksConfirmDialog
 import com.gullzubair.sarim.ui.components.SarimCard
-import com.gullzubair.sarim.ui.components.SarimIconBadge
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.theme.SarimMotion
@@ -88,7 +78,6 @@ private data class SparkTileModel(
     val subtitle: String,
     val series: List<Double>?,
     val lineColor: Color,
-    val icon: ImageVector,
     val isAlert: Boolean = false,
     val isHero: Boolean = false
 )
@@ -135,7 +124,6 @@ fun OverviewScreen(
                 subtitle = if (summary.prodValue > 0) "${String.format("%.1f", summary.marginPct)}% margin on ${InputGuards.formatMoney(summary.prodValue, currency, masked)}" else "",
                 series = summary.months.map { it.prodProfit },
                 lineColor = if (summary.prodProfit < 0) accents.danger else accents.emerald,
-                icon = Icons.Rounded.TrendingUp,
                 isAlert = summary.prodProfit < 0,
                 isHero = true
             ),
@@ -144,57 +132,50 @@ fun OverviewScreen(
                 value = InputGuards.formatMoney(summary.salesValue, currency, masked),
                 subtitle = "${summary.salesCount} sale${if (summary.salesCount == 1) "" else "s"}",
                 series = summary.months.map { it.salesValue },
-                lineColor = accents.emerald,
-                icon = Icons.Rounded.PointOfSale
+                lineColor = accents.emerald
             ),
             SparkTileModel(
                 label = "Produced",
                 value = InputGuards.formatKg(summary.prodKg),
                 subtitle = if (summary.returnsKg > 0) "+${InputGuards.formatKg(summary.returnsKg)} returns" else "Cost ${InputGuards.formatMoney(summary.prodCost, currency, masked)}",
                 series = summary.months.map { it.prodKg },
-                lineColor = accents.cyan,
-                icon = Icons.Rounded.Inventory2
+                lineColor = accents.cyan
             ),
             SparkTileModel(
                 label = "Remaining",
                 value = InputGuards.formatKg(summary.remainingKg),
-                subtitle = "${InputGuards.fmtNum(inKg, 0)} in • ${InputGuards.fmtNum(summary.soldKg, 0)} sold",
+                subtitle = "${InputGuards.fmtNum(inKg, 0)} in · ${InputGuards.fmtNum(summary.soldKg, 0)} sold",
                 series = null,
                 lineColor = if (summary.remainingKg < 0) accents.danger else accents.gold,
-                icon = Icons.Rounded.Warehouse,
                 isAlert = summary.remainingKg < 0
             ),
             SparkTileModel(
                 label = "Net cash",
                 value = InputGuards.formatMoney(summary.netCash, currency, masked),
-                subtitle = "In ${InputGuards.formatMoney(summary.cashIn, currency, masked)} • Out ${InputGuards.formatMoney(summary.cashOut, currency, masked)}",
+                subtitle = "In ${InputGuards.formatMoney(summary.cashIn, currency, masked)} · Out ${InputGuards.formatMoney(summary.cashOut, currency, masked)}",
                 series = summary.months.map { it.cashIn - it.cashOut },
-                lineColor = if (summary.netCash < 0) accents.danger else accents.emerald,
-                icon = Icons.Rounded.AccountBalanceWallet
+                lineColor = if (summary.netCash < 0) accents.danger else accents.emerald
             ),
             SparkTileModel(
                 label = "Expenses",
                 value = InputGuards.formatMoney(summary.expenses, currency, masked),
                 subtitle = "",
                 series = summary.months.map { it.expenses },
-                lineColor = accents.gold,
-                icon = Icons.Rounded.ReceiptLong
+                lineColor = accents.gold
             ),
             SparkTileModel(
                 label = "Owed to you",
                 value = InputGuards.formatMoney(if (summary.owedAging.count > 0) summary.owedAging.total else summary.openCreditValue, currency, masked),
                 subtitle = "${if (summary.owedAging.count > 0) summary.owedAging.count else summary.openCreditCount} unreceived",
                 series = null,
-                lineColor = accents.gold,
-                icon = Icons.Rounded.Schedule
+                lineColor = accents.gold
             ),
             SparkTileModel(
                 label = "Stock",
                 value = InputGuards.formatMoney(summary.stockValue, currency, masked),
-                subtitle = "${summary.stockItemsCount} material${if (summary.stockItemsCount == 1) "" else "s"}${if (summary.outOfStockNames.isNotEmpty()) " • ${summary.outOfStockNames.size} out" else ""}",
+                subtitle = "${summary.stockItemsCount} material${if (summary.stockItemsCount == 1) "" else "s"}${if (summary.outOfStockNames.isNotEmpty()) " · ${summary.outOfStockNames.size} out" else ""}",
                 series = null,
-                lineColor = accents.purple,
-                icon = Icons.Rounded.Layers
+                lineColor = accents.purple
             )
         )
     }
@@ -213,12 +194,9 @@ fun OverviewScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = "Overview",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    TabHeading("Overview")
                     val stamp = remember(snapshot, windowMonths) {
-                        java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+                        java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date())
                     }
                     Text("Updated $stamp", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                 }
@@ -289,16 +267,20 @@ fun OverviewScreen(
             }
         }
 
-        // Right-Now 4 Pills Strip
+        // Right-Now 4 Pills Strip (matches 01-tab-overview)
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Right now", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
+                Text(
+                    "RIGHT NOW",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp),
+                    color = accents.textMuted
+                )
                 OverviewRightNowPill("Production", InputGuards.formatKg(summary.todayProdKg), accents.cyan)
                 OverviewRightNowPill("Sales", InputGuards.formatMoney(summary.todaySalesValue, currency, masked), accents.emerald)
                 OverviewRightNowPill("In", InputGuards.formatMoney(summary.todayIn, currency, masked), accents.emerald)
@@ -306,7 +288,7 @@ fun OverviewScreen(
             }
         }
 
-        // 6 Panel Switcher Pills
+        // 6 Panel Switcher Pills (matches 01b-tab-overview-full: clean text pills, red circle badge on Checks)
         item {
             val issueCount = summary.audit.errors + summary.audit.warnings
             Row(
@@ -318,26 +300,16 @@ fun OverviewScreen(
                 listOf("Sales", "Prod", "Money", "Stock", "Checks", "Activity").forEach { panel ->
                     val display = if (panel == "Prod") "Production" else panel
                     val selected = activePanel == panel
-                    val label = if (panel == "Checks" && issueCount > 0) "$display  $issueCount" else display
-                    val panelIcon = when (panel) {
-                        "Sales" -> Icons.Rounded.PointOfSale
-                        "Prod" -> Icons.Rounded.Factory
-                        "Money" -> Icons.Rounded.AccountBalanceWallet
-                        "Stock" -> Icons.Rounded.Layers
-                        "Checks" -> Icons.Rounded.FactCheck
-                        else -> Icons.Rounded.History
-                    }
                     val bg by animateColorAsState(if (selected) accents.softPillFill else accents.inputFill, SarimMotion.ColorSpring, label = "panel_bg")
                     val border by animateColorAsState(
                         when {
                             selected -> accents.emerald
-                            panel == "Checks" && summary.audit.errors > 0 -> accents.danger.copy(alpha = 0.5f)
                             else -> accents.borderSubtle
                         },
                         SarimMotion.ColorSpring,
                         label = "panel_bd"
                     )
-                    val fg = if (selected) accents.emerald else if (panel == "Checks" && summary.audit.errors > 0) accents.danger else accents.textMuted
+                    val fg = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f)
                     Surface(
                         onClick = { activePanel = panel },
                         shape = RoundedCornerShape(999.dp),
@@ -346,16 +318,32 @@ fun OverviewScreen(
                         modifier = Modifier.testTag("overview_panel_${panel.lowercase()}")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(panelIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
                             Text(
-                                label,
-                                style = MaterialTheme.typography.labelLarge,
+                                display,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                ),
                                 color = fg
                             )
+                            if (panel == "Checks" && issueCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(accents.danger)
+                                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "$issueCount",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.ExtraBold),
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -481,55 +469,50 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
     }
     SarimCard(
         modifier = modifier,
-        accentBorder = if (tile.isAlert) accents.danger.copy(alpha = 0.5f) else if (tile.isHero) accents.emerald.copy(alpha = 0.55f) else null,
+        accentBorder = when {
+            tile.isAlert -> accents.danger.copy(alpha = 0.55f)
+            tile.isHero -> accents.emerald.copy(alpha = 0.55f)
+            else -> null
+        },
         contentPadding = PaddingValues(14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                tile.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = accents.textMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            SarimIconBadge(
-                icon = tile.icon,
-                tint = tile.lineColor,
-                size = 26.dp,
-                cornerRadius = 9.dp,
-                iconSize = 14.dp
-            )
-        }
+        Text(
+            tile.label.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp, fontWeight = FontWeight.Bold),
+            color = accents.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             tile.value,
             fontFamily = JakartaFont,
             fontWeight = FontWeight.ExtraBold,
-            fontSize = 16.5.sp,
-            color = if (tile.isAlert) accents.danger else MaterialTheme.colorScheme.onSurface,
+            fontSize = if (tile.isHero) 20.sp else 18.sp,
+            color = when {
+                tile.isAlert -> accents.danger
+                tile.isHero -> accents.emerald
+                else -> MaterialTheme.colorScheme.onSurface
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        if (tile.subtitle.isNotBlank()) {
-            Spacer(Modifier.height(2.dp))
-            Text(tile.subtitle, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
         val pts = tile.series
         if (pts != null && pts.size >= 2) {
-            Spacer(Modifier.height(7.dp))
+            Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Canvas(modifier = Modifier.weight(1f).height(24.dp)) {
+                Canvas(modifier = Modifier.weight(1f).height(26.dp)) {
                     val maxV = pts.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
                     val minV = pts.minOrNull() ?: 0.0
                     val span = (maxV - minV).coerceAtLeast(1.0)
+                    val allFlatZero = pts.all { abs(it) < 1e-6 }
                     val stepX = size.width / (pts.size - 1).coerceAtLeast(1)
-                    val coords = pts.mapIndexed { idx, v ->
-                        Offset(idx * stepX, size.height - 4f - (((v - minV) / span).toFloat() * (size.height - 8f)))
+                    val coords = if (allFlatZero) {
+                        pts.mapIndexed { idx, _ -> Offset(idx * stepX, size.height - 4f) }
+                    } else {
+                        pts.mapIndexed { idx, v ->
+                            Offset(idx * stepX, size.height - 4f - (((v - minV) / span).toFloat() * (size.height - 8f)))
+                        }
                     }
                     val path = Path().apply {
                         moveTo(coords.first().x, coords.first().y)
@@ -540,32 +523,49 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
                             cubicTo(cx, p0.y, cx, p1.y, p1.x, p1.y)
                         }
                     }
-                    drawPath(path = path, color = tile.lineColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
+                    if (!allFlatZero) {
+                        val areaPath = Path().apply {
+                            addPath(path)
+                            lineTo(coords.last().x, size.height)
+                            lineTo(coords.first().x, size.height)
+                            close()
+                        }
+                        drawPath(
+                            path = areaPath,
+                            brush = Brush.verticalGradient(
+                                listOf(tile.lineColor.copy(alpha = 0.25f), Color.Transparent)
+                            )
+                        )
+                    }
+                    drawPath(path = path, color = tile.lineColor, style = Stroke(width = 4.2f, cap = StrokeCap.Round))
                 }
                 if (deltaPct != null) {
-                    Spacer(Modifier.width(6.dp))
-                    val deltaColor = if (deltaPct >= 0) accents.emerald else accents.danger
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(deltaColor.copy(alpha = 0.14f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Spacer(Modifier.width(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (deltaPct >= 0) Icons.Rounded.ArrowDropUp else Icons.Rounded.ArrowDropDown,
                             contentDescription = null,
-                            tint = deltaColor,
-                            modifier = Modifier.size(14.dp)
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(16.dp)
                         )
                         Text(
                             "${abs(deltaPct)}%",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
-                            color = deltaColor
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
             }
+        }
+        if (tile.subtitle.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                tile.subtitle,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                color = accents.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -574,12 +574,12 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
 private fun OverviewRightNowPill(label: String, value: String, color: Color) {
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(999.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {

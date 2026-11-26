@@ -31,7 +31,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -242,30 +241,52 @@ fun ApprovalsScreen(
                 }
             }
 
-            // Type Filter Chips
+            // Type Filter Pills
             if (typeCounts.size > 1) {
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        FilterChip(
-                            selected = typeFilter == "all",
+                        val allSelected = typeFilter == "all"
+                        Surface(
                             onClick = { typeFilter = "all" },
-                            label = { Text("All ${pendingList.size}") }
-                        )
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (allSelected) accents.softPillFill else accents.inputFill,
+                            border = BorderStroke(1.dp, if (allSelected) accents.emerald else accents.borderSubtle),
+                            modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Text(
+                                    "All ${pendingList.size}",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (allSelected) accents.emerald else accents.textMuted
+                                )
+                            }
+                        }
                         typeCounts.forEach { (col, cnt) ->
-                            FilterChip(
-                                selected = typeFilter == col,
+                            val selected = typeFilter == col
+                            Surface(
                                 onClick = { typeFilter = col },
-                                label = { Text("${approvalTypeLabel(col)} $cnt") }
-                            )
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (selected) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                    Text(
+                                        "${approvalTypeLabel(col)} $cnt",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                                        color = if (selected) accents.emerald else accents.textMuted
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            // Person Filter Chips
+            // Person Filter Pills
             if (personCounts.size > 1) {
                 item {
                     Row(
@@ -274,11 +295,21 @@ fun ApprovalsScreen(
                     ) {
                         personCounts.forEach { (person, cnt) ->
                             val selected = personFilter == person
-                            FilterChip(
-                                selected = selected,
+                            Surface(
                                 onClick = { personFilter = if (selected) "all" else person },
-                                label = { Text("$person $cnt") }
-                            )
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (selected) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                    Text(
+                                        "$person $cnt",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                                        color = if (selected) accents.emerald else accents.textMuted
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -498,7 +529,7 @@ fun StockTransferScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "${InputGuards.formatKg(availableAtSource)} available at ${fromStore?.name ?: "store"}",
+                        "${InputGuards.formatKg(availableAtSource)} available at ${fromStore?.name ?: "store"} on $date",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (availableAtSource <= 0.0) accents.danger else accents.emerald
                     )
@@ -554,6 +585,7 @@ fun StockTransferScreen(
                         items = transferOutRecords,
                         dateOf = { it.date },
                         summaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.net) }) },
+                        daySummaryLabel = { list -> InputGuards.formatKg(list.sumOf { kotlin.math.abs(it.net) }) },
                         itemRow = { rec ->
                             val fromLbl = FormulaEngine.storeLabelFor(rec.store, snapshot.stores)
                             val toLbl = FormulaEngine.storeLabelFor(rec.transferPeerStore, snapshot.stores)
@@ -695,8 +727,8 @@ fun PaymentTransferScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PickerField("From Entity", fromEntity?.name ?: "Select entity...", activeEntities, { it.name }, { fromEntity = it }, "pt_from_picker", Modifier.weight(1f))
-                        PickerField("To Entity", toEntity?.name ?: "Select entity...", activeEntities, { it.name }, { toEntity = it }, "pt_to_picker", Modifier.weight(1f))
+                        PickerField("From Entity", fromEntity?.name ?: "Search entity...", activeEntities, { it.name }, { fromEntity = it }, "pt_from_picker", Modifier.weight(1f))
+                        PickerField("To Entity", toEntity?.name ?: "Search entity...", activeEntities, { it.name }, { toEntity = it }, "pt_to_picker", Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -721,13 +753,13 @@ fun PaymentTransferScreen(
                             onClick = {
                                 photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                             },
-                            shape = RoundedCornerShape(24.dp),
+                            shape = CircleShape,
                             color = if (attachedUri != null) accents.softPillFill else accents.inputFill,
-                            border = BorderStroke(1.dp, if (attachedUri != null) accents.emerald else accents.borderSubtle),
-                            modifier = Modifier.size(50.dp).testTag("pt_photo_btn")
+                            border = BorderStroke(1.dp, if (attachedUri != null) accents.emerald else accents.emerald.copy(alpha = 0.45f)),
+                            modifier = Modifier.size(48.dp).testTag("pt_photo_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald)
+                                Icon(Icons.Rounded.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -784,6 +816,7 @@ fun PaymentTransferScreen(
                         items = transferHistory,
                         dateOf = { it.date },
                         summaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked) },
+                        daySummaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked) },
                         itemRow = { tx ->
                             Row(
                                 modifier = Modifier

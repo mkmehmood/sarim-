@@ -142,7 +142,7 @@ fun RawMaterialScreen(
                                 value = name,
                                 onValueChange = { name = it.take(80) },
                                 label = "Search or add material",
-                                placeholder = "Search saved or type new",
+                                placeholder = "Search saved materials or type...",
                                 leadingIcon = { Icon(Icons.Rounded.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 trailingIcon = if (materials.isNotEmpty()) {
                                     {
@@ -195,12 +195,12 @@ fun RawMaterialScreen(
                             placeholder = "bag, box, carton",
                             modifier = Modifier.weight(1f)
                         )
-                        DecimalField("Units bought", unitsBoughtStr, { unitsBoughtStr = it }, "rm_qty_input", Modifier.weight(1f))
+                        DecimalField("Units bought", unitsBoughtStr, { unitsBoughtStr = it }, "rm_qty_input", Modifier.weight(1f), placeholder = "0")
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         DecimalField("Weight per unit", weightPerUnitStr, { weightPerUnitStr = it }, "rm_factor_input", Modifier.weight(1f), suffix = "kg")
-                        DecimalField("Cost per unit", costPerUnitStr, { costPerUnitStr = it }, "rm_cost_input", Modifier.weight(1f))
+                        DecimalField("Cost per unit", costPerUnitStr, { costPerUnitStr = it }, "rm_cost_input", Modifier.weight(1f), prefix = currency)
                     }
                     Spacer(Modifier.height(12.dp))
                     StatsStrip(
@@ -225,7 +225,7 @@ fun RawMaterialScreen(
                                     supplierMode = k
                                     if (k == "none") supplier = ""
                                 },
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(999.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.defaultMinSize(minHeight = 48.dp)

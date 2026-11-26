@@ -303,19 +303,19 @@ fun SarimCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(22.dp)
     val bgBrush = remember(accents.glassTop, accents.glassBottom) {
         Brush.verticalGradient(listOf(accents.glassTop, accents.glassBottom))
     }
-    val cyanWash = accents.cyan.copy(alpha = if (accents.isDark) 0.14f else 0.17f)
+    val cyanWash = accents.cyan.copy(alpha = if (accents.isDark) 0.16f else 0.15f)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = if (accents.isDark) 0.dp else 7.dp,
+                elevation = if (accents.isDark) 8.dp else 7.dp,
                 shape = shape,
-                ambientColor = accents.cyan.copy(alpha = 0.16f),
-                spotColor = accents.cyan.copy(alpha = 0.14f)
+                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.18f),
+                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.28f else 0.16f)
             )
             .clip(shape)
             .background(bgBrush)
@@ -323,8 +323,8 @@ fun SarimCard(
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(cyanWash, Color.Transparent),
-                        center = Offset(size.width * 0.08f, 0f),
-                        radius = maxOf(size.width, size.height) * 0.65f
+                        center = Offset(0f, 0f),
+                        radius = maxOf(size.width, size.height) * 0.72f
                     )
                 )
             }
@@ -349,14 +349,14 @@ fun SarimSubpageHeader(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
-                elevation = if (accents.isDark) 0.dp else 8.dp,
+                elevation = if (accents.isDark) 10.dp else 8.dp,
                 shape = shape,
-                ambientColor = Color(0x160891B2),
-                spotColor = Color(0x160891B2)
+                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.22f else 0.16f),
+                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.16f)
             ),
         color = accents.headerFrosted,
         shape = shape,
-        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.75f))
+        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.85f))
     ) {
         Row(
             modifier = Modifier
@@ -461,10 +461,10 @@ fun SarimGradientButton(
             .expressivePressScale(interactionSource)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .shadow(
-                elevation = if (enabled) 6.dp else 0.dp,
+                elevation = if (enabled) 10.dp else 0.dp,
                 shape = shape,
-                ambientColor = ctaAccents.emerald.copy(alpha = 0.28f),
-                spotColor = ctaAccents.emerald.copy(alpha = 0.28f)
+                ambientColor = ctaAccents.cyan.copy(alpha = 0.36f),
+                spotColor = ctaAccents.emerald.copy(alpha = 0.36f)
             )
             .clip(shape)
             .background(brush)
@@ -536,7 +536,7 @@ fun SarimDangerButton(
             .height(48.dp)
             .expressivePressScale(interactionSource)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .shadow(if (enabled) 5.dp else 0.dp, shape, ambientColor = Color(0x38EF4444), spotColor = Color(0x38EF4444))
+            .shadow(if (enabled) 10.dp else 0.dp, shape, ambientColor = Color(0x55F97316), spotColor = Color(0x55EF4444))
             .clip(shape)
             .background(brush)
             .clickable(
@@ -645,7 +645,7 @@ fun SarimHalfRingKpiBox(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(accents.inputFill.copy(alpha = 0.72f))
+            .background(if (accents.isDark) Color(0xFF020403) else accents.inputFill)
             .border(1.dp, accents.borderSubtle, shape)
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -1376,7 +1376,9 @@ fun DecimalField(
     onValueChange: (String) -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
-    suffix: String? = null
+    suffix: String? = null,
+    prefix: String? = null,
+    placeholder: String = "0.00"
 ) {
     SarimPillInput(
         value = value,
@@ -1386,7 +1388,8 @@ fun DecimalField(
             }
         },
         label = label.uppercase(),
-        placeholder = "0.00",
+        placeholder = placeholder,
+        prefix = prefix?.let { { Text("$it ", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface) } },
         suffix = suffix?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         testTag = testTag,
@@ -1442,6 +1445,10 @@ fun <T> SarimYearMonthDayTree(
     items: List<T>,
     dateOf: (T) -> String,
     summaryLabel: (List<T>) -> String,
+    yearSubLabel: ((List<T>) -> String?)? = null,
+    monthSubLabel: ((List<T>) -> String?)? = null,
+    daySummaryLabel: ((List<T>) -> String)? = null,
+    initiallyExpandFirstDay: Boolean = false,
     itemRow: @Composable (T) -> Unit
 ) {
     val accents = LocalSarimAccents.current
@@ -1454,6 +1461,7 @@ fun <T> SarimYearMonthDayTree(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         groupedByYear.forEachIndexed { yIdx, (year, yearItems) ->
             var yearExpanded by remember(year) { mutableStateOf(yIdx == 0) }
+            val ySub = yearSubLabel?.invoke(yearItems)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier
@@ -1464,14 +1472,29 @@ fun <T> SarimYearMonthDayTree(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(year, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            year,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (!ySub.isNullOrBlank()) {
+                            Text(
+                                ySub,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accents.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(summaryLabel(yearItems), style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
-                    Icon(
-                        if (yearExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = "Toggle $year",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
+                        Icon(
+                            if (yearExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = "Toggle $year",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 AnimatedVisibility(
@@ -1486,16 +1509,32 @@ fun <T> SarimYearMonthDayTree(
                         byMonth.forEachIndexed { mIdx, (ym, monthItems) ->
                             var monthExpanded by remember(ym) { mutableStateOf(mIdx == 0) }
                             val monthTitle = DateUtils.formatPretty("$ym-01").drop(3).uppercase()
+                            val mSub = monthSubLabel?.invoke(monthItems)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .defaultMinSize(minHeight = 48.dp)
                                     .clickable { monthExpanded = !monthExpanded }
-                                    .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                    .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(monthTitle.ifBlank { ym }, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        monthTitle.ifBlank { ym },
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (!mSub.isNullOrBlank()) {
+                                        Text(
+                                            mSub,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = accents.textMuted,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(summaryLabel(monthItems), style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                     Icon(
@@ -1514,11 +1553,11 @@ fun <T> SarimYearMonthDayTree(
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     byDay.forEachIndexed { dIdx, (dayIso, dayItems) ->
-                                        var dayExpanded by remember(dayIso) { mutableStateOf(dIdx == 0) }
+                                        var dayExpanded by remember(dayIso) { mutableStateOf(initiallyExpandFirstDay && mIdx == 0 && dIdx == 0) }
                                         val localDate = DateUtils.parseLocalDate(dayIso)
                                         val dayNum = localDate?.dayOfMonth?.toString() ?: dayIso.takeLast(2)
                                         val dayName = localDate?.dayOfWeek?.name?.take(3)?.lowercase()?.replaceFirstChar { it.uppercase() } ?: ""
-                                        SarimCard(contentPadding = PaddingValues(14.dp)) {
+                                        SarimCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -1526,26 +1565,41 @@ fun <T> SarimYearMonthDayTree(
                                                     .clickable { dayExpanded = !dayExpanded },
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(40.dp)
-                                                        .clip(RoundedCornerShape(13.dp))
-                                                        .background(accents.softPillFill),
-                                                    contentAlignment = Alignment.Center
+                                                Column(
+                                                    modifier = Modifier.width(34.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
                                                 ) {
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Text(dayNum, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
-                                                        Text(dayName, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = accents.emerald.copy(alpha = 0.85f))
-                                                    }
+                                                    Text(
+                                                        dayNum,
+                                                        fontFamily = JakartaFont,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 15.5.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        dayName,
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                        color = accents.textMuted
+                                                    )
                                                 }
                                                 Spacer(Modifier.width(12.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text("${dayItems.size} ${if (dayItems.size == 1) "entry" else "entries"}", style = MaterialTheme.typography.titleSmall)
-                                                    Text(summaryLabel(dayItems), style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                                    Text(
+                                                        "${dayItems.size} ${if (dayItems.size == 1) "entry" else "entries"}",
+                                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                                    )
+                                                    Text(
+                                                        (daySummaryLabel ?: summaryLabel)(dayItems),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = accents.textMuted,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
                                                 }
                                                 Icon(
                                                     if (dayExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                                    contentDescription = "Toggle $dayIso"
+                                                    contentDescription = "Toggle $dayIso",
+                                                    tint = MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                             AnimatedVisibility(

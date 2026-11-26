@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -56,6 +60,11 @@ import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
+import com.gullzubair.sarim.ui.theme.CtaGradientEnd
+import com.gullzubair.sarim.ui.theme.CtaGradientEndLight
+import com.gullzubair.sarim.ui.theme.CtaGradientStart
+import com.gullzubair.sarim.ui.theme.CtaGradientStartLight
+import com.gullzubair.sarim.ui.theme.CtaTextDark
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
@@ -66,6 +75,7 @@ import com.gullzubair.sarim.ui.components.ConfirmRequestHost
 import com.gullzubair.sarim.ui.components.deleteConfirmMessage
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.components.DialogTone
+import kotlin.math.abs
 
 @Composable
 fun DailyLedgerScreen(
@@ -147,108 +157,128 @@ fun DailyLedgerScreen(
         ) {
             item { Spacer(Modifier.height(4.dp)) }
 
-            // Hero Card: Cash In Hand + PDF Export + Cash / Bank / Others strip
+            // Hero Card: Cash In Hand + PDF Export + Cash / Bank / Others strip (matches h01)
             item {
+                val pdfBrush = Brush.horizontalGradient(
+                    if (accents.isDark) listOf(CtaGradientStart, CtaGradientEnd) else listOf(CtaGradientStartLight, CtaGradientEndLight)
+                )
                 SarimCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "CASH IN HAND",
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
-                            color = accents.textMuted
-                        )
-                        Surface(
-                            onClick = {
-                                val rows = filteredEntries.reversed().map { e ->
-                                    val afterBal = summary.statement[e.id]?.second ?: 0.0
-                                    val isOut = e.type.equals("OUT", true)
-                                    val isIn = e.type.equals("IN", true)
-                                    StatementRow(
-                                        date = e.date,
-                                        description = "${e.type} ${e.category} ${e.party}".trim(),
-                                        debit = if (isOut) InputGuards.fmtNum(e.amount) else "-",
-                                        credit = if (isIn) InputGuards.fmtNum(e.amount) else "-",
-                                        balance = InputGuards.fmtNum(afterBal)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "CASH IN HAND",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                                color = accents.textMuted
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = InputGuards.formatMoney(summary.inHand, currency, masked),
+                                style = MaterialTheme.typography.headlineLarge.copy(fontFamily = JakartaFont, fontWeight = FontWeight.ExtraBold),
+                                color = if (summary.inHand >= 0) MaterialTheme.colorScheme.onSurface else accents.danger
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(pdfBrush)
+                                .clickable {
+                                    val rows = filteredEntries.reversed().map { e ->
+                                        val afterBal = summary.statement[e.id]?.second ?: 0.0
+                                        val isOut = e.type.equals("OUT", true)
+                                        val isIn = e.type.equals("IN", true)
+                                        StatementRow(
+                                            date = e.date,
+                                            description = "${e.type} ${e.category} ${e.party}".trim(),
+                                            debit = if (isOut) InputGuards.fmtNum(e.amount) else "-",
+                                            credit = if (isIn) InputGuards.fmtNum(e.amount) else "-",
+                                            balance = InputGuards.fmtNum(afterBal)
+                                        )
+                                    }
+                                    PdfExporter.exportAndShareStatement(
+                                        context = context,
+                                        title = "Daily Cashbook Statement",
+                                        subtitle = "Gull & Zubair Naswar Dealers",
+                                        rows = rows,
+                                        summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
                                     )
                                 }
-                                PdfExporter.exportAndShareStatement(
-                                    context = context,
-                                    title = "Daily Cashbook Statement",
-                                    subtitle = "Gull & Zubair Naswar Dealers",
-                                    rows = rows,
-                                    summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
-                                )
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            color = accents.softPillFill,
-                            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
-                            modifier = Modifier.size(48.dp).testTag("ledger_export_pdf_btn")
+                                .testTag("ledger_export_pdf_btn"),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export Daily Ledger to PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Rounded.Description, contentDescription = "Export Daily Ledger to PDF", tint = CtaTextDark, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        listOf(
+                            "CASH" to summary.cash,
+                            "BANK" to summary.bank,
+                            "OTHERS" to summary.others
+                        ).forEach { (lbl, amt) ->
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.width(2.dp).height(30.dp).clip(CircleShape).background(accents.borderSubtle))
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(lbl, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
+                                    Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                }
                             }
                         }
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = InputGuards.formatMoney(summary.inHand, currency, masked),
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = if (summary.inHand >= 0) accents.emerald else accents.danger
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(accents.inputFill)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Cash", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            Text(InputGuards.formatMoney(summary.cash, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("Bank", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            Text(InputGuards.formatMoney(summary.bank, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("Others", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                            Text(InputGuards.formatMoney(summary.others, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                    }
                 }
             }
 
-            // 3-col Summary Strip: Total Cash In | Total Cash Out | Net Balance
+            // 3-col Summary Strip: Total Cash In | Total Cash Out | Net Balance (matches h01)
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
-                        Text("Total Cash In", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                        Text(InputGuards.formatMoney(summary.totalIn, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
-                        Text("${summary.inCount} ${if (summary.inCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(2.dp).height(44.dp).clip(CircleShape).background(accents.borderSubtle))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("TOTAL CASH IN", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 1)
+                            Text(InputGuards.formatMoney(summary.totalIn, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                            Text("${summary.inCount} ${if (summary.inCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        }
                     }
-                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
-                        Text("Total Cash Out", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                        Text(InputGuards.formatMoney(summary.totalOut, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.danger)
-                        Text("${summary.outCount} ${if (summary.outCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(2.dp).height(44.dp).clip(CircleShape).background(accents.borderSubtle))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("TOTAL CASH OUT", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 1)
+                            Text(InputGuards.formatMoney(summary.totalOut, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                            Text("${summary.outCount} ${if (summary.outCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        }
                     }
-                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
-                        Text("Net Balance", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                        Text(
-                            InputGuards.formatMoney(summary.inHand, currency, masked),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (summary.inHand >= 0) accents.emerald else accents.danger
-                        )
-                        Text(if (summary.inHand >= 0) "Surplus" else "Deficit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(2.dp).height(44.dp).clip(CircleShape).background(accents.borderSubtle))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("NET BALANCE", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted, maxLines = 1)
+                            Text(
+                                (if (summary.inHand >= 0) "+ " else "- ") + InputGuards.formatMoney(abs(summary.inHand), currency, masked),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(if (summary.inHand >= 0) "Surplus" else "Deficit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        }
                     }
                 }
             }
 
-            // Inline Form Card (always visible, matches web #dl-form-card)
+            // Inline Form Card (matches h01)
             item {
                 SarimCard {
                     val formTitle = when {
@@ -261,19 +291,37 @@ fun DailyLedgerScreen(
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
                         color = accents.textMuted
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("IN" to "+ In", "OUT" to "- Out", "TRANSFER" to "Transfer").forEach { (type, lbl) ->
                             val sel = entryType == type
+                            val blueAccent = Color(0xFF3B82F6)
+                            val (bgCol, borderCol, txtCol) = when (type) {
+                                "IN" -> Triple(
+                                    if (sel) accents.emerald else accents.softPillFill,
+                                    accents.emerald.copy(alpha = if (sel) 1f else 0.45f),
+                                    if (sel && accents.isDark) Color(0xFF03170B) else if (sel) Color.White else accents.emerald
+                                )
+                                "OUT" -> Triple(
+                                    if (sel) accents.danger else if (accents.isDark) Color(0xFF1F0A0A) else accents.danger.copy(alpha = 0.08f),
+                                    accents.danger.copy(alpha = if (sel) 1f else 0.5f),
+                                    if (sel) Color.White else accents.danger
+                                )
+                                else -> Triple(
+                                    if (sel) blueAccent else if (accents.isDark) Color(0xFF0A1428) else blueAccent.copy(alpha = 0.08f),
+                                    blueAccent.copy(alpha = if (sel) 1f else 0.55f),
+                                    if (sel) Color.White else blueAccent
+                                )
+                            }
                             Surface(
                                 onClick = { entryType = type },
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (sel) accents.softPillFill else accents.inputFill,
-                                border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).testTag("ledger_type_${type.lowercase()}")
+                                color = bgCol,
+                                border = BorderStroke(1.dp, borderCol),
+                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("ledger_type_${type.lowercase()}")
                             ) {
-                                Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                    Text(lbl, style = MaterialTheme.typography.labelLarge, color = if (sel) accents.emerald else accents.textMuted)
+                                Box(Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                                    Text(lbl, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = txtCol)
                                 }
                             }
                         }
@@ -473,11 +521,10 @@ fun DailyLedgerScreen(
                     SarimYearMonthDayTree(
                         items = filteredEntries,
                         dateOf = { it.date },
-                        summaryLabel = { list ->
-                            val tIn = list.filter { it.type.equals("IN", true) }.sumOf { it.amount }
-                            val tOut = list.filter { it.type.equals("OUT", true) }.sumOf { it.amount }
-                            "+${InputGuards.formatMoney(tIn, currency, masked)} / -${InputGuards.formatMoney(tOut, currency, masked)}"
-                        },
+                        summaryLabel = { list -> "${list.size} ${if (list.size == 1) "entry" else "entries"}" },
+                        yearSubLabel = { list -> "Total ${InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked)}" },
+                        monthSubLabel = { list -> "Total ${InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked)}" },
+                        daySummaryLabel = { list -> "Total: ${InputGuards.formatMoney(list.sumOf { it.amount }, currency, masked)}" },
                         itemRow = { item ->
                             val color = when (item.type.uppercase()) {
                                 "IN" -> accents.emerald

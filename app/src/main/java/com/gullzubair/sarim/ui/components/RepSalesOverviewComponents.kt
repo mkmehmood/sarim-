@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -24,12 +25,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,10 +50,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +68,9 @@ import com.gullzubair.sarim.domain.FormulaEngine
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.CinzelFont
+import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -81,38 +90,39 @@ fun AdminRepViewCard(
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Text(
             text = "Admin View",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = accents.cyan
+            fontFamily = PlayfairFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.height(10.dp))
-        PickerField(
-            label = "View For:",
-            selectedLabel = selectedRep,
-            items = availableReps.ifEmpty { listOf(selectedRep) },
-            itemLabel = { it },
-            onSelect = onSelectRep,
-            testTag = "admin_rep_picker"
-        )
-        Spacer(Modifier.height(10.dp))
-        DatePickerField("Select Date", dateIso, onDateChange, "admin_rep_date")
-
-        Spacer(Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Text(
-                text = "GPS Route (${routeStops.size} stop${if (routeStops.size == 1) "" else "s"})",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            Text(
-                text = "Cash Sale | Collection | Credit Sale",
-                style = MaterialTheme.typography.labelSmall,
-                color = accents.textMuted
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "VIEW FOR:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                    color = accents.emerald,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                )
+                PickerField(
+                    label = "",
+                    selectedLabel = selectedRep,
+                    items = availableReps.ifEmpty { listOf(selectedRep) },
+                    itemLabel = { it },
+                    onSelect = onSelectRep,
+                    testTag = "admin_rep_picker"
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                DatePickerField("SELECT DATE", dateIso, onDateChange, "admin_rep_date")
+            }
         }
-        Spacer(Modifier.height(8.dp))
+
+        Spacer(Modifier.height(12.dp))
 
         if (routeStops.isEmpty()) {
             Surface(
@@ -256,6 +266,14 @@ fun AdminRepViewCard(
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Cash Sale | Collection | Credit Sale",
+            style = MaterialTheme.typography.labelSmall,
+            color = accents.textMuted,
+            textAlign = TextAlign.End,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -278,90 +296,65 @@ fun AdminRepAnalyticsCard(
     masked: Boolean
 ) {
     val accents = LocalSarimAccents.current
-    val totalVolume = max(1.0, analytics.collections + analytics.cashSales + analytics.creditSales)
 
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Analytics",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = activeRepProfile,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = accents.emerald
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            RepSalesAnalyticsEngine.RepAnalyticsPeriod.entries.forEach { p ->
-                val selected = selectedPeriod == p
-                Surface(
-                    onClick = { onSelectPeriod(p) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (selected) accents.softPillFill else accents.inputFill,
-                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier.defaultMinSize(minHeight = 36.dp).testTag("rep_analytics_period_${p.key}")
-                ) {
-                    Box(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
-                        Text(p.label, style = MaterialTheme.typography.labelMedium, color = if (selected) accents.emerald else accents.textMuted)
+            Row(
+                modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                RepSalesAnalyticsEngine.RepAnalyticsPeriod.entries.forEach { p ->
+                    val selected = selectedPeriod == p
+                    Surface(
+                        onClick = { onSelectPeriod(p) },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (selected) accents.softPillFill else accents.inputFill,
+                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                        modifier = Modifier.defaultMinSize(minHeight = 32.dp).testTag("rep_analytics_period_${p.key}")
+                    ) {
+                        Box(Modifier.padding(horizontal = 11.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                p.label,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                                color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }
         }
 
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "MONEY IN",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+            color = accents.textMuted
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = InputGuards.formatMoney(analytics.moneyIn, currency, masked),
+            fontFamily = JakartaFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 22.sp,
+            color = accents.emerald
+        )
+
         Spacer(Modifier.height(12.dp))
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = accents.softPillFill,
-            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Money in", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                    Text("Collections + Cash sales", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                }
-                Text(
-                    text = InputGuards.formatMoney(analytics.moneyIn, currency, masked),
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = accents.emerald
-                )
-            }
-        }
-
-        // Proportional breakdown bar
-        if (!masked && (analytics.collections + analytics.cashSales + analytics.creditSales) > 0.0) {
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(6.dp)).background(accents.inputFill)
-            ) {
-                val cFrac = (analytics.collections / totalVolume).toFloat().coerceAtLeast(0f)
-                val cashFrac = (analytics.cashSales / totalVolume).toFloat().coerceAtLeast(0f)
-                val crFrac = (analytics.creditSales / totalVolume).toFloat().coerceAtLeast(0f)
-                if (cFrac > 0.001f) Box(Modifier.weight(cFrac).fillMaxHeight().background(accents.emerald))
-                if (cashFrac > 0.001f) Box(Modifier.weight(cashFrac).fillMaxHeight().background(accents.cyan))
-                if (crFrac > 0.001f) Box(Modifier.weight(crFrac).fillMaxHeight().background(accents.gold))
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RepStatBox("Collections", InputGuards.formatMoney(analytics.collections, currency, masked), accents.emerald, Modifier.weight(1f))
-            RepStatBox("Cash sales", InputGuards.formatMoney(analytics.cashSales, currency, masked), accents.cyan, Modifier.weight(1f))
-            RepStatBox("Credit sales", InputGuards.formatMoney(analytics.creditSales, currency, masked), accents.gold, Modifier.weight(1f))
+            SarimHalfRingKpiBox("Collections", InputGuards.formatMoney(analytics.collections, currency, masked), accents.emerald, Modifier.weight(1f))
+            SarimHalfRingKpiBox("Cash sales", InputGuards.formatMoney(analytics.cashSales, currency, masked), accents.cyan, Modifier.weight(1f))
+            SarimHalfRingKpiBox("Credit sales", InputGuards.formatMoney(analytics.creditSales, currency, masked), accents.gold, Modifier.weight(1f))
         }
     }
 }
@@ -384,183 +377,252 @@ fun RepCustomersDirectoryCard(
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Customer List",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
-                    Text(
-                        text = "${directory.totalCount}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = accents.emerald,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            Text(
+                text = "Customer List",
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.5.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = accents.inputFill,
+                border = BorderStroke(1.dp, accents.borderSubtle),
+                modifier = Modifier.weight(1f).height(38.dp)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            "Search customers...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.textMuted.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            fontFamily = JakartaFont,
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(accents.emerald),
+                        modifier = Modifier.fillMaxWidth().testTag("rep_customer_search")
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(
-                    onClick = onExportPdf,
-                    modifier = Modifier.size(48.dp).testTag("rep_export_clients_pdf")
-                ) {
-                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.cyan)
-                }
-                Surface(
-                    onClick = onAddCustomer,
-                    shape = RoundedCornerShape(16.dp),
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.size(48.dp).testTag("rep_add_client_btn")
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(20.dp))
-                    }
+            Surface(
+                onClick = onExportPdf,
+                shape = CircleShape,
+                color = accents.softPillFill,
+                border = BorderStroke(1.dp, accents.emerald),
+                modifier = Modifier.size(38.dp).testTag("rep_export_clients_pdf")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.emerald, modifier = Modifier.size(17.dp))
                 }
             }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        SarimPillInput(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-            testTag = "rep_customer_search"
-        )
-
-        Spacer(Modifier.height(10.dp))
-        if (directory.items.isEmpty()) {
-            Text(
-                text = if (searchQuery.isBlank()) "No customers for this rep yet." else "No matching customers.",
-                style = MaterialTheme.typography.bodySmall,
-                color = accents.textMuted,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 360.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                onClick = onAddCustomer,
+                shape = CircleShape,
+                color = accents.softPillFill,
+                border = BorderStroke(1.dp, accents.emerald),
+                modifier = Modifier.size(38.dp).testTag("rep_add_client_btn")
             ) {
-                directory.items.forEachIndexed { idx, item ->
-                    val initials = item.name.split(" ")
-                        .filter { it.isNotBlank() }
-                        .take(2)
-                        .joinToString("") { it.first().uppercaseChar().toString() }
-                        .ifBlank { "C" }
-                    val isSettled = abs(item.debt) < 0.01
-                    val debtColor = when {
-                        isSettled -> accents.emerald
-                        item.debt < 0.0 -> accents.cyan
-                        else -> accents.gold
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.inputFill,
-                        border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenCustomer(item.name) }
-                            .testTag("rep_client_card_$idx")
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (!item.photoUri.isNullOrBlank()) {
-                                DecodedDataUrlImage(
-                                    dataUrl = item.photoUri,
-                                    contentDescription = "${item.name} photo",
-                                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.size(40.dp).clip(CircleShape).background(accents.softPillFill),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(initials, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = item.name,
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (item.ledgerPage.isNotBlank()) {
-                                        Surface(shape = RoundedCornerShape(6.dp), color = accents.cyan.copy(alpha = 0.14f)) {
-                                            Text(
-                                                text = "P.${item.ledgerPage}",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                color = accents.cyan,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                    if (item.locationConfirmed) {
-                                        Icon(Icons.Rounded.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
-                                    }
-                                }
-                                Text(
-                                    text = listOfNotNull(
-                                        item.phone.takeIf { it.isNotBlank() } ?: "No phone",
-                                        "${item.visitCount} visits",
-                                        item.quantity.takeIf { it > 0.0 }?.let { InputGuards.formatKg(it) }
-                                    ).joinToString(" • "),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = accents.textMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = when {
-                                    masked -> "••••"
-                                    isSettled -> "Settled"
-                                    item.debt < 0.0 -> "${InputGuards.formatMoney(-item.debt, currency, false)} CR"
-                                    else -> InputGuards.formatMoney(item.debt, currency, false)
-                                },
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                color = debtColor
-                            )
-                            if (item.phone.isNotBlank()) {
-                                IconButton(
-                                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.phone}"))) } },
-                                    modifier = Modifier.size(48.dp).testTag("rep_call_btn_$idx")
-                                ) {
-                                    Icon(Icons.Rounded.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                            IconButton(
-                                onClick = { onEditCustomer(item.name) },
-                                modifier = Modifier.size(48.dp).testTag("rep_edit_client_btn_$idx")
-                            ) {
-                                Icon(Icons.Rounded.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(17.dp))
-                            }
-                        }
-                    }
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.PersonAdd, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(17.dp))
                 }
             }
         }
 
         Spacer(Modifier.height(12.dp))
-        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RepStatBox("Outstanding credit", InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked), accents.gold, Modifier.weight(1f))
-            RepStatBox("Credit sales", InputGuards.formatMoney(directory.totalCreditSales, currency, masked), accents.cyan, Modifier.weight(1f))
-            RepStatBox("Collections", InputGuards.formatMoney(directory.totalCollections, currency, masked), accents.emerald, Modifier.weight(1f))
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = accents.inputFill,
+            border = BorderStroke(1.dp, accents.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                if (directory.items.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) "No customers yet" else "No matching customers",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = if (searchQuery.isBlank()) "Add your first sale or tap the add button to get started." else "Try a different search term.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.textMuted,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        directory.items.forEachIndexed { idx, item ->
+                            val initials = item.name.split(" ")
+                                .filter { it.isNotBlank() }
+                                .take(2)
+                                .joinToString("") { it.first().uppercaseChar().toString() }
+                                .ifBlank { "C" }
+                            val isSettled = abs(item.debt) < 0.01
+                            val debtColor = when {
+                                isSettled -> accents.emerald
+                                item.debt < 0.0 -> accents.cyan
+                                else -> accents.gold
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onOpenCustomer(item.name) }
+                                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                                    .testTag("rep_client_card_$idx"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!item.photoUri.isNullOrBlank()) {
+                                    DecodedDataUrlImage(
+                                        dataUrl = item.photoUri,
+                                        contentDescription = "${item.name} photo",
+                                        modifier = Modifier.size(38.dp).clip(CircleShape)
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.size(38.dp).clip(CircleShape).background(accents.softPillFill),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(initials, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = item.name,
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (item.ledgerPage.isNotBlank()) {
+                                            Surface(shape = RoundedCornerShape(6.dp), color = accents.cyan.copy(alpha = 0.14f)) {
+                                                Text(
+                                                    text = "P.${item.ledgerPage}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    color = accents.cyan,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        if (item.locationConfirmed) {
+                                            Icon(Icons.Rounded.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
+                                        }
+                                    }
+                                    Text(
+                                        text = listOfNotNull(
+                                            item.phone.takeIf { it.isNotBlank() } ?: "No phone",
+                                            "${item.visitCount} visits",
+                                            item.quantity.takeIf { it > 0.0 }?.let { InputGuards.formatKg(it) }
+                                        ).joinToString(" • "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accents.textMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = when {
+                                        masked -> "••••"
+                                        isSettled -> "Settled"
+                                        item.debt < 0.0 -> "${InputGuards.formatMoney(-item.debt, currency, false)} CR"
+                                        else -> InputGuards.formatMoney(item.debt, currency, false)
+                                    },
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = debtColor
+                                )
+                                if (item.phone.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.phone}"))) } },
+                                        modifier = Modifier.size(44.dp).testTag("rep_call_btn_$idx")
+                                    ) {
+                                        Icon(Icons.Rounded.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(17.dp))
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { onEditCustomer(item.name) },
+                                    modifier = Modifier.size(44.dp).testTag("rep_edit_client_btn_$idx")
+                                ) {
+                                    Icon(Icons.Rounded.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            if (idx < directory.items.lastIndex) {
+                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.65f))
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                        Text("Outstanding credit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = accents.danger,
+                            maxLines = 1
+                        )
+                    }
+                    VerticalDivider(color = accents.borderSubtle)
+                    Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                        Text("Credit sales", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            InputGuards.formatMoney(directory.totalCreditSales, currency, masked),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                    VerticalDivider(color = accents.borderSubtle)
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text("Collections", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            InputGuards.formatMoney(directory.totalCollections, currency, masked),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = accents.emerald,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
         }
     }
 }

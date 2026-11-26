@@ -61,7 +61,6 @@ import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -152,9 +151,9 @@ fun SettingsScreen(
         ) {
             // Card 1: Data & Sync (Sync Data & Recycle Bin always visible; Backup & DB Structure admin only)
             item {
-                SettingsGroupCard(title = "Data & Sync") {
+                SettingsGroupCard(title = "DATA & SYNC") {
                     SettingsRowButton(
-                        title = "Sync Data",
+                        title = "SYNC DATA",
                         subtitle = if (snapshot.pendingSyncCount > 0) "${snapshot.pendingSyncCount} change(s) pending upload" else null,
                         icon = Icons.Rounded.Sync,
                         tint = accents.emerald,
@@ -162,18 +161,16 @@ fun SettingsScreen(
                     ) { vm.syncNow() }
 
                     if (isAdminSession) {
-                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
                         SettingsRowButton(
-                            title = "Backup & Restore",
+                            title = "BACKUP & RESTORE",
                             icon = Icons.Rounded.Backup,
-                            tint = accents.gold,
+                            tint = accents.emerald,
                             testTag = "settings_backup_btn"
                         ) { onNavigateRoute(AppRoute.BackupRestore) }
                     }
 
-                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
                     SettingsRowButton(
-                        title = "Recycle Bin",
+                        title = "RECYCLE BIN",
                         subtitle = if (allowedBinCount > 0) "$allowedBinCount item(s)" else null,
                         icon = Icons.Rounded.DeleteOutline,
                         tint = accents.danger,
@@ -181,24 +178,23 @@ fun SettingsScreen(
                     ) { onNavigateRoute(AppRoute.RecycleBin) }
 
                     if (isAdminSession) {
-                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
                         SettingsRowButton(
-                            title = "Database Structure",
+                            title = "DATABASE STRUCTURE",
                             icon = Icons.Rounded.Storage,
-                            tint = accents.purple,
+                            tint = accents.emerald,
                             testTag = "settings_db_btn"
                         ) { onNavigateRoute(AppRoute.DbStructure) }
                     }
                 }
             }
 
-            // Card 2: Appearance & Device (Theme always visible; Sound & Haptics admin only matching web settings-screen.js)
+            // Card 2: Appearance & Device
             item {
-                SettingsGroupCard(title = "Appearance & Device") {
+                SettingsGroupCard(title = "APPEARANCE & DEVICE") {
                     SettingsRowButton(
-                        title = "Theme: $themeLabel",
+                        title = "THEME: ${themeLabel.uppercase(Locale.ROOT)}",
                         icon = Icons.Rounded.Brightness6,
-                        tint = accents.cyan,
+                        tint = accents.gold,
                         testTag = "settings_theme_btn"
                     ) {
                         val next = when (themeMode) {
@@ -216,9 +212,8 @@ fun SettingsScreen(
                     }
 
                     if (isAdminSession) {
-                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
                         SettingsRowButton(
-                            title = "Sound & Haptics",
+                            title = "SOUND & HAPTICS",
                             icon = Icons.Rounded.VolumeUp,
                             tint = accents.emerald,
                             testTag = "settings_sound_haptics_btn"
@@ -230,29 +225,38 @@ fun SettingsScreen(
             // Card 3: Security (Admin only)
             if (isAdminSession) {
                 item {
-                    SettingsGroupCard(title = "Security") {
+                    SettingsGroupCard(title = "SECURITY") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .defaultMinSize(minHeight = 52.dp)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     val next = !bioEnabled
                                     vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = next))
                                     vm.showToast(if (next) "Fingerprint lock enabled" else "Fingerprint lock disabled", ToastKind.INFO)
                                 }
-                                .padding(horizontal = 4.dp, vertical = 10.dp)
+                                .padding(horizontal = 4.dp, vertical = 8.dp)
                                 .testTag("settings_bio_switch"),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            SarimIconBadge(
-                                icon = Icons.Rounded.Fingerprint,
+                            Icon(
+                                imageVector = Icons.Rounded.Fingerprint,
+                                contentDescription = null,
                                 tint = accents.emerald,
-                                size = 38.dp,
-                                cornerRadius = 12.dp,
-                                iconSize = 20.dp
+                                modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.width(12.dp))
-                            Text("Fingerprint Lock", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(14.dp))
+                            Text(
+                                if (bioEnabled) "FINGERPRINT LOCK ENABLED" else "ENABLE FINGERPRINT LOCK",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontFamily = JakartaFont,
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = 0.4.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
                             Switch(
                                 checked = bioEnabled,
                                 onCheckedChange = { next ->
@@ -262,11 +266,10 @@ fun SettingsScreen(
                             )
                         }
 
-                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
                         SettingsRowButton(
-                            title = "App Accounts",
+                            title = "APP ACCOUNTS",
                             icon = Icons.Rounded.Group,
-                            tint = accents.cyan,
+                            tint = accents.emerald,
                             testTag = "settings_accounts_btn"
                         ) { onNavigateRoute(AppRoute.AppAccounts) }
                     }
@@ -274,11 +277,11 @@ fun SettingsScreen(
 
                 // Card 4: Business (Admin only)
                 item {
-                    SettingsGroupCard(title = "Business") {
+                    SettingsGroupCard(title = "BUSINESS") {
                         SettingsRowButton(
-                            title = "Store Manager",
+                            title = "STORE MANAGER",
                             icon = Icons.Rounded.Store,
-                            tint = accents.emerald,
+                            tint = accents.gold,
                             testTag = "settings_stores_btn"
                         ) { onNavigateRoute(AppRoute.StoreManager) }
                     }
@@ -286,11 +289,11 @@ fun SettingsScreen(
 
                 // Card 5: Danger Zone (Admin only)
                 item {
-                    SettingsGroupCard(title = "Danger Zone") {
+                    SettingsGroupCard(title = "DANGER ZONE") {
                         SettingsRowButton(
-                            title = "Close Financial Year",
+                            title = "CLOSE FINANCIAL YEAR",
                             icon = Icons.Rounded.EventBusy,
-                            tint = accents.danger,
+                            tint = accents.gold,
                             titleColor = accents.danger,
                             testTag = "settings_close_fy_btn"
                         ) { onNavigateRoute(AppRoute.CloseFinancialYear) }
@@ -307,14 +310,18 @@ private fun SettingsGroupCard(
     content: @Composable () -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    SarimCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+    SarimCard(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.labelLarge.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = JakartaFont,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            ),
             color = accents.textMuted,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
         content()
     }
 }
@@ -333,32 +340,34 @@ private fun SettingsRowButton(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 52.dp)
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .let { if (testTag != null) it.testTag(testTag) else it }
             .padding(horizontal = 4.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SarimIconBadge(
-            icon = icon,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
             tint = tint,
-            size = 38.dp,
-            cornerRadius = 12.dp,
-            iconSize = 20.dp
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontFamily = JakartaFont,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.4.sp
+                ),
                 color = titleColor ?: MaterialTheme.colorScheme.onSurface
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
             }
         }
-        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
     }
 }
 
@@ -1389,12 +1398,16 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "${sortedDeletions.size} deleted records\n(kept for 90 days)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accents.textMuted,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (sortedDeletions.isNotEmpty()) {
+                        Text(
+                            text = "${sortedDeletions.size} deleted records",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.textMuted,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
                     if (availableFilters.size > 1) {
                         Box {
                             Surface(
@@ -1449,10 +1462,11 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                             }
                         }
                     }
-                    if (session.mode == "admin" && visible.isNotEmpty()) {
+                    if (session.mode == "admin") {
                         SarimDangerButton(
-                            text = "Empty Bin (${visible.size})",
+                            text = if (visible.isNotEmpty()) "Empty Bin (${visible.size})" else "Empty Bin",
                             leadingIcon = Icons.Rounded.DeleteOutline,
+                            enabled = visible.isNotEmpty(),
                             onClick = { confirmEmptyBin = true },
                             testTag = "bin_empty_btn"
                         )

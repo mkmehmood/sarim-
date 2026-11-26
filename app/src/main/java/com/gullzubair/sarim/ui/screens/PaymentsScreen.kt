@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -45,11 +47,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +93,7 @@ import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.blockingAlert
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.theme.PlayfairFont
@@ -406,7 +415,20 @@ fun PaymentsScreen(
         }.sortedWith(compareByDescending<PaymentTransaction> { it.date }.thenByDescending { it.timestamp })
     }
 
-    val avatarColors = listOf(Color(0xFFDCD3B2), Color(0xFFD6C8D3), Color(0xFFD1CFD8), Color(0xFFC5BDD0))
+    val darkAvatarBgs = remember(accents.isDark) {
+        if (accents.isDark) {
+            listOf(Color(0xFF3E352B), Color(0xFF2B2848), Color(0xFF3D3824), Color(0xFF422739), Color(0xFF2C2747))
+        } else {
+            listOf(Color(0xFFE7DFC6), Color(0xFFDCD8EE), Color(0xFFEAE5CA), Color(0xFFECDAE4), Color(0xFFDCD6EC))
+        }
+    }
+    val darkAvatarTexts = remember(accents.isDark) {
+        if (accents.isDark) {
+            listOf(Color(0xFFE8C07D), Color(0xFFA79DF2), Color(0xFFD4C97A), Color(0xFFE89DC5), Color(0xFFB39EF5))
+        } else {
+            listOf(Color(0xFF5A4319), Color(0xFF3A3077), Color(0xFF544B16), Color(0xFF6B284D), Color(0xFF44317D))
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -837,81 +859,102 @@ fun PaymentsScreen(
                     health.currentRatio < 2.0 -> accents.gold
                     else -> accents.emerald
                 }
+                val navyRowBg = if (accents.isDark) Color(0xFF07111E) else accents.cyan.copy(alpha = 0.08f)
+                val dangerRowBg = if (accents.isDark) Color(0xFF1A0809) else accents.danger.copy(alpha = 0.08f)
+                val dangerStrongBg = if (accents.isDark) Color(0xFF210B0C) else accents.danger.copy(alpha = 0.13f)
+                val emeraldRowBg = if (accents.isDark) Color(0xFF071A11) else accents.softPillFill
 
                 SarimCard {
                     Text(
                         "ECONOMIC HEALTH DASHBOARD",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        fontFamily = CinzelFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.5.sp,
+                        letterSpacing = 0.6.sp,
+                        color = accents.emerald,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         InputGuards.formatMoney(health.cashInHand, currency, masked),
                         fontFamily = JakartaFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 26.sp,
+                        fontSize = 30.sp,
                         color = cashColor,
-                        modifier = Modifier.testTag("econ_net_cash_value")
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().testTag("econ_net_cash_value")
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = accents.softPillFill,
+                        shape = RoundedCornerShape(14.dp),
+                        color = navyRowBg,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Operating Cash Flow:", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Operating Cash Flow: ",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                                color = accents.emerald
+                            )
                             Text(
                                 InputGuards.formatMoney(health.operatingCashFlow, currency, masked),
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
                                 color = accents.emerald
                             )
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
-                    SectionSubHeader("CASH IN HAND DETAILS")
+                    Spacer(Modifier.height(16.dp))
+                    SectionSubHeader("CASH IN HAND DETAILS", accentColor = accents.emerald)
                     BreakdownRow("Net Sales Cash (Direct Customers):", health.directSalesCash, currency, masked)
                     BreakdownRow("Net Production Cash:", health.productionCash, currency, masked)
                     BreakdownRow("Representative Collections:", health.repCollectionsCash, currency, masked)
                     BreakdownRow("External Payments Received:", health.paymentsIn, currency, masked)
-                    BreakdownRow("External Payments Made:", health.paymentsOut, currency, masked, accents.danger)
-                    BreakdownRow("Operating Expenses:", health.operatingExpenses, currency, masked, accents.danger)
-                    BreakdownRow("NET CASH IN HAND:", health.cashInHand, currency, masked, accents.emerald, bold = true, highlight = true)
+                    BreakdownRow("External Payments Made:", health.paymentsOut, currency, masked, accents.danger, rowBg = dangerRowBg)
+                    BreakdownRow("Operating Expenses:", health.operatingExpenses, currency, masked, accents.danger, rowBg = dangerRowBg)
+                    Spacer(Modifier.height(4.dp))
+                    HalfRingTotalRow("NET CASH IN HAND:", health.cashInHand, currency, masked, accents.emerald)
 
-                    Spacer(Modifier.height(12.dp))
-                    SectionSubHeader("CURRENT ASSETS")
+                    Spacer(Modifier.height(16.dp))
+                    SectionSubHeader("CURRENT ASSETS", accentColor = accents.emerald)
                     BreakdownRow("Cash in Hand (Above):", health.cashInHand, currency, masked)
-                    BreakdownRow("Raw Materials Inventory:", health.rawMaterialValue, currency, masked)
-                    BreakdownRow("Formula Units Inventory:", health.formulaUnitsValue, currency, masked)
+                    BreakdownRow("Raw Materials Inventory:", health.rawMaterialValue, currency, masked, accents.emerald, boldValue = true)
+                    BreakdownRow("Formula Units Inventory:", health.formulaUnitsValue, currency, masked, accents.purple, boldValue = true)
 
-                    Spacer(Modifier.height(10.dp))
-                    SectionSubHeader("ACCOUNTS RECEIVABLE")
+                    Spacer(Modifier.height(14.dp))
+                    SectionSubHeader("ACCOUNTS RECEIVABLE", accentColor = accents.emerald)
                     BreakdownRow("Direct Customer Credits:", health.salesReceivables, currency, masked)
                     BreakdownRow("Representative Credits:", health.calculatorReceivables, currency, masked)
-                    BreakdownRow("TOTAL RECEIVABLES:", health.totalReceivables, currency, masked, bold = true)
-                    Spacer(Modifier.height(4.dp))
-                    BreakdownRow("TOTAL CURRENT ASSETS:", health.totalAssets, currency, masked, accents.emerald, bold = true, highlight = true)
+                    BreakdownRow("TOTAL RECEIVABLES:", health.totalReceivables, currency, masked, accents.emerald, bold = true)
+                    Spacer(Modifier.height(6.dp))
+                    HalfRingTotalRow("TOTAL CURRENT ASSETS:", health.totalAssets, currency, masked, accents.emerald)
 
-                    Spacer(Modifier.height(12.dp))
-                    SectionSubHeader("CURRENT LIABILITIES")
-                    Text("ACCOUNTS PAYABLE:", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Spacer(Modifier.height(16.dp))
+                    SectionSubHeader("CURRENT LIABILITIES", accentColor = accents.danger)
+                    Text(
+                        "ACCOUNTS PAYABLE:",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = accents.danger
+                    )
                     Spacer(Modifier.height(2.dp))
-                    BreakdownRow("  Supplier Payables (Raw Material Invoices):", health.supplierPayables, currency, masked, accents.danger)
-                    BreakdownRow("  Entity Payables (Payment Entities):", health.entityPayables, currency, masked, accents.danger)
-                    BreakdownRow("TOTAL ACCOUNTS PAYABLE:", health.supplierPayables + health.entityPayables, currency, masked, accents.danger, bold = true)
-                    BreakdownRow("TOTAL CURRENT LIABILITIES:", health.totalLiabilities, currency, masked, accents.danger, bold = true, highlight = true)
-
-                    Spacer(Modifier.height(8.dp))
-                    BreakdownRow("Net Working Capital:", health.netWorkingCapital, currency, masked, wcColor, bold = true, highlight = true)
+                    BreakdownRow("  Supplier Payables (Raw Material Invoices):", health.supplierPayables, currency, masked, accents.danger, boldValue = true)
+                    BreakdownRow("  Entity Payables (Payment Entities):", health.entityPayables, currency, masked, accents.danger, boldValue = true)
+                    BreakdownRow("TOTAL ACCOUNTS PAYABLE:", health.supplierPayables + health.entityPayables, currency, masked, accents.danger, bold = true, rowBg = navyRowBg)
                     Spacer(Modifier.height(4.dp))
-                    BreakdownRow("Total Enterprise Value:", health.enterpriseValue, currency, masked, accents.emerald, bold = true, highlight = true)
+                    BreakdownRow("TOTAL CURRENT LIABILITIES:", health.totalLiabilities, currency, masked, accents.danger, bold = true, rowBg = dangerStrongBg)
 
-                    Spacer(Modifier.height(12.dp))
-                    SectionSubHeader("FINANCIAL RATIOS")
+                    Spacer(Modifier.height(6.dp))
+                    BreakdownRow("Net Working Capital:", health.netWorkingCapital, currency, masked, wcColor, labelColor = accents.emerald, bold = true, rowBg = emeraldRowBg)
+                    Spacer(Modifier.height(4.dp))
+                    BreakdownRow("Total Enterprise Value:", health.enterpriseValue, currency, masked, accents.emerald, labelColor = accents.cyan, bold = true, rowBg = navyRowBg)
+
+                    Spacer(Modifier.height(14.dp))
+                    SectionSubHeader("FINANCIAL RATIOS", accentColor = null)
                     RatioRow("Current Ratio:", health.currentRatio, crColor)
                     RatioRow("Quick Ratio:", health.quickRatio, MaterialTheme.colorScheme.onSurface)
                     RatioRow("Cash Ratio:", health.cashRatio, MaterialTheme.colorScheme.onSurface)
@@ -920,12 +963,18 @@ fun PaymentsScreen(
 
             // 3. CASH IN HAND TRACKER
             item {
+                val creditsBoxBg = if (accents.isDark) Color(0xFF151005) else accents.gold.copy(alpha = 0.08f)
                 SarimCard {
                     Text(
                         "CASH IN HAND TRACKER",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -940,15 +989,17 @@ fun PaymentsScreen(
                             val sel = cashTrackerMode == key
                             Surface(
                                 onClick = { cashTrackerMode = key },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(999.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                modifier = Modifier.weight(1f).testTag("cash_tracker_mode_$key")
+                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 36.dp).testTag("cash_tracker_mode_$key")
                             ) {
                                 Box(Modifier.padding(vertical = 8.dp, horizontal = 2.dp), contentAlignment = Alignment.Center) {
                                     Text(
                                         label,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                                        ),
                                         color = if (sel) accents.emerald else accents.textMuted,
                                         maxLines = 1
                                     )
@@ -959,52 +1010,95 @@ fun PaymentsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
-                        border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
+                        border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(Modifier.padding(14.dp)) {
-                            Text("Net Cash Flow", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                            Spacer(Modifier.height(6.dp))
-                            BreakdownRow("Production Value:", tracker.productionValue, currency, masked, accents.cyan)
-                            BreakdownRow("Sales Tab Cash:", tracker.salesTabCash, currency, masked, accents.emerald)
-                            BreakdownRow("Calculator Cash:", tracker.calculatorCash, currency, masked, accents.emerald)
-                            BreakdownRow("Payments In:", tracker.paymentsIn, currency, masked, accents.emerald)
-                            BreakdownRow("Payments Out:", tracker.paymentsOut, currency, masked, accents.danger)
-                            BreakdownRow("Expenses:", tracker.expenses, currency, masked, accents.danger)
-                            HorizontalDivider(Modifier.padding(vertical = 6.dp), color = accents.borderSubtle)
-                            BreakdownRow(
-                                "NET CASH:",
-                                tracker.netCash,
-                                currency,
-                                masked,
-                                if (tracker.netCash >= 0) accents.emerald else accents.danger,
-                                bold = true
+                            Text(
+                                "NET CASH FLOW",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                                color = accents.emerald
                             )
+                            Spacer(Modifier.height(8.dp))
+                            BreakdownRow("Production Value:", tracker.productionValue, currency, masked, accents.emerald, boldValue = true)
+                            BreakdownRow("Sales Tab Cash:", tracker.salesTabCash, currency, masked, accents.emerald, boldValue = true)
+                            BreakdownRow("Calculator Cash:", tracker.calculatorCash, currency, masked, accents.emerald, boldValue = true)
+                            BreakdownRow("Payments In:", tracker.paymentsIn, currency, masked, accents.emerald, boldValue = true)
+                            BreakdownRow("Payments Out:", tracker.paymentsOut, currency, masked, accents.danger, boldValue = true)
+                            BreakdownRow("Expenses:", tracker.expenses, currency, masked, accents.danger, boldValue = true)
+                            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = accents.borderSubtle)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "NET CASH:",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                val netCashTone = if (tracker.netCash >= 0) accents.emerald else accents.danger
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (tracker.netCash >= 0) accents.softPillFill else accents.danger.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        InputGuards.formatMoney(tracker.netCash, currency, masked),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = netCashTone,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = accents.inputFill,
+                        shape = RoundedCornerShape(18.dp),
+                        color = creditsBoxBg,
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(Modifier.padding(14.dp)) {
                             Text(
                                 "TOTAL OUTSTANDING CREDITS",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
                                 color = accents.gold
                             )
+                            Spacer(Modifier.height(8.dp))
+                            BreakdownRow("Sales Tab Credits:", tracker.salesTabCredits, currency, masked, accents.gold, boldValue = true)
+                            BreakdownRow("Calculator Credits:", tracker.calculatorCredits, currency, masked, accents.gold, boldValue = true)
+                            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = accents.gold.copy(alpha = 0.25f))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "TOTAL CREDITS:",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = accents.gold.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        InputGuards.formatMoney(tracker.totalCredits, currency, masked),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = accents.gold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(6.dp))
-                            BreakdownRow("Sales Tab Credits:", tracker.salesTabCredits, currency, masked)
-                            BreakdownRow("Calculator Credits:", tracker.calculatorCredits, currency, masked)
-                            HorizontalDivider(Modifier.padding(vertical = 6.dp), color = accents.borderSubtle)
-                            BreakdownRow("TOTAL CREDITS:", tracker.totalCredits, currency, masked, accents.danger, bold = true)
-                            Spacer(Modifier.height(4.dp))
-                            Text("Credits awaiting collection", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.size(7.dp).clip(CircleShape).background(accents.emerald))
+                                Text("Credits awaiting collection", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            }
                         }
                     }
                 }
@@ -1032,17 +1126,51 @@ fun PaymentsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Unified Records",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            "UNIFIED RECORDS",
+                            fontFamily = CinzelFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.5.sp,
+                            letterSpacing = 0.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Box(Modifier.weight(1f)) {
-                            SarimPillInput(
-                                value = unifiedSearch,
-                                onValueChange = { unifiedSearch = it },
-                                label = "",
-                                placeholder = "Search...",
-                                testTag = "unified_search_input"
-                            )
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = accents.inputFill,
+                            border = BorderStroke(1.dp, accents.borderSubtle),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (unifiedSearch.isEmpty()) {
+                                    Text(
+                                        "Search...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = accents.textMuted.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = unifiedSearch,
+                                    onValueChange = { unifiedSearch = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        fontFamily = JakartaFont,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    cursorBrush = SolidColor(accents.emerald),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("unified_search_input")
+                                )
+                            }
                         }
                         Surface(
                             onClick = {
@@ -1088,13 +1216,13 @@ fun PaymentsScreen(
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(16.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.size(48.dp).testTag("unified_export_pdf_btn")
+                            shape = CircleShape,
+                            color = accents.softPillFill,
+                            border = BorderStroke(1.dp, accents.emerald),
+                            modifier = Modifier.size(40.dp).testTag("unified_export_pdf_btn")
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -1103,7 +1231,7 @@ fun PaymentsScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.weight(1f)) {
                             PickerField(
-                                label = "View",
+                                label = "",
                                 selectedLabel = viewLabel,
                                 items = viewOptions,
                                 itemLabel = { it.second },
@@ -1113,7 +1241,7 @@ fun PaymentsScreen(
                         }
                         Box(Modifier.weight(1f)) {
                             PickerField(
-                                label = "Period",
+                                label = "",
                                 selectedLabel = periodLabel,
                                 items = periodOptions,
                                 itemLabel = { it.second },
@@ -1130,9 +1258,9 @@ fun PaymentsScreen(
                             shape = RoundedCornerShape(999.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald),
-                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("pay_add_entity_btn")
+                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).testTag("pay_add_entity_btn")
                         ) {
-                            Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.Add, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Add Entity", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
@@ -1143,9 +1271,9 @@ fun PaymentsScreen(
                             shape = RoundedCornerShape(999.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("pay_transfer_entity_btn")
+                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).testTag("pay_transfer_entity_btn")
                         ) {
-                            Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Transfer", style = MaterialTheme.typography.labelLarge)
@@ -1154,128 +1282,168 @@ fun PaymentsScreen(
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    if (unifiedViewMode == "entities") {
-                        if (unifiedEntityRows.isEmpty()) {
-                            EmptyStateCard("No records match your filters", "Change the period or search to see more.")
-                        } else {
-                            unifiedEntityRows.forEachIndexed { idx, row ->
-                                val balColor = when (row.statusLabel) {
-                                    "PAYABLE" -> accents.danger
-                                    "RECEIVABLE" -> accents.emerald
-                                    else -> accents.textMuted
-                                }
-                                val initials = row.entity.name.split(" ").filter { it.isNotBlank() }.take(2)
-                                    .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "E" }
-                                val bgTint = avatarColors[abs(row.entity.name.hashCode()) % avatarColors.size]
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onOpenEntityDetail(row.entity.name) }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp)
-                                        .testTag("entity_card_${row.entity.id}"),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (!row.photoDataUri.isNullOrBlank()) {
-                                        DecodedDataUrlImage(
-                                            dataUrl = row.photoDataUri,
-                                            contentDescription = "${row.entity.name} photo",
-                                            modifier = Modifier.size(40.dp).clip(CircleShape)
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier.size(40.dp).clip(CircleShape).background(bgTint),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(initials, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color(0xFF1F2937))
-                                        }
-                                    }
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(row.entity.name.uppercase(), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            if (unifiedViewMode == "entities") {
+                                if (unifiedEntityRows.isEmpty()) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
                                         Text(
-                                            row.contactInfo,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (row.entity.phone.isNotBlank()) accents.emerald else accents.textMuted,
-                                            textDecoration = if (row.entity.phone.isNotBlank()) TextDecoration.Underline else TextDecoration.None,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            InputGuards.formatMoney(abs(row.balance), currency, masked),
+                                            "No records match your filters",
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = balColor
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Text(row.statusLabel, style = MaterialTheme.typography.labelSmall, color = balColor)
-                                    }
-                                }
-                                if (idx < unifiedEntityRows.lastIndex) {
-                                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
-                                }
-                            }
-                        }
-                    } else {
-                        if (unifiedExpenseGroups.isEmpty()) {
-                            EmptyStateCard("No records match your filters", "Change the period or search to see more.")
-                        } else {
-                            unifiedExpenseGroups.forEachIndexed { idx, grp ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onOpenExpenseDetail(grp.name) }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp)
-                                        .testTag("unified_exp_${grp.name}"),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(grp.name.uppercase(), style = MaterialTheme.typography.titleSmall)
+                                        Spacer(Modifier.height(2.dp))
                                         Text(
-                                            buildString {
-                                                append("Operating")
-                                                if (grp.count > 1) append(" • ${grp.count} transactions")
-                                            },
+                                            "Change the period or search to see more.",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = accents.textMuted
                                         )
                                     }
-                                    Text(
-                                        InputGuards.formatMoney(grp.totalAmount, currency, masked),
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = accents.gold
-                                    )
+                                } else {
+                                    unifiedEntityRows.forEachIndexed { idx, row ->
+                                        val balColor = when (row.statusLabel) {
+                                            "PAYABLE" -> accents.danger
+                                            "RECEIVABLE" -> accents.emerald
+                                            else -> accents.emerald
+                                        }
+                                        val initials = row.entity.name.split(" ").filter { it.isNotBlank() }.take(2)
+                                            .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "E" }
+                                        val colorIdx = abs(row.entity.name.hashCode()) % darkAvatarBgs.size
+                                        val bgTint = darkAvatarBgs[colorIdx]
+                                        val fgTint = darkAvatarTexts[colorIdx]
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable { onOpenEntityDetail(row.entity.name) }
+                                                .padding(vertical = 9.dp, horizontal = 4.dp)
+                                                .testTag("entity_card_${row.entity.id}"),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (!row.photoDataUri.isNullOrBlank()) {
+                                                DecodedDataUrlImage(
+                                                    dataUrl = row.photoDataUri,
+                                                    contentDescription = "${row.entity.name} photo",
+                                                    modifier = Modifier.size(40.dp).clip(CircleShape)
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier.size(40.dp).clip(CircleShape).background(bgTint),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(initials, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = fgTint)
+                                                }
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(row.entity.name.uppercase(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(
+                                                    row.contactInfo,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (row.entity.phone.isNotBlank()) accents.emerald else accents.textMuted,
+                                                    textDecoration = if (row.entity.phone.isNotBlank()) TextDecoration.Underline else TextDecoration.None,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                InputGuards.formatMoney(abs(row.balance), currency, masked),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = balColor
+                                            )
+                                        }
+                                        if (idx < unifiedEntityRows.lastIndex) {
+                                            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                                        }
+                                    }
                                 }
-                                if (idx < unifiedExpenseGroups.lastIndex) {
-                                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                            } else {
+                                if (unifiedExpenseGroups.isEmpty()) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            "No records match your filters",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            "Change the period or search to see more.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = accents.textMuted
+                                        )
+                                    }
+                                } else {
+                                    unifiedExpenseGroups.forEachIndexed { idx, grp ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable { onOpenExpenseDetail(grp.name) }
+                                                .padding(vertical = 9.dp, horizontal = 4.dp)
+                                                .testTag("unified_exp_${grp.name}"),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(grp.name.uppercase(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                                Text(
+                                                    buildString {
+                                                        append("Operating")
+                                                        if (grp.count > 1) append(" • ${grp.count} transactions")
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = accents.textMuted
+                                                )
+                                            }
+                                            Text(
+                                                InputGuards.formatMoney(grp.totalAmount, currency, masked),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = accents.gold
+                                            )
+                                        }
+                                        if (idx < unifiedExpenseGroups.lastIndex) {
+                                            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                                        }
+                                    }
                                 }
+                            }
+
+                            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = accents.borderSubtle)
+                            val totalPay = unifiedSummary.supplierPayables + unifiedSummary.entityPayables
+                            val netBalance = unifiedSummary.totalReceivables - totalPay
+                            val footerLabel = if (unifiedViewMode == "entities") "Net Balance:" else "Net Total:"
+                            val footerAmount = if (unifiedViewMode == "entities") abs(netBalance) else -unifiedExpenseGroups.sumOf { it.totalAmount }
+                            val footerColor = if (unifiedViewMode == "entities") {
+                                if (netBalance >= 0) MaterialTheme.colorScheme.onSurface else accents.danger
+                            } else {
+                                if (footerAmount >= 0) accents.emerald else accents.danger
+                            }
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                Text(footerLabel, style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    InputGuards.formatMoney(footerAmount, currency, masked),
+                                    fontFamily = JakartaFont,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = footerColor
+                                )
                             }
                         }
                     }
 
-                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = accents.borderSubtle)
-                    val totalPay = unifiedSummary.supplierPayables + unifiedSummary.entityPayables
-                    val netBalance = unifiedSummary.totalReceivables - totalPay
-                    val footerLabel = if (unifiedViewMode == "entities") "Net Balance:" else "Net Total:"
-                    val footerAmount = if (unifiedViewMode == "entities") abs(netBalance) else -unifiedExpenseGroups.sumOf { it.totalAmount }
-                    val footerColor = if (unifiedViewMode == "entities") {
-                        if (netBalance >= 0) accents.emerald else accents.danger
-                    } else {
-                        if (footerAmount >= 0) accents.emerald else accents.danger
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(footerLabel, style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            InputGuards.formatMoney(footerAmount, currency, masked),
-                            fontFamily = JakartaFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = footerColor
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SarimHalfRingKpiBox("Total Receivable", InputGuards.formatMoney(unifiedSummary.totalReceivables, currency, masked), accents.emerald, Modifier.weight(1f))
                         SarimHalfRingKpiBox("Expenses", InputGuards.formatMoney(unifiedSummary.totalExpenses, currency, masked), accents.gold, Modifier.weight(1f))
@@ -1291,9 +1459,14 @@ fun PaymentsScreen(
             // 5. PAYMENT HISTORY
             item {
                 Text(
-                    "Payment History",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(top = 4.dp)
+                    "PAYMENT HISTORY",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = JakartaFont,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
             item {
@@ -1302,7 +1475,7 @@ fun PaymentsScreen(
                         val sel = historyFilter == k
                         Surface(
                             onClick = { historyFilter = k },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = if (sel) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                             modifier = Modifier.weight(1f).testTag("pay_hist_filter_$k")
@@ -1326,10 +1499,23 @@ fun PaymentsScreen(
                     SarimYearMonthDayTree(
                         items = filteredHistoryTx,
                         dateOf = { it.date },
-                        summaryLabel = { list ->
+                        yearSubLabel = { list ->
                             val tIn = list.filter { it.type.equals("IN", true) }.sumOf { it.amount }
                             val tOut = list.filter { !it.type.equals("IN", true) }.sumOf { it.amount }
-                            "In ${InputGuards.formatMoney(tIn, currency, masked)} • Out ${InputGuards.formatMoney(tOut, currency, masked)}"
+                            "In ${InputGuards.formatMoney(tIn, currency, masked)} · Out ${InputGuards.formatMoney(tOut, currency, masked)}"
+                        },
+                        monthSubLabel = { list ->
+                            val tIn = list.filter { it.type.equals("IN", true) }.sumOf { it.amount }
+                            val tOut = list.filter { !it.type.equals("IN", true) }.sumOf { it.amount }
+                            "In ${InputGuards.formatMoney(tIn, currency, masked)} · Out ${InputGuards.formatMoney(tOut, currency, masked)}"
+                        },
+                        summaryLabel = { list ->
+                            "${list.size} ${if (list.size == 1) "entry" else "entries"}"
+                        },
+                        daySummaryLabel = { list ->
+                            val tIn = list.filter { it.type.equals("IN", true) }.sumOf { it.amount }
+                            val tOut = list.filter { !it.type.equals("IN", true) }.sumOf { it.amount }
+                            "In: ${InputGuards.formatMoney(tIn, currency, masked)} | Out: ${InputGuards.formatMoney(tOut, currency, masked)}"
                         },
                         itemRow = { tx ->
                             val isIn = tx.type.equals("IN", true)
@@ -1482,13 +1668,18 @@ private data class QuadSummary(
 )
 
 @Composable
-private fun SectionSubHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-        color = LocalSarimAccents.current.textMuted,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
+private fun SectionSubHeader(title: String, accentColor: Color? = null) {
+    Column(Modifier.padding(bottom = 6.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp),
+            color = accentColor ?: MaterialTheme.colorScheme.onSurface
+        )
+        if (accentColor != null) {
+            Spacer(Modifier.height(4.dp))
+            HorizontalDivider(thickness = 1.5.dp, color = accentColor)
+        }
+    }
 }
 
 @Composable
@@ -1498,40 +1689,92 @@ private fun BreakdownRow(
     currency: String,
     masked: Boolean,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    labelColor: Color? = null,
     bold: Boolean = false,
-    highlight: Boolean = false
+    boldValue: Boolean = false,
+    rowBg: Color? = null
 ) {
     val accents = LocalSarimAccents.current
     val content: @Composable () -> Unit = {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = if (highlight) 10.dp else 0.dp, vertical = if (highlight) 8.dp else 3.dp),
+                .padding(horizontal = if (rowBg != null) 10.dp else 0.dp, vertical = if (rowBg != null) 8.dp else 3.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 label,
-                style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodySmall,
-                color = if (bold) MaterialTheme.colorScheme.onSurface else accents.textMuted,
+                style = if (bold) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodySmall,
+                color = labelColor ?: if (bold) MaterialTheme.colorScheme.onSurface else accents.textMuted,
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 InputGuards.formatMoney(amount, currency, masked),
-                style = if (bold) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.labelMedium,
+                style = if (bold || boldValue) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.labelMedium,
                 color = valueColor
             )
         }
     }
-    if (highlight) {
+    if (rowBg != null) {
         Surface(
             shape = RoundedCornerShape(10.dp),
-            color = accents.inputFill,
+            color = rowBg,
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
         ) { content() }
     } else {
         content()
+    }
+}
+
+@Composable
+private fun HalfRingTotalRow(
+    label: String,
+    amount: Double,
+    currency: String,
+    masked: Boolean,
+    ringColor: Color
+) {
+    val accents = LocalSarimAccents.current
+    val shape = RoundedCornerShape(20.dp)
+    Surface(
+        shape = shape,
+        color = if (accents.isDark) Color(0xFF020403) else accents.inputFill,
+        border = BorderStroke(1.dp, accents.borderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val strokePx = 2.5.dp.toPx()
+                val arcDiameter = size.height
+                drawArc(
+                    color = ringColor,
+                    startAngle = 90f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(strokePx / 2f, strokePx / 2f),
+                    size = Size(arcDiameter - strokePx, size.height - strokePx),
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 11.dp, bottom = 11.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    InputGuards.formatMoney(amount, currency, masked),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = ringColor
+                )
+            }
+        }
     }
 }
 

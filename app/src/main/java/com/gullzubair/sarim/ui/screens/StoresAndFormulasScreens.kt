@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -130,30 +131,34 @@ fun StoreManagerScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(12.dp))
-                    SarimPillInput(
-                        value = name,
-                        onValueChange = { name = it.uppercase(Locale.ROOT).take(32) },
-                        label = "Store Name",
-                        placeholder = "e.g. KARACHI",
-                        testTag = "sm_name_input"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    val formulaLabel = snapshot.formulas.firstOrNull { it.id == selectedFormulaId }?.name ?: "No formula"
-                    PickerField(
-                        label = "Formula",
-                        selectedLabel = formulaLabel,
-                        items = listOf(null) + snapshot.formulas,
-                        itemLabel = { it?.name ?: "No formula" },
-                        onSelect = { selectedFormulaId = it?.id ?: "" },
-                        testTag = "sm_formula_picker"
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SarimPillInput(
+                            value = name,
+                            onValueChange = { name = it.uppercase(Locale.ROOT).take(32) },
+                            label = "STORE NAME",
+                            placeholder = "E.G. KARACHI",
+                            testTag = "sm_name_input",
+                            modifier = Modifier.weight(1f)
+                        )
+                        val formulaLabel = snapshot.formulas.firstOrNull { it.id == selectedFormulaId }?.name ?: "Select formula"
+                        PickerField(
+                            label = "FORMULA",
+                            selectedLabel = formulaLabel,
+                            items = listOf(null) + snapshot.formulas,
+                            itemLabel = { it?.name ?: "No formula" },
+                            onSelect = { selectedFormulaId = it?.id ?: "" },
+                            testTag = "sm_formula_picker",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
                     DecimalField(
                         label = "Sale Price (per kg)",
                         value = rateStr,
                         onValueChange = { rateStr = it },
                         testTag = "sm_rate_input",
-                        suffix = "$currency /kg"
+                        placeholder = "0",
+                        modifier = Modifier.fillMaxWidth(0.49f)
                     )
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -371,25 +376,10 @@ fun FormulaStoreScreen(
                                 .clickable { onEditFormula(f.id) }
                                 .testTag("formula_card_${f.id}")
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = f.name.uppercase(Locale.ROOT),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Surface(color = accents.softPillFill, shape = RoundedCornerShape(10.dp)) {
-                                    Text(
-                                        text = "${InputGuards.fmtNum(f.costAdjustmentFactor)} UNIT",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = accents.emerald,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
+                            Text(
+                                text = "${f.name.uppercase(Locale.ROOT)} (${InputGuards.fmtNum(f.costAdjustmentFactor)} UNIT)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
                             Spacer(Modifier.height(8.dp))
 
                             f.ingredients.forEach { ing ->
@@ -550,11 +540,11 @@ fun FormulaStoreScreen(
             }
             FloatingActionButton(
                 onClick = { speedDialExpanded = !speedDialExpanded },
-                shape = RoundedCornerShape(20.dp),
+                shape = CircleShape,
                 containerColor = accents.emerald,
                 contentColor = if (accents.isDark) Color(0xFF022011) else Color.White,
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(58.dp)
                     .testTag("formula_speed_dial_fab")
             ) {
                 Icon(

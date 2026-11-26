@@ -1,7 +1,10 @@
 package com.gullzubair.sarim.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PersonOutline
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
@@ -45,10 +55,14 @@ import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
+import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.PdfExporter
 import com.gullzubair.sarim.util.StatementRow
+import java.time.format.TextStyle
+import java.util.Locale
+import kotlin.math.abs
 
 @Composable
 fun CustomerDetailScreen(
@@ -189,6 +203,16 @@ fun CustomerDetailScreen(
     }
 }
 
+private data class EntityTimelineEvent(
+    val date: String,
+    val timestamp: Long,
+    val title: String,
+    val subtitle: String,
+    val isIn: Boolean,
+    val amount: Double,
+    val runningBalance: Double
+)
+
 @Composable
 fun EntityDetailScreen(
     snapshot: WorkspaceSnapshot,
@@ -199,15 +223,20 @@ fun EntityDetailScreen(
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
     val masked = FinanceEngine.deriveSession(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    var menuOpen by remember { mutableStateOf(false) }
+
     val entity = remember(snapshot.entities, entityName) {
         snapshot.entities.firstOrNull { it.deletedAt == null && it.name.equals(entityName, true) }
     }
     val balance = remember(snapshot, entity) {
         entity?.let { FinanceEngine.computeEntityBalance(it, snapshot.transactions, snapshot.inventory) } ?: 0.0
     }
-    val rows = remember(snapshot, entityName, entity, masked) {
+    val (rows, events, totalIn, totalOut) = remember(snapshot, entityName, entity, masked) {
         var running = entity?.openingBalance ?: 0.0
+        var sumIn = 0.0
+        var sumOut = 0.0
         val list = mutableListOf<StatementRow>()
+        val timeline = mutableListOf<EntityTimelineEvent>()
         if (running != 0.0) {
             list.add(
                 StatementRow(
@@ -225,8 +254,17 @@ fun EntityDetailScreen(
                     ((entity != null && it.entityId == entity.id) || it.entityName.equals(entityName, true))
             }
             .map { tx ->
-                val delta = if (tx.type.equals("IN", true)) tx.amount else -tx.amount
-                Triple(tx.date, tx.timestamp, Triple("${tx.type.uppercase()} • ${tx.paymentMethod}", delta, tx.amount to tx.type.equals("IN", true)))
+                val isIn = tx.type.equals("IN", true)
+                val delta = if (isIn) tx.amount else -tx.amount
+                Triple(
+                    tx.date,
+                    tx.timestamp,
+                    Triple(
+                        (if (isIn) "Payment in" else "Payment out") to (tx.description.ifBlank { tx.paymentMethod }),
+                        delta,
+                        tx.amount to isIn
+                    )
+                )
             }
         val lotEvents = snapshot.inventory
             .filter {
@@ -235,32 +273,127 @@ fun EntityDetailScreen(
             }
             .map { lot ->
                 val dateStr = lot.purchaseDate.ifBlank { "Purchase" }
-                Triple(dateStr, lot.timestamp, Triple("PURCHASE • ${lot.materialName.ifBlank { lot.name }}", -lot.totalPayable, lot.totalPayable to false))
+                Triple(
+                    dateStr,
+                    lot.timestamp,
+                    Triple(
+                        "Payment in" to "Material purchase: ${lot.materialName.ifBlank { lot.name }}",
+                        -lot.totalPayable,
+                        lot.totalPayable to false
+                    )
+                )
             }
         (txEvents + lotEvents)
             .sortedWith(compareBy({ it.first }, { it.second }))
-            .forEach { (date, _, details) ->
-                val (desc, delta, amtPair) = details
-                val (amt, isDebitSide) = amtPair
+            .forEach { (date, ts, details) ->
+                val (titlePair, delta, amtPair) = details
+                val (title, sub) = titlePair
+                val (amt, isIn) = amtPair
+                if (isIn) sumIn += amt else sumOut += amt
                 running = InputGuards.round2(running + delta)
                 list.add(
                     StatementRow(
                         date = date,
-                        description = desc,
-                        debit = if (!isDebitSide) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
-                        credit = if (isDebitSide) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
+                        description = if (sub.isNotBlank()) "$title • $sub" else title,
+                        debit = if (!isIn) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
+                        credit = if (isIn) (if (masked) "••••" else InputGuards.fmtNum(amt)) else "-",
                         balance = if (masked) "••••" else InputGuards.fmtNum(running)
                     )
                 )
+                timeline.add(
+                    EntityTimelineEvent(
+                        date = date.take(10),
+                        timestamp = ts,
+                        title = title,
+                        subtitle = sub,
+                        isIn = isIn,
+                        amount = amt,
+                        runningBalance = running
+                    )
+                )
             }
-        list
+        QuadResult(list, timeline, InputGuards.round2(sumIn), InputGuards.round2(sumOut))
     }
+
+    val dayGroups = remember(events) {
+        events.reversed().groupBy { it.date }
+            .entries.sortedByDescending { it.key }
+            .map { it.key to it.value }
+    }
+
+    val entPhotoUri = entity?.id?.let { eid -> snapshot.photos["entity:$eid"]?.takeIf { !it.deleted }?.dataUri }
+    val phoneText = entity?.phone.orEmpty().ifBlank { entity?.wallet.orEmpty() }
+    val isSettled = abs(balance) < 0.01
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
             title = entityName.uppercase(),
-            subtitle = entity?.type?.uppercase(),
-            onBack = onBack
+            subtitle = phoneText.takeIf { it.isNotBlank() } ?: entity?.type?.uppercase(),
+            onBack = onBack,
+            leadingIcon = {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(accents.softPillFill)
+                        .border(2.dp, accents.emerald, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!entPhotoUri.isNullOrBlank()) {
+                        DecodedDataUrlImage(
+                            dataUrl = entPhotoUri,
+                            contentDescription = "$entityName photo",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.PersonOutline,
+                            contentDescription = null,
+                            tint = accents.emerald,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            },
+            trailingContent = {
+                Box {
+                    Surface(
+                        onClick = { menuOpen = true },
+                        shape = CircleShape,
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.size(48.dp).testTag("entity_menu_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "More actions",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Export Statement PDF") },
+                            onClick = {
+                                menuOpen = false
+                                PdfExporter.exportAndShareStatement(
+                                    context = context,
+                                    title = "Entity Statement: $entityName",
+                                    subtitle = entity?.type?.uppercase() ?: "Account",
+                                    rows = rows,
+                                    summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
+                                )
+                            },
+                            modifier = Modifier.testTag("entity_pdf_btn")
+                        )
+                    }
+                }
+            }
         )
 
         LazyColumn(
@@ -268,79 +401,187 @@ fun EntityDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
+
+            // Balance Hero Card (matches g03-entity-opened)
             item {
-                val entPhotoUri = entity?.id?.let { eid -> snapshot.photos["entity:$eid"]?.takeIf { !it.deleted }?.dataUri }
                 SarimCard {
-                    if (!entPhotoUri.isNullOrBlank()) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            DecodedDataUrlImage(
-                                dataUrl = entPhotoUri,
-                                contentDescription = "$entityName photo",
-                                modifier = Modifier.size(52.dp).clip(CircleShape)
+                    Text(
+                        "Balance",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = when {
+                            masked -> "••••"
+                            isSettled -> "Settled"
+                            else -> InputGuards.formatMoney(abs(balance), currency, false)
+                        },
+                        fontFamily = JakartaFont,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 28.sp,
+                        color = if (balance >= -0.01) accents.emerald else accents.danger
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(accents.emerald)
                             )
+                            Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(entityName, style = MaterialTheme.typography.titleMedium)
-                                if (entity.wallet.isNotBlank() || entity.ledgerPage.isNotBlank()) {
-                                    Text(
-                                        listOfNotNull(
-                                            entity.wallet.takeIf { it.isNotBlank() },
-                                            entity.ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
-                                        ).joinToString(" • "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = accents.textMuted
-                                    )
-                                }
+                                Text(
+                                    "TOTAL IN",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.4.sp),
+                                    color = accents.textMuted
+                                )
+                                Text(
+                                    InputGuards.formatMoney(totalIn, currency, masked),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = accents.emerald
+                                )
+                            }
+                        }
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(accents.danger)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    "TOTAL OUT",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.4.sp),
+                                    color = accents.textMuted
+                                )
+                                Text(
+                                    InputGuards.formatMoney(totalOut, currency, masked),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = accents.danger
+                                )
                             }
                         }
                     }
-                    SarimHalfRingKpiBox(
-                        label = "ENTITY BALANCE",
-                        value = InputGuards.formatMoney(balance, currency, masked),
-                        ringColor = if (balance >= 0) accents.emerald else accents.danger,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (entPhotoUri.isNullOrBlank() && entity != null && (entity.wallet.isNotBlank() || entity.ledgerPage.isNotBlank())) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            listOfNotNull(
-                                entity.wallet.takeIf { it.isNotBlank() },
-                                entity.ledgerPage.takeIf { it.isNotBlank() }?.let { "Ledger Page: $it" }
-                            ).joinToString(" • "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = accents.textMuted
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    SarimGradientButton(
-                        text = "Export Statement PDF",
-                        onClick = {
-                            PdfExporter.exportAndShareStatement(
-                                context = context,
-                                title = "Entity Statement: $entityName",
-                                subtitle = entity?.type?.uppercase() ?: "Account",
-                                rows = rows,
-                                summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
-                            )
-                        },
-                        testTag = "entity_pdf_btn"
-                    )
                 }
             }
-            if (rows.isEmpty()) {
+
+            if (dayGroups.isEmpty()) {
                 item { EmptyStateCard("No ledger activity", "No recorded payments for $entityName.") }
             } else {
-                items(rows.reversed()) { r ->
+                items(dayGroups, key = { it.first }) { (dayIso, dayEvents) ->
+                    val parsedDay = DateUtils.parseLocalDate(dayIso)
+                    val dayNum = parsedDay?.dayOfMonth?.toString() ?: dayIso.takeLast(2)
+                    val dayDow = parsedDay?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.ENGLISH) ?: ""
                     SarimCard {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(r.description, style = MaterialTheme.typography.titleSmall)
-                                Text("${r.date} • Debit ${r.debit} • Credit ${r.credit}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(
+                                modifier = Modifier.width(34.dp).padding(top = 2.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    dayNum,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    dayDow,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = accents.textMuted
+                                )
                             }
-                            Text(if (masked) "$currency ••••" else "$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                            Column(Modifier.weight(1f)) {
+                                dayEvents.forEachIndexed { idx, ev ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Box(
+                                                    Modifier.size(8.dp).clip(CircleShape).background(
+                                                        if (ev.isIn) accents.emerald else accents.danger
+                                                    )
+                                                )
+                                                Text(
+                                                    ev.title,
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                            if (ev.subtitle.isNotBlank()) {
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    ev.subtitle,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = accents.textMuted,
+                                                    maxLines = 2
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                (if (ev.isIn) "+ " else "- ") + InputGuards.formatMoney(ev.amount, currency, masked),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = if (ev.isIn) accents.emerald else accents.danger
+                                            )
+                                            Text(
+                                                InputGuards.formatMoney(ev.runningBalance, currency, masked),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.emerald
+                                            )
+                                        }
+                                    }
+                                    if (idx < dayEvents.lastIndex) {
+                                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
+                                Spacer(Modifier.height(10.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    Surface(
+                                        onClick = {
+                                            val dayRows = dayEvents.reversed().map { ev ->
+                                                StatementRow(
+                                                    date = ev.date,
+                                                    description = if (ev.subtitle.isNotBlank()) "${ev.title} — ${ev.subtitle}" else ev.title,
+                                                    debit = if (!ev.isIn) InputGuards.formatMoney(ev.amount, currency, masked) else "-",
+                                                    credit = if (ev.isIn) InputGuards.formatMoney(ev.amount, currency, masked) else "-",
+                                                    balance = InputGuards.formatMoney(ev.runningBalance, currency, masked)
+                                                )
+                                            }
+                                            PdfExporter.exportAndShareStatement(
+                                                context = context,
+                                                title = "Invoice: $entityName",
+                                                subtitle = DateUtils.formatPretty(dayIso),
+                                                rows = dayRows,
+                                                summaryFooter = "Balance: ${InputGuards.formatMoney(dayEvents.first().runningBalance, currency, masked)}"
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = accents.softPillFill,
+                                        border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Share,
+                                                contentDescription = null,
+                                                tint = accents.emerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                "Invoice",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = accents.emerald
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -349,3 +590,6 @@ fun EntityDetailScreen(
         }
     }
 }
+
+private data class QuadResult<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+

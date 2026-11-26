@@ -243,7 +243,7 @@ fun RepDetailSheet(
                                 onEditEntry(r)
                             }
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.34f).testTag("rep_edit_${r.id}")

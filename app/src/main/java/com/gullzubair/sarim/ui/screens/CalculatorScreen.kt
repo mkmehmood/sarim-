@@ -8,9 +8,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -77,15 +80,17 @@ import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimNoteBanner
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
-import com.gullzubair.sarim.ui.components.SimpleBarChart
 import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.blockingAlert
 import com.gullzubair.sarim.ui.components.dashedBorder
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 private data class CalcRangeTotals(
     val sold: Double = 0.0,
@@ -789,32 +794,52 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         testTag = "calc_save_btn"
                     )
                 }
-            }
-        }
 
-        // 2. COMPARISON SECTION (when COMBINED and !masked)
-        if (isCombined && !masked) {
-            item {
-                SarimCard {
-                    Text("Comparison", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("week" to "Week", "month" to "Month", "year" to "Year", "all" to "All Time").forEach { (k, lbl) ->
-                            val sel = compMode == k
-                            Surface(
-                                onClick = { compMode = k },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (sel) accents.softPillFill else accents.inputFill,
-                                border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                modifier = Modifier.weight(1f).testTag("comp_mode_$k")
-                            ) {
-                                Box(Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
-                                    Text(lbl, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted)
+                // Comparison inline inside the top card when COMBINED and !masked
+                if (isCombined && !masked) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Comparison",
+                            fontFamily = PlayfairFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            listOf("week" to "Week", "month" to "Month", "year" to "Year", "all" to "All Time").forEach { (k, lbl) ->
+                                val sel = compMode == k
+                                Surface(
+                                    onClick = { compMode = k },
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = if (sel) accents.softPillFill else accents.inputFill,
+                                    border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = 32.dp)
+                                        .testTag("comp_mode_$k")
+                                ) {
+                                    Box(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            lbl,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                                            ),
+                                            color = if (sel) accents.emerald else accents.textMuted,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                     val metricOpts = listOf(
                         "prof" to "Net Profit (Value)",
                         "rev" to "Gross Revenue (Value)",
@@ -828,7 +853,8 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         onSelect = { compMetric = it.first },
                         testTag = "comp_metric_picker"
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
+
                     val barSeries = repList.map { r ->
                         val t = compByRep[r] ?: CalcRangeTotals()
                         val v = when (compMetric) {
@@ -838,14 +864,77 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         }
                         r to v
                     }
-                    SimpleBarChart(
-                        title = "COMPETITION",
-                        items = barSeries,
-                        barColor = accents.emerald,
-                        currency = if (compMetric == "sold") "kg" else currency,
-                        masked = masked && compMetric != "sold"
-                    )
-                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                "COMPETITION",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.6.sp
+                                ),
+                                color = accents.emerald
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            if (barSeries.isEmpty() || barSeries.all { abs(it.second) < 0.01 }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 22.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("No data yet", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                }
+                            } else {
+                                val maxVal = (barSeries.maxOfOrNull { max(0.0, it.second) } ?: 1.0).coerceAtLeast(1.0)
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    barSeries.forEach { (repName, value) ->
+                                        val frac = (max(0.0, value) / maxVal).toFloat().coerceIn(0.03f, 1f)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                repName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.width(86.dp)
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(8.dp)
+                                                    .clip(RoundedCornerShape(999.dp))
+                                                    .background(MaterialTheme.colorScheme.surface)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth(frac)
+                                                        .height(8.dp)
+                                                        .clip(RoundedCornerShape(999.dp))
+                                                        .background(accents.emerald)
+                                                )
+                                            }
+                                            Text(
+                                                text = if (compMetric == "sold") InputGuards.formatKg(value) else InputGuards.formatMoney(value, currency, masked),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = accents.emerald
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
                     val totalRevAll = compByRep.values.sumOf { it.rev }
                     val totalGivAll = compByRep.values.sumOf { it.giv }
                     val totalCashValAll = (totalRevAll - totalGivAll).coerceAtLeast(0.0)
@@ -853,16 +942,51 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     val totalRetAll = compByRep.values.sumOf { it.ret }
                     val avgPrice = if (totalSoldAll > 0.0) totalRevAll / totalSoldAll else 0.0
                     val totalRetValAll = totalRetAll * avgPrice
-                    OverviewDonutSummaryCard(
-                        title = "MARKET COMPOSITION",
-                        items = listOf(
-                            "Cash Sale Value" to totalCashValAll,
-                            "Credit Value" to totalGivAll,
-                            "Return Value" to totalRetValAll
-                        ),
-                        currency = currency,
-                        masked = masked
+                    val marketItems = listOf(
+                        "Cash Sale Value" to totalCashValAll,
+                        "Credit Value" to totalGivAll,
+                        "Return Value" to totalRetValAll
                     )
+                    if (marketItems.sumOf { it.second } <= 0.0) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = accents.inputFill,
+                            border = BorderStroke(1.dp, accents.borderSubtle),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(
+                                    "MARKET COMPOSITION",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.6.sp
+                                    ),
+                                    color = accents.emerald
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "Market Composition",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 22.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Nothing recorded in this period", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                }
+                            }
+                        }
+                    } else {
+                        OverviewDonutSummaryCard(
+                            title = "MARKET COMPOSITION",
+                            items = marketItems,
+                            currency = currency,
+                            masked = masked
+                        )
+                    }
 
                     if (repList.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
@@ -879,38 +1003,73 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Triple("Field Expenses", { it.fieldExp }, accents.danger),
                             Triple("Commission Paid", { it.commissionPaid }, accents.emerald)
                         )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = accents.inputFill,
+                            border = BorderStroke(1.dp, accents.borderSubtle),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(accents.inputFill)
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
                             ) {
-                                Text("Metric Comparison", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(136.dp))
-                                repList.forEach { rep ->
-                                    val short = rep.split(" ").first().lowercase().replaceFirstChar { it.uppercase() }
-                                    Text(short, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.width(86.dp))
-                                }
-                            }
-                            tableMetrics.forEach { (lbl, getter, color) ->
                                 Row(
-                                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(lbl, style = MaterialTheme.typography.bodySmall, color = accents.textMuted, modifier = Modifier.width(136.dp))
+                                    Text(
+                                        "METRIC",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.6.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.width(140.dp)
+                                    )
                                     repList.forEach { rep ->
-                                        val v = getter(compByRep[rep] ?: CalcRangeTotals())
-                                        val isQty = lbl == "Qty Sold" || lbl == "Returns" || lbl.startsWith("Expired") || lbl.startsWith("Shared")
-                                        val txt = if (isQty) InputGuards.fmtNum(v) else InputGuards.formatMoney(v, currency, masked)
-                                        Text(txt, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = color, modifier = Modifier.width(86.dp))
+                                        val short = rep.split(" ").first().uppercase()
+                                        Text(
+                                            short,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = accents.textMuted,
+                                            modifier = Modifier.width(88.dp)
+                                        )
                                     }
                                 }
-                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.35f))
+                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
+                                tableMetrics.forEach { (lbl, getter, color) ->
+                                    val rowBg = when (lbl) {
+                                        "Qty Sold" -> accents.emerald.copy(alpha = 0.08f)
+                                        "Net Profit" -> accents.gold.copy(alpha = 0.10f)
+                                        else -> Color.Transparent
+                                    }
+                                    Row(
+                                        Modifier
+                                            .background(rowBg)
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            lbl,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                            modifier = Modifier.width(140.dp)
+                                        )
+                                        repList.forEach { rep ->
+                                            val v = getter(compByRep[rep] ?: CalcRangeTotals())
+                                            val isQty = lbl == "Qty Sold" || lbl == "Returns" || lbl.startsWith("Expired") || lbl.startsWith("Shared")
+                                            val txt = if (isQty) InputGuards.fmtNum(v) else InputGuards.formatMoney(v, currency, masked)
+                                            Text(
+                                                txt,
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                color = color,
+                                                modifier = Modifier.width(88.dp)
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.35f))
+                                }
                             }
                         }
                     }
@@ -934,107 +1093,283 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
         // 4. PERFORMANCE OVERVIEW + MARKET DEBT TRACKER + CALCULATOR HISTORY
         if (!masked) {
             item {
-                SarimCard {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         "Performance Overview ($sellerLabel)",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        fontFamily = PlayfairFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         listOf("day" to "Daily", "week" to "Weekly", "month" to "Monthly", "year" to "Yearly", "all" to "All Time").forEach { (k, lbl) ->
                             val sel = perfMode == k
                             Surface(
                                 onClick = { perfMode = k },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(999.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                modifier = Modifier.weight(1f).testTag("calc_po_$k")
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 36.dp)
+                                    .testTag("calc_po_$k")
                             ) {
-                                Box(Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
-                                    Text(lbl, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else accents.textMuted, maxLines = 1)
+                                Box(Modifier.padding(horizontal = 13.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        lbl,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                                        ),
+                                        color = if (sel) accents.emerald else accents.textMuted,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    val pDisc = InputGuards.round2(perfTotals.received - perfTotals.expected)
-                    val discLabel = when {
-                        abs(pDisc) < 0.01 -> "Perfect Match"
-                        pDisc < 0 -> "Short ${InputGuards.formatMoney(abs(pDisc), currency, masked)}"
-                        else -> "Over ${InputGuards.formatMoney(pDisc, currency, masked)}"
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SarimHalfRingKpiBox("Total Sold", InputGuards.formatKg(perfTotals.sold), accents.cyan, Modifier.weight(1f))
-                        SarimHalfRingKpiBox("Returned", InputGuards.formatKg(perfTotals.ret), accents.gold, Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SarimHalfRingKpiBox("Cash Sales", InputGuards.formatKg(perfTotals.cashQty), accents.emerald, Modifier.weight(1f))
-                        SarimHalfRingKpiBox("Credit Sales", InputGuards.formatKg(perfTotals.credQty), accents.gold, Modifier.weight(1f))
-                    }
                     Spacer(Modifier.height(10.dp))
-                    ResultKvRow("Total Value", InputGuards.formatMoney(perfTotals.rev, currency, masked), accents.cyan)
-                    ResultKvRow("Total Cost", InputGuards.formatMoney(perfTotals.cost, currency, masked), accents.danger)
-                    ResultKvRow("Net Profit", InputGuards.formatMoney(perfTotals.prof, currency, masked), accents.emerald)
-                    ResultKvRow("Credit Issued", InputGuards.formatMoney(perfTotals.giv, currency, masked), accents.gold)
-                    ResultKvRow("Cash Recovered", InputGuards.formatMoney(perfTotals.coll, currency, masked), accents.emerald)
-                    if (perfTotals.exp > 0.0) ResultKvRow("Expired (→ CHORA)", InputGuards.formatKg(perfTotals.exp), accents.danger)
-                    if (perfTotals.shared > 0.0) ResultKvRow("Shared (Deduction)", InputGuards.formatKg(perfTotals.shared), accents.danger)
-                    ResultKvRow("Expected Cash", InputGuards.formatMoney(perfTotals.expected, currency, masked), accents.cyan)
-                    ResultKvRow("Cash Received", InputGuards.formatMoney(perfTotals.received, currency, masked), accents.emerald)
-                    ResultKvRow("Handover Status", discLabel, if (pDisc < -0.01) accents.danger else accents.emerald)
-                    if (perfTotals.fieldExp > 0.0) ResultKvRow("Field Expenses", InputGuards.formatMoney(perfTotals.fieldExp, currency, masked), accents.danger)
-                    if (perfTotals.commissionPaid > 0.0) ResultKvRow("Commission Paid", InputGuards.formatMoney(perfTotals.commissionPaid, currency, masked), accents.emerald)
+                    SarimCard(contentPadding = PaddingValues(16.dp)) {
+                        val perfViewLabel = when (perfMode) {
+                            "week" -> "WEEKLY VIEW"
+                            "month" -> "MONTHLY VIEW"
+                            "year" -> "YEARLY VIEW"
+                            "all" -> "ALL TIME VIEW"
+                            else -> "DAILY VIEW"
+                        }
+                        Text(
+                            perfViewLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text("REVENUE", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
+                        Text(
+                            InputGuards.formatMoney(perfTotals.rev, currency, masked),
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Profit ${InputGuards.formatMoney(perfTotals.prof, currency, masked)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (perfTotals.prof >= 0.0) accents.textMuted else accents.danger
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+                        val cashKg = max(0.0, perfTotals.cashQty)
+                        val credKg = max(0.0, perfTotals.credQty)
+                        val totKg = cashKg + credKg
+                        val cashPct = if (totKg > 0.0) ((cashKg / totKg) * 100.0).roundToInt() else 0
+                        val credPct = if (totKg > 0.0) 100 - cashPct else 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(accents.inputFill)
+                        ) {
+                            if (totKg > 0.0) {
+                                if (cashKg > 0.0) Box(Modifier.weight(max(0.02f, (cashKg / totKg).toFloat())).fillMaxHeight().background(accents.emerald))
+                                if (credKg > 0.0) Box(Modifier.weight(max(0.02f, (credKg / totKg).toFloat())).fillMaxHeight().background(accents.gold))
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(Modifier.size(7.dp).clip(CircleShape).background(accents.emerald))
+                                Text("Cash ${InputGuards.formatKg(cashKg)} $cashPct%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(Modifier.size(7.dp).clip(CircleShape).background(accents.gold))
+                                Text("Credit ${InputGuards.formatKg(credKg)} $credPct%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SarimHalfRingKpiBox("TOTAL SOLD", InputGuards.formatKg(perfTotals.sold), accents.cyan, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("RETURNED", InputGuards.formatKg(perfTotals.ret), accents.gold, Modifier.weight(1f))
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                        Spacer(Modifier.height(12.dp))
+
+                        Text(
+                            "CREDIT",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        val credOut = max(0.0, perfTotals.giv)
+                        val credRec = max(0.0, perfTotals.coll)
+                        val credTot = credOut + credRec
+                        val outPct = if (credTot > 0.0) ((credOut / credTot) * 100.0).roundToInt() else 0
+                        val recCredPct = if (credTot > 0.0) 100 - outPct else 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(accents.inputFill)
+                        ) {
+                            if (credTot > 0.0) {
+                                if (credOut > 0.0) Box(Modifier.weight(max(0.02f, (credOut / credTot).toFloat())).fillMaxHeight().background(accents.danger))
+                                if (credRec > 0.0) Box(Modifier.weight(max(0.02f, (credRec / credTot).toFloat())).fillMaxHeight().background(accents.emerald))
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(Modifier.size(7.dp).clip(CircleShape).background(accents.danger))
+                                Text("Out ${InputGuards.formatMoney(credOut, currency, masked)} $outPct%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(Modifier.size(7.dp).clip(CircleShape).background(accents.emerald))
+                                Text("Recovered ${InputGuards.formatMoney(credRec, currency, masked)} $recCredPct%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        val netPeriodDebt = InputGuards.round2(perfTotals.giv - perfTotals.coll)
+                        SarimHalfRingKpiBox(
+                            "NET DEBT",
+                            InputGuards.formatMoney(netPeriodDebt, currency, masked),
+                            if (netPeriodDebt > 0.01) accents.danger else accents.emerald,
+                            Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                        Spacer(Modifier.height(12.dp))
+
+                        val pDisc = InputGuards.round2(perfTotals.received - perfTotals.expected)
+                        val discLabel = when {
+                            abs(pDisc) < 0.01 -> "Perfect match"
+                            pDisc < 0 -> "Short ${InputGuards.formatMoney(abs(pDisc), currency, masked)}"
+                            else -> "Over ${InputGuards.formatMoney(pDisc, currency, masked)}"
+                        }
+                        val discTone = if (pDisc < -0.01) accents.danger else accents.emerald
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "CASH HANDOVER",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = discTone.copy(alpha = 0.14f)
+                            ) {
+                                Text(
+                                    discLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = discTone,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SarimHalfRingKpiBox("EXPECTED", InputGuards.formatMoney(perfTotals.expected, currency, masked), accents.cyan, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("RECEIVED", InputGuards.formatMoney(perfTotals.received, currency, masked), accents.emerald, Modifier.weight(1f))
+                        }
+
+                        if (perfTotals.exp > 0.0 || perfTotals.shared > 0.0 || perfTotals.fieldExp > 0.0 || perfTotals.commissionPaid > 0.0) {
+                            Spacer(Modifier.height(10.dp))
+                            if (perfTotals.exp > 0.0) ResultKvRow("Expired (→ CHORA)", InputGuards.formatKg(perfTotals.exp), accents.danger)
+                            if (perfTotals.shared > 0.0) ResultKvRow("Shared (Deduction)", InputGuards.formatKg(perfTotals.shared), accents.danger)
+                            if (perfTotals.fieldExp > 0.0) ResultKvRow("Field Expenses", InputGuards.formatMoney(perfTotals.fieldExp, currency, masked), accents.danger)
+                            if (perfTotals.commissionPaid > 0.0) ResultKvRow("Commission Paid", InputGuards.formatMoney(perfTotals.commissionPaid, currency, masked), accents.emerald)
+                        }
+                    }
                 }
             }
 
             item {
-                SarimCard {
+                SarimCard(contentPadding = PaddingValues(16.dp)) {
                     Text(
-                        "$sellerLabel · Market debt tracker",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        "${sellerLabel.uppercase()} · MARKET DEBT TRACKER",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Current market debt", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Spacer(Modifier.height(10.dp))
+                    Text("CURRENT MARKET DEBT", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
                     Text(
                         InputGuards.formatMoney(debtBalance, currency, masked),
                         fontFamily = JakartaFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         color = if (debtBalance > 0.01) accents.danger else accents.emerald
                     )
                     Spacer(Modifier.height(8.dp))
                     val totalActivity = (debtRecovered + debtBalance.coerceAtLeast(0.0)).coerceAtLeast(1.0)
                     val recPct = ((debtRecovered / totalActivity) * 100.0).toInt().coerceIn(0, 100)
+                    val outPct = if (debtCreditIssued <= 0.01 && debtRecovered <= 0.01) 0 else 100 - recPct
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(accents.danger.copy(alpha = 0.28f))
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(accents.inputFill)
                     ) {
-                        if (recPct > 0) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth(recPct / 100f)
-                                    .height(6.dp)
-                                    .background(accents.emerald)
+                        if (debtCreditIssued > 0.01 || debtRecovered > 0.01) {
+                            Row(Modifier.fillMaxWidth().height(5.dp)) {
+                                if (recPct > 0) Box(Modifier.weight(max(0.02f, recPct / 100f)).fillMaxHeight().background(accents.emerald))
+                                if (outPct > 0) Box(Modifier.weight(max(0.02f, outPct / 100f)).fillMaxHeight().background(accents.danger))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(accents.emerald))
+                            Text(
+                                "Recovered ${InputGuards.formatMoney(debtRecovered, currency, masked)} $recPct%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(accents.danger))
+                            Text(
+                                "Outstanding ${InputGuards.formatMoney(debtBalance, currency, masked)} $outPct%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SarimHalfRingKpiBox("Total credit issued", InputGuards.formatMoney(debtCreditIssued, currency, masked), accents.gold, Modifier.weight(1f))
-                        SarimHalfRingKpiBox("Cash recovered", InputGuards.formatMoney(debtRecovered, currency, masked), accents.emerald, Modifier.weight(1f))
+                        SarimHalfRingKpiBox("TOTAL CREDIT ISSUED", InputGuards.formatMoney(debtCreditIssued, currency, masked), accents.gold, Modifier.weight(1f))
+                        SarimHalfRingKpiBox("CASH RECOVERED", InputGuards.formatMoney(debtRecovered, currency, masked), accents.emerald, Modifier.weight(1f))
                     }
                 }
             }
 
             item {
                 Text(
-                    "Calculator History",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(top = 4.dp)
+                    "CALCULATOR HISTORY",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.7.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                 )
             }
             if (perfFiltered.isEmpty()) {
@@ -1045,36 +1380,53 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         items = perfFiltered,
                         dateOf = { it.date },
                         summaryLabel = { list ->
-                            "${InputGuards.formatKg(list.sumOf { it.totalSold })} • ${InputGuards.formatMoney(list.sumOf { it.received }, currency, masked)}"
+                            "${list.size} ${if (list.size == 1) "entry" else "entries"}"
                         },
+                        yearSubLabel = { list ->
+                            "Revenue ${InputGuards.formatMoney(list.sumOf { it.revenue }, currency, masked)}"
+                        },
+                        monthSubLabel = { list ->
+                            "Revenue ${InputGuards.formatMoney(list.sumOf { it.revenue }, currency, masked)}"
+                        },
+                        daySummaryLabel = { list ->
+                            "Revenue: ${InputGuards.formatMoney(list.sumOf { it.revenue }, currency, masked)}"
+                        },
+                        initiallyExpandFirstDay = false,
                         itemRow = { c ->
                             val storeLabel = FormulaEngine.storeLabelFor(c.returnStore, snapshot.stores)
-                            Row(
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = accents.inputFill,
+                                border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedCalc = c }
-                                    .padding(vertical = 8.dp, horizontal = 4.dp)
-                                    .testTag("calc_row_${c.id}"),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .testTag("calc_row_${c.id}")
                             ) {
-                                Column(Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(c.seller.uppercase(), style = MaterialTheme.typography.titleSmall)
-                                        EditedBadge(c.isEdited)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(c.seller.uppercase(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                            EditedBadge(c.isEdited)
+                                        }
+                                        Text(
+                                            "${storeLabel.ifBlank { c.returnType.ifBlank { "Settlement" } }} • Sold ${InputGuards.formatKg(c.totalSold)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = accents.textMuted
+                                        )
                                     }
                                     Text(
-                                        "${storeLabel.ifBlank { c.returnType.ifBlank { "Settlement" } }} • Sold ${InputGuards.formatKg(c.totalSold)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = accents.textMuted
+                                        InputGuards.formatMoney(c.revenue, currency, masked),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = accents.emerald
                                     )
                                 }
-                                Text(
-                                    InputGuards.formatMoney(c.revenue, currency, masked),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = accents.emerald
-                                )
                             }
                         }
                     )

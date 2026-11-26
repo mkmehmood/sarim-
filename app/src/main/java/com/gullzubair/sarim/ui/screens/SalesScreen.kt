@@ -55,6 +55,7 @@ import com.gullzubair.sarim.ui.components.SalesSaveConfirmDialog
 import com.gullzubair.sarim.ui.components.SalesSaveConfirmModel
 import com.gullzubair.sarim.ui.components.SalesSummaryCard
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
@@ -690,46 +691,87 @@ fun SalesScreen(
 
             // 5. Sales History Tree
             item {
-                SarimCard(contentPadding = PaddingValues(16.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Sales History",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            text = "SALES HISTORY",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.7.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = "${filteredHistory.size} entries",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = accents.emerald
-                        )
+                        if (customerName.isNotBlank()) {
+                            Text(
+                                text = "${filteredHistory.size} entries",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = accents.emerald
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                     if (filteredHistory.isEmpty()) {
-                        EmptyStateCard(
-                            title = "No sales history",
-                            detail = if (customerName.isNotBlank()) {
-                                "No matching entries found."
-                            } else {
-                                "Save a sale or collection above to see it here."
-                            }
-                        )
+                        SarimCard(contentPadding = PaddingValues(18.dp)) {
+                            Text(
+                                text = if (customerName.isNotBlank()) {
+                                    "No matching sales history found."
+                                } else {
+                                    "Save a sale or collection above to see it here."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = accents.textMuted
+                            )
+                        }
                     } else {
-                        // Web: flat list of history cards; tapping a row opens SalesDetailSheet.
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            filteredHistory.forEach { s ->
-                                SalesHistoryRowCard(
-                                    s = s,
-                                    stores = snapshot.stores,
-                                    runningBalanceAfter = runningBalances[s.id],
-                                    isSelectedDate = s.date.take(10) == dateIso.take(10),
-                                    currency = currency,
-                                    masked = masked,
-                                    onClick = { selectedSaleForSheet = s }
-                                )
+                        val calcTotals: (List<com.gullzubair.sarim.data.model.SalesRecord>) -> Triple<Double, Double, Double> = { list ->
+                            val sold = list.filter { !FinanceEngine.isCollectionRow(it) && !it.isRepReturn }.sumOf { it.totalValue }
+                            val rec = list.sumOf {
+                                when {
+                                    FinanceEngine.isCollectionRow(it) -> if (it.collectedAmount > 0.0) it.collectedAmount else it.totalValue
+                                    it.paymentType == "CASH" -> it.totalValue
+                                    it.paymentType == "CREDIT" && it.creditReceived -> it.totalValue
+                                    else -> it.partialPaymentReceived
+                                }
                             }
+                            val qtyVal = list.sumOf { it.quantity }
+                            Triple(sold, rec, qtyVal)
+                        }
+                        SarimYearMonthDayTree(
+                            items = filteredHistory,
+                            dateOf = { it.date },
+                            summaryLabel = { list ->
+                                val (_, _, q) = calcTotals(list)
+                                "${InputGuards.formatKg(q)} sold"
+                            },
+                            yearSubLabel = { list ->
+                                val (sold, rec, _) = calcTotals(list)
+                                "Sold ${InputGuards.formatMoney(sold, currency, masked)} · Received ${InputGuards.formatMoney(rec, currency, masked)}"
+                            },
+                            monthSubLabel = { list ->
+                                val (sold, rec, _) = calcTotals(list)
+                                "Sold ${InputGuards.formatMoney(sold, currency, masked)} · Received ${InputGuards.formatMoney(rec, currency, masked)}"
+                            },
+                            daySummaryLabel = { list ->
+                                val (sold, rec, q) = calcTotals(list)
+                                "${InputGuards.formatKg(q)} sold | Sold: ${InputGuards.formatMoney(sold, currency, masked)} | Received: ${InputGuards.formatMoney(rec, currency, masked)}"
+                            },
+                            initiallyExpandFirstDay = false
+                        ) { s ->
+                            SalesHistoryRowCard(
+                                s = s,
+                                stores = snapshot.stores,
+                                runningBalanceAfter = runningBalances[s.id],
+                                isSelectedDate = s.date.take(10) == dateIso.take(10),
+                                currency = currency,
+                                masked = masked,
+                                onClick = { selectedSaleForSheet = s }
+                            )
                         }
                     }
                 }

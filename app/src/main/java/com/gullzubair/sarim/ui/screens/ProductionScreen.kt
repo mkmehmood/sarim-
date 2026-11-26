@@ -414,55 +414,40 @@ fun ProductionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Production History",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            text = "PRODUCTION HISTORY",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = accents.softPillFill
-                        ) {
-                            Text(
-                                text = "${filteredHistory.size} ${if (filteredHistory.size == 1) "entry" else "entries"}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = accents.emerald,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
+                        if (filteredHistory.isNotEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = accents.softPillFill
+                            ) {
+                                Text(
+                                    text = "${filteredHistory.size} ${if (filteredHistory.size == 1) "entry" else "entries"}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = accents.emerald,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 if (filteredHistory.isEmpty()) {
                     item {
-                        EmptyStateCard(
-                            title = "No records found for this selection",
-                            detail = if (effectiveView == "store") {
-                                "No entries for ${selectedStore?.name ?: "selected store"} on ${DateUtils.formatPretty(date)}."
-                            } else {
-                                "Log a production batch to see manufacturing history."
-                            }
-                        )
-                    }
-                } else if (effectiveView == "store") {
-                    items(filteredHistory, key = { it.id }) { rec ->
-                        ProductionHistoryRowCard(
-                            rec = rec,
-                            stores = snapshot.stores,
-                            photoStore = snapshot.photos,
-                            selectedDate = date,
-                            showStoreChip = false,
-                            currency = currency,
-                            masked = masked,
-                            isPhotoSelected = rec.id in selectedPhotoRecIds,
-                            expanded = expandedHistoryId == rec.id,
-                            onToggleExpand = { expandedHistoryId = if (expandedHistoryId == rec.id) null else rec.id },
-                            onTogglePhotoSelect = { on ->
-                                selectedPhotoRecIds = if (on) selectedPhotoRecIds + rec.id else selectedPhotoRecIds - rec.id
-                            },
-                            onOpenLightbox = { photos, idx -> lightboxState = Triple(photos, idx, rec) },
-                            onOpenDetails = { selectedRecord = rec },
-                            onEdit = { startEditing(rec) },
-                            onDelete = { pendingDelete = rec }
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 26.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No records found for this selection.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = accents.textMuted
+                            )
+                        }
                     }
                 } else {
                     item {
@@ -470,13 +455,14 @@ fun ProductionScreen(
                             items = filteredHistory,
                             dateOf = { it.date },
                             summaryLabel = { list -> InputGuards.formatKg(list.sumOf { abs(it.net) }) },
+                            initiallyExpandFirstDay = effectiveView == "store",
                             itemRow = { rec ->
                                 ProductionHistoryRowCard(
                                     rec = rec,
                                     stores = snapshot.stores,
                                     photoStore = snapshot.photos,
                                     selectedDate = date,
-                                    showStoreChip = true,
+                                    showStoreChip = effectiveView != "store",
                                     currency = currency,
                                     masked = masked,
                                     isPhotoSelected = rec.id in selectedPhotoRecIds,

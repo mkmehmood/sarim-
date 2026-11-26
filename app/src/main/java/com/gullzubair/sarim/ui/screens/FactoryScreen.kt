@@ -377,57 +377,93 @@ fun FactoryScreen(
             // 2. Units Available
             item {
                 SarimCard {
-                    FactoryCardTitle("Units Available")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FactoryCardTitle("Units Available")
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(accents.emerald)
+                            )
+                        }
+                        if (pools.isNotEmpty()) {
+                            FactoryChoiceRow(
+                                options = pools.map { it.label },
+                                selectedIndex = pools.indexOfFirst { it.key == selectedPool?.key },
+                                onSelect = { availPoolKey = pools[it].key },
+                                tagPrefix = "factory_pool_chip_"
+                            )
+                        }
+                    }
                     if (pools.isEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Text("0 kg", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                    } else {
-                        Spacer(Modifier.height(10.dp))
-                        FactoryChoiceRow(
-                            options = pools.map { it.label },
-                            selectedIndex = pools.indexOfFirst { it.key == selectedPool?.key },
-                            onSelect = { availPoolKey = pools[it].key },
-                            tagPrefix = "factory_pool_chip_"
-                        )
-                        if (selectedPool != null) {
-                            val prodForPool = activeProduction.filter { it.formulaId == selectedPool.formulaId }
-                            val poolFormula = snapshot.formulas.firstOrNull { it.id == selectedPool.formulaId }
-                            val weightPerUnit = poolFormula?.let {
-                                FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight
-                            } ?: 0.0
-                            val outputQuantity = prodForPool.sumOf { it.net }
-                            val rawMaterialsUsed = prodForPool.sumOf { p ->
-                                val matTotal = p.formulaMaterials.sumOf { fm ->
-                                    (fm["qty"] as? Number)?.toDouble()
-                                        ?: ((fm["quantity"] as? Number)?.toDouble()?.let { it * p.formulaUnits })
-                                        ?: 0.0
-                                }
-                                if (matTotal > 0.0) matTotal else weightPerUnit * p.formulaUnits
+                    } else if (selectedPool != null) {
+                        val prodForPool = activeProduction.filter { it.formulaId == selectedPool.formulaId }
+                        val poolFormula = snapshot.formulas.firstOrNull { it.id == selectedPool.formulaId }
+                        val weightPerUnit = poolFormula?.let {
+                            FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight
+                        } ?: 0.0
+                        val outputQuantity = prodForPool.sumOf { it.net }
+                        val rawMaterialsUsed = prodForPool.sumOf { p ->
+                            val matTotal = p.formulaMaterials.sumOf { fm ->
+                                (fm["qty"] as? Number)?.toDouble()
+                                    ?: ((fm["quantity"] as? Number)?.toDouble()?.let { it * p.formulaUnits })
+                                    ?: 0.0
                             }
-                            val costPerUnit = selectedPool.avgUnitCost
-                            val totalCostValue = costPerUnit * selectedPool.availableUnits
-                            val materialsValue = prodForPool.sumOf { if (it.formulaCost > 0.0) it.formulaCost else it.totalCost }
-                            val totalProfit = prodForPool.sumOf { it.profit }
-                            val profitPerKg = if (outputQuantity > 0.0) totalProfit / outputQuantity else 0.0
+                            if (matTotal > 0.0) matTotal else weightPerUnit * p.formulaUnits
+                        }
+                        val costPerUnit = selectedPool.avgUnitCost
+                        val totalCostValue = costPerUnit * selectedPool.availableUnits
+                        val materialsValue = prodForPool.sumOf { if (it.formulaCost > 0.0) it.formulaCost else it.totalCost }
+                        val totalProfit = prodForPool.sumOf { it.profit }
+                        val profitPerKg = if (outputQuantity > 0.0) totalProfit / outputQuantity else 0.0
 
-                            Spacer(Modifier.height(12.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FactoryStatRow("Units", listOf("Available" to InputGuards.fmtNum(selectedPool.availableUnits), "Used" to InputGuards.fmtNum(selectedPool.usedUnits)))
-                                FactoryStatRow("Output", listOf("Quantity" to "${InputGuards.fmtNum(outputQuantity)} kg", "Raw Used" to "${InputGuards.fmtNum(rawMaterialsUsed)} kg"))
-                                FactoryStatRow(
-                                    "Cost",
-                                    listOf(
-                                        "Per Unit" to InputGuards.formatMoney(costPerUnit, currency, masked),
-                                        "Total" to InputGuards.formatMoney(totalCostValue, currency, masked),
-                                        "Materials" to InputGuards.formatMoney(materialsValue, currency, masked)
-                                    )
+                        Spacer(Modifier.height(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FactoryGroupBox(
+                                    title = "UNITS",
+                                    rows = listOf(
+                                        Triple("Available", InputGuards.fmtNum(selectedPool.availableUnits), accents.gold),
+                                        Triple("Used", InputGuards.fmtNum(selectedPool.usedUnits), accents.gold)
+                                    ),
+                                    modifier = Modifier.weight(1f)
                                 )
-                                FactoryStatRow(
-                                    "Profit",
-                                    listOf(
-                                        "Total" to InputGuards.formatMoney(totalProfit, currency, masked),
-                                        "Per kg" to "${InputGuards.formatMoney(profitPerKg, currency, masked)}/kg"
-                                    )
+                                FactoryGroupBox(
+                                    title = "OUTPUT",
+                                    rows = listOf(
+                                        Triple("Quantity", "${InputGuards.fmtNum(outputQuantity)} kg", accents.gold),
+                                        Triple("Raw Used", "${InputGuards.fmtNum(rawMaterialsUsed)} kg", accents.gold)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FactoryGroupBox(
+                                    title = "COST",
+                                    rows = listOf(
+                                        Triple("Per Unit", InputGuards.formatMoney(costPerUnit, currency, masked), accents.danger),
+                                        Triple("Total", InputGuards.formatMoney(totalCostValue, currency, masked), accents.emerald),
+                                        Triple("Materials", InputGuards.formatMoney(materialsValue, currency, masked), accents.danger)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FactoryGroupBox(
+                                    title = "PROFIT",
+                                    rows = listOf(
+                                        Triple("Total", InputGuards.formatMoney(totalProfit, currency, masked), if (totalProfit >= 0.0) accents.emerald else accents.danger),
+                                        Triple("Per kg", "${InputGuards.formatMoney(profitPerKg, currency, masked)}/kg", accents.emerald)
+                                    ),
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -441,9 +477,9 @@ fun FactoryScreen(
                     FactoryCardTitle("Raw Material Inventory")
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("SORT BY", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                        FactoryPill("Material \u21C5", selected = !sortByValue, onClick = { sortByValue = false })
-                        FactoryPill("Total Value \u21C5", selected = sortByValue, onClick = { sortByValue = true })
+                        Text("Sort by", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        FactoryPill(if (sortByValue) "Material" else "Material ▲", selected = !sortByValue, onClick = { sortByValue = false })
+                        FactoryPill("Total Value ⇅", selected = sortByValue, onClick = { sortByValue = true })
                     }
                     Spacer(Modifier.height(8.dp))
                     if (materialsSorted.isEmpty()) {
@@ -464,7 +500,7 @@ fun FactoryScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(item.name, style = MaterialTheme.typography.titleSmall)
+                                    Text(item.name, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                                     val unitDesc = if (item.purchaseUnitName.isNotBlank()) "Unit: ${item.purchaseUnitName} (1 = ${InputGuards.fmtNum(item.conversionFactor)} kg) • " else ""
                                     Text(
                                         "${unitDesc}Avg ${InputGuards.formatMoney(item.cost, currency, masked)}/kg • ${lots.size} lots" +
@@ -491,10 +527,48 @@ fun FactoryScreen(
                         }
                     }
                     HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        FactoryStatTile("Total collected weight", "${InputGuards.fmtNum(materialsSorted.sumOf { it.quantity })} kg", accents.emerald, Modifier.weight(1f))
-                        FactoryStatTile("Total inventory value", InputGuards.formatMoney(materialsSorted.sumOf { it.quantity * it.cost }, currency, masked), accents.gold, Modifier.weight(1f))
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = accents.inputFill,
+                        border = BorderStroke(1.dp, accents.borderSubtle),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                                Text("Total collected weight", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "${InputGuards.fmtNum(materialsSorted.sumOf { it.quantity })} kg",
+                                    fontFamily = ManropeFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Box(
+                                Modifier
+                                    .width(1.dp)
+                                    .height(34.dp)
+                                    .background(accents.borderSubtle)
+                            )
+                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                Text("Total inventory value", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    InputGuards.formatMoney(materialsSorted.sumOf { it.quantity * it.cost }, currency, masked),
+                                    fontFamily = ManropeFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -584,22 +658,16 @@ fun FactoryScreen(
                 var showMaterialsBreakdown by remember { mutableStateOf(false) }
 
                 SarimCard {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FactoryCardTitle("Performance Summary")
-                        Spacer(Modifier.width(8.dp))
-                        FactoryChoiceRow(
-                            options = listOf("Daily", "Weekly", "Monthly", "Yearly", "All Times"),
-                            selectedIndex = listOf("daily", "weekly", "monthly", "yearly", "all").indexOf(summaryMode),
-                            onSelect = { summaryMode = listOf("daily", "weekly", "monthly", "yearly", "all")[it] },
-                            tagPrefix = "factory_summary_chip_",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    FactoryCardTitle("Performance Summary")
                     Spacer(Modifier.height(10.dp))
+                    FactoryChoiceRow(
+                        options = listOf("Daily", "Weekly", "Monthly", "Yearly", "All Times"),
+                        selectedIndex = listOf("daily", "weekly", "monthly", "yearly", "all").indexOf(summaryMode),
+                        onSelect = { summaryMode = listOf("daily", "weekly", "monthly", "yearly", "all")[it] },
+                        tagPrefix = "factory_summary_chip_",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
                     Text("TOTAL PROFIT", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                     Text(
                         InputGuards.formatMoney(sumTotalProfit, currency, masked),
@@ -721,7 +789,11 @@ fun FactoryScreen(
                         SarimYearMonthDayTree(
                             items = periodFactory,
                             dateOf = { it.date },
-                            summaryLabel = { list -> "Cost: ${InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked)}" },
+                            summaryLabel = { list -> "${list.size} ${if (list.size == 1) "entry" else "entries"}" },
+                            yearSubLabel = { list -> "Cost ${InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked)}" },
+                            monthSubLabel = { list -> "Cost ${InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked)}" },
+                            daySummaryLabel = { list -> "Cost: ${InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked)}" },
+                            initiallyExpandFirstDay = false,
                             itemRow = { rec ->
                                 val timeStr = remember(rec.timestamp) {
                                     if (rec.timestamp > 0L) SimpleDateFormat("hh:mm a", Locale.ENGLISH).format(Date(rec.timestamp)) else ""
@@ -954,61 +1026,45 @@ private fun FactoryHalfRingSubKpiBox(
 }
 
 @Composable
-private fun FactoryCallout(content: @Composable () -> Unit) {
-    val accents = LocalSarimAccents.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(accents.inputFill)
-            .border(1.dp, accents.borderSubtle, RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) { content() }
-}
-
-@Composable
-private fun FactoryStatTile(
-    label: String,
-    value: String,
-    tone: Color,
-    modifier: Modifier = Modifier,
-    subLabel: String? = null
+private fun FactoryGroupBox(
+    title: String,
+    rows: List<Triple<String, String, Color>>,
+    modifier: Modifier = Modifier
 ) {
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(accents.inputFill)
-            .border(1.dp, tone.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Text(label.uppercase(), fontFamily = JakartaFont, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 0.5.sp, color = accents.textMuted, maxLines = 1)
-        Spacer(Modifier.height(2.dp))
-        Text(value, fontFamily = ManropeFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = tone, maxLines = 1)
-        if (!subLabel.isNullOrBlank()) {
-            Text(subLabel, fontSize = 9.sp, color = accents.textMuted, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun FactoryStatRow(title: String, pairs: List<Pair<String, String>>) {
-    val accents = LocalSarimAccents.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(accents.inputFill)
-            .border(1.dp, accents.borderSubtle, RoundedCornerShape(14.dp))
+            .border(1.dp, accents.borderSubtle, RoundedCornerShape(16.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(title.uppercase(), fontFamily = JakartaFont, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.6.sp, color = accents.emerald, modifier = Modifier.width(56.dp))
-        pairs.forEach { (k, v) ->
-            Column(Modifier.weight(1f)) {
-                Text(k, fontSize = 9.sp, color = accents.textMuted, maxLines = 1)
-                Text(v, fontFamily = ManropeFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, maxLines = 1)
+        Text(
+            text = title,
+            fontFamily = JakartaFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 0.6.sp,
+            color = accents.emerald
+        )
+        rows.forEach { (k, v, c) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(k, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp), color = accents.textMuted, maxLines = 1)
+                Text(
+                    v,
+                    fontFamily = ManropeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
+                    color = c,
+                    maxLines = 1
+                )
             }
         }
     }
 }
+

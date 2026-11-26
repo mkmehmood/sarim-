@@ -59,6 +59,7 @@ import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.CinzelFont
+import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.LocationHelper
@@ -533,16 +534,41 @@ fun RepSalesScreen(
 
         // 5. Rep History Tree (#repHistoryList)
         item {
+            Text(
+                text = "REP HISTORY",
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontFamily = JakartaFont,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        item {
             if (filteredHistory.isEmpty()) {
                 EmptyStateCard("No rep history", "Saved field sales and collections appear here.")
             } else {
                 SarimYearMonthDayTree(
                     items = filteredHistory,
                     dateOf = { it.date },
-                    summaryLabel = { list ->
+                    yearSubLabel = { list ->
                         val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
                         val cash = list.sumOf { it.collectedAmount }
-                        "${InputGuards.formatKg(kg)} • ${InputGuards.formatMoney(cash, currency, masked)}"
+                        "${InputGuards.formatKg(kg)} · Collected ${InputGuards.formatMoney(cash, currency, masked)}"
+                    },
+                    monthSubLabel = { list ->
+                        val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
+                        val cash = list.sumOf { it.collectedAmount }
+                        "${InputGuards.formatKg(kg)} · Collected ${InputGuards.formatMoney(cash, currency, masked)}"
+                    },
+                    summaryLabel = { list ->
+                        "${list.size} ${if (list.size == 1) "entry" else "entries"}"
+                    },
+                    daySummaryLabel = { list ->
+                        val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
+                        val cash = list.sumOf { it.collectedAmount }
+                        "${InputGuards.formatKg(kg)} | Collected: ${InputGuards.formatMoney(cash, currency, masked)}"
                     },
                     itemRow = { r ->
                         RepHistoryRowCard(

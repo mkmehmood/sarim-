@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -176,11 +175,22 @@ fun ExpenseDetailsScreen(
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(EXPENSE_RANGES) { (key, label) ->
-                        FilterChip(
-                            selected = range == key,
+                        val selected = range == key
+                        Surface(
                             onClick = { range = key },
-                            label = { Text(label) }
-                        )
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (selected) accents.softPillFill else accents.inputFill,
+                            border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                            modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                                    color = if (selected) accents.emerald else accents.textMuted
+                                )
+                            }
+                        }
                     }
                 }
             }

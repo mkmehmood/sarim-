@@ -189,12 +189,12 @@ fun SarimTheme(
             borderSubtle = DarkOutlineVariant,
             textMuted = DarkTextSecondary,
             isDark = true,
-            glassTop = DarkSurfaceContainer,
-            glassBottom = DarkSurfaceLow,
-            inputFill = DarkSurfaceHigh,
-            inputBorder = DarkOutline,
-            headerFrosted = DarkSurfaceLow,
-            softPillFill = Color(0x2E4ADE80),
+            glassTop = DarkSurface,
+            glassBottom = Color(0xFF060808),
+            inputFill = DarkBackground,
+            inputBorder = DarkOutlineVariant,
+            headerFrosted = DarkBackground,
+            softPillFill = Color(0x1E4ADE80),
             cardBorderWidth = 1.dp
         )
     } else {
@@ -210,7 +210,7 @@ fun SarimTheme(
             isDark = false,
             glassTop = LightGlassTop,
             glassBottom = LightGlassBottom,
-            inputFill = LightSurfaceVariant,
+            inputFill = LightSurface,
             inputBorder = LightOutlineVariant,
             headerFrosted = LightHeaderFrosted,
             softPillFill = EmeraldLightContainer,

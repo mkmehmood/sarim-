@@ -159,7 +159,7 @@ fun PaymentTxDetailSheet(
                             onDismiss()
                             onEditEntry(tx)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.36f).testTag("pay_edit_${tx.id}")
@@ -300,7 +300,7 @@ fun ExpenseTxDetailSheet(
                             onDismiss()
                             onEditEntry(exp)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.weight(0.36f).testTag("exp_edit_${exp.id}")

@@ -23,14 +23,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.PictureAsPdf
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,9 +45,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,11 +63,29 @@ import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import android.content.Intent
 import android.net.Uri
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+
+private val customerAvatarBgDark = listOf(
+    Color(0xFF1A1F3C),
+    Color(0xFF1D2246),
+    Color(0xFF112A36),
+    Color(0xFF2E162B),
+    Color(0xFF122C38),
+    Color(0xFF132D2E)
+)
+private val customerAvatarFgDark = listOf(
+    Color(0xFF93A5FF),
+    Color(0xFFA5B4FC),
+    Color(0xFF67E8F9),
+    Color(0xFFF472B6),
+    Color(0xFF7DD3FC),
+    Color(0xFF5EEAD4)
+)
 
 @Composable
 fun CustomersDirectoryCard(
@@ -84,75 +104,103 @@ fun CustomersDirectoryCard(
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "CUSTOMERS",
-                    fontFamily = CinzelFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = accents.softPillFill
+            Text(
+                text = "CUSTOMERS",
+                fontFamily = CinzelFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = accents.inputFill,
+                border = BorderStroke(1.dp, accents.borderSubtle),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text = "${directory.totalCount} active",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = accents.emerald,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.5.sp
+                        ),
+                        cursorBrush = SolidColor(accents.emerald),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("sales_customer_search"),
+                        decorationBox = { inner ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search customers...",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = accents.textMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            inner()
+                        }
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Surface(
-                    onClick = onExportAllPdf,
-                    shape = CircleShape,
-                    color = accents.inputFill,
-                    border = BorderStroke(1.dp, accents.borderSubtle),
-                    modifier = Modifier.size(44.dp).testTag("sales_export_all_customers_pdf")
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.PictureAsPdf,
-                            contentDescription = "Download All Customers PDF",
-                            tint = accents.cyan,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
+            Text(
+                text = "${directory.totalCount} active",
+                style = MaterialTheme.typography.labelSmall,
+                color = accents.textMuted,
+                maxLines = 1
+            )
+            Surface(
+                onClick = onExportAllPdf,
+                shape = CircleShape,
+                color = accents.softPillFill,
+                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.55f)),
+                modifier = Modifier
+                    .size(40.dp)
+                    .testTag("sales_export_all_customers_pdf")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Description,
+                        contentDescription = "Download All Customers PDF",
+                        tint = accents.emerald,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-                Surface(
-                    onClick = onAddCustomer,
-                    shape = CircleShape,
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.size(44.dp).testTag("sales_add_customer_btn")
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = "Add New Customer",
-                            tint = accents.emerald,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+            }
+            Surface(
+                onClick = onAddCustomer,
+                shape = CircleShape,
+                color = accents.softPillFill,
+                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.55f)),
+                modifier = Modifier
+                    .size(40.dp)
+                    .testTag("sales_add_customer_btn")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.PersonAdd,
+                        contentDescription = "Add New Customer",
+                        tint = accents.emerald,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
 
-        Spacer(Modifier.height(10.dp))
-        SarimPillInput(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-            testTag = "sales_customer_search"
-        )
-
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         if (directory.items.isEmpty()) {
             Text(
                 text = if (searchQuery.isBlank()) "No customers yet." else "No matching customers.",
@@ -161,150 +209,167 @@ fun CustomersDirectoryCard(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 360.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = accents.inputFill,
+                border = BorderStroke(1.dp, accents.borderSubtle),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                directory.items.forEachIndexed { idx, item ->
-                    val initials = item.name.split(" ")
-                        .filter { it.isNotBlank() }
-                        .take(2)
-                        .joinToString("") { it.first().uppercaseChar().toString() }
-                        .ifBlank { "C" }
-                    val isSettled = abs(item.credit) < 0.01
-                    val creditColor = when {
-                        isSettled -> accents.emerald
-                        item.credit < 0.0 -> accents.cyan
-                        else -> accents.danger
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = accents.inputFill,
-                        border = BorderStroke(1.dp, accents.borderSubtle),
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onOpenCustomerDetail(item.name) }
-                            .testTag("customer_card_${idx}")
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(modifier = Modifier.size(46.dp)) {
-                                if (!item.photoUri.isNullOrBlank()) {
-                                    DecodedDataUrlImage(
-                                        dataUrl = item.photoUri,
-                                        contentDescription = "${item.name} photo",
-                                        modifier = Modifier.size(42.dp).clip(CircleShape).align(Alignment.Center)
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(accents.softPillFill)
-                                            .align(Alignment.Center),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = initials,
-                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.emerald
-                                        )
-                                    }
-                                }
-                                if (item.ledgerPage.isNotBlank()) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(1.dp, accents.emerald),
-                                        modifier = Modifier.align(Alignment.BottomEnd)
-                                    ) {
-                                        Text(
-                                            text = item.ledgerPage,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                            color = accents.emerald,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
+                        directory.items.forEachIndexed { idx, item ->
+                            val initials = item.name.split(" ")
+                                .filter { it.isNotBlank() }
+                                .take(2)
+                                .joinToString("") { it.first().uppercaseChar().toString() }
+                                .ifBlank { "C" }
+                            val isSettled = abs(item.credit) < 0.01
+                            val creditColor = when {
+                                isSettled -> accents.emerald
+                                item.credit < 0.0 -> accents.cyan
+                                else -> accents.danger
                             }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = item.name.uppercase(),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (item.phone.isNotBlank()) {
-                                    Text(
-                                        text = item.phone,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = accents.emerald,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.clickable {
-                                            runCatching {
-                                                context.startActivity(
-                                                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + item.phone.filter { it.isDigit() || it == '+' }))
-                                                )
-                                            }
+                            val bgTint = customerAvatarBgDark[idx % customerAvatarBgDark.size]
+                            val fgTint = customerAvatarFgDark[idx % customerAvatarFgDark.size]
+                            if (idx > 0) {
+                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = 60.dp)
+                                    .clickable { onOpenCustomerDetail(item.name) }
+                                    .padding(vertical = 10.dp)
+                                    .testTag("customer_card_${idx}"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(modifier = Modifier.size(44.dp)) {
+                                    if (!item.photoUri.isNullOrBlank()) {
+                                        DecodedDataUrlImage(
+                                            dataUrl = item.photoUri,
+                                            contentDescription = "${item.name} photo",
+                                            modifier = Modifier.size(40.dp).clip(CircleShape).align(Alignment.Center)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(bgTint)
+                                                .align(Alignment.Center),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = initials,
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = fgTint
+                                            )
                                         }
-                                    )
+                                    }
+                                    if (item.ledgerPage.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(1.dp, accents.emerald),
+                                            modifier = Modifier.align(Alignment.BottomEnd)
+                                        ) {
+                                            Text(
+                                                text = item.ledgerPage,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                color = accents.emerald,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
                                 }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.name.uppercase(),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (item.phone.isNotBlank()) {
+                                        Text(
+                                            text = item.phone,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Medium,
+                                                textDecoration = TextDecoration.Underline
+                                            ),
+                                            color = accents.emerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.clickable {
+                                                runCatching {
+                                                    context.startActivity(
+                                                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + item.phone.filter { it.isDigit() || it == '+' }))
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "No phone",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = accents.textMuted,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = InputGuards.formatMoney(if (isSettled) 0.0 else item.credit, currency, masked),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                    color = creditColor
+                                )
                             }
-                            Spacer(Modifier.width(8.dp))
+                        }
+                    }
+
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.65f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                            Text("Outstanding credit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Spacer(Modifier.height(2.dp))
                             Text(
-                                text = InputGuards.formatMoney(if (isSettled) 0.0 else item.credit, currency, masked),
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
-                                color = creditColor
+                                text = InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                                color = if (directory.totalOutstandingCredit > 0.01) accents.danger else accents.emerald,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(34.dp)
+                                .background(accents.borderSubtle)
+                        )
+                        Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+                            Text("Quantity sold", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = InputGuards.formatKg(directory.totalSoldKg),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
-                Text("Outstanding credit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked),
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = if (directory.totalOutstandingCredit > 0.01) accents.danger else accents.emerald,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(34.dp)
-                    .background(accents.borderSubtle)
-            )
-            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                Text("Quantity sold", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = InputGuards.formatKg(directory.totalSoldKg),
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = accents.cyan,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }
@@ -322,53 +387,40 @@ fun SalesAnalyticsCard(
     val accents = LocalSarimAccents.current
     var activeBarIdx by remember(chartData.labels, selectedPeriod) { mutableStateOf<Int?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SarimCard(contentPadding = PaddingValues(16.dp)) {
+    SarimCard(contentPadding = PaddingValues(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Analytics",
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = accents.emerald
+            )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Analytics",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                if (customerFilter.isNotBlank()) {
-                    Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
-                        Text(
-                            text = customerFilter.trim(),
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = accents.emerald,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 SalesAnalyticsEngine.SalesChartPeriod.entries.forEach { p ->
                     val selected = p == selectedPeriod
                     Surface(
                         onClick = { onSelectPeriod(p) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
-                            .defaultMinSize(minHeight = 38.dp)
+                            .defaultMinSize(minHeight = 34.dp)
                             .testTag("sales_chart_period_${p.key}")
                     ) {
-                        Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
                             Text(
                                 text = p.label,
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.5.sp
                                 ),
                                 color = if (selected) accents.emerald else accents.textMuted,
                                 maxLines = 1
@@ -377,114 +429,174 @@ fun SalesAnalyticsCard(
                     }
                 }
             }
-
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(accents.emerald))
-                    Text("Cash (incl. received)", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(accents.gold))
-                    Text("Pending Credit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                }
+        }
+        if (customerFilter.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Surface(shape = RoundedCornerShape(999.dp), color = accents.softPillFill) {
+                Text(
+                    text = customerFilter.trim(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.emerald,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
             }
+        }
 
-            Spacer(Modifier.height(10.dp))
-            val totals = remember(chartData) {
-                chartData.labels.indices.map { i ->
-                    chartData.cashValues.getOrElse(i) { 0.0 } + chartData.creditValues.getOrElse(i) { 0.0 }
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = accents.inputFill,
+            border = BorderStroke(1.dp, accents.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    text = "Sales by Payment Type (${selectedPeriod.label})",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(accents.emerald))
+                        Text("Cash Sales (Inc. Received Credits)", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(accents.gold))
+                        Text("Pending Credits", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    }
                 }
-            }
-            if (chartData.labels.isEmpty() || totals.all { it <= 0.0 }) {
-                Text("No sales recorded in this period.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-            } else {
-                val maxTotal = totals.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .pointerInput(chartData.labels.size) {
-                            detectTapGestures { offset ->
-                                if (size.width > 0 && chartData.labels.isNotEmpty()) {
-                                    val idx = ((offset.x / size.width.toFloat()) * chartData.labels.size)
-                                        .toInt().coerceIn(0, chartData.labels.lastIndex)
-                                    activeBarIdx = if (activeBarIdx == idx) null else idx
+
+                Spacer(Modifier.height(10.dp))
+                val totals = remember(chartData) {
+                    chartData.labels.indices.map { i ->
+                        chartData.cashValues.getOrElse(i) { 0.0 } + chartData.creditValues.getOrElse(i) { 0.0 }
+                    }
+                }
+                if (chartData.labels.isEmpty() || totals.all { it <= 0.0 }) {
+                    Text("No sales recorded in this period.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                } else {
+                    val maxTotal = totals.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+                    val yTicks = listOf(1.0, 0.75, 0.5, 0.25, 0.0)
+                    Row(modifier = Modifier.fillMaxWidth().height(155.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .width(34.dp)
+                                .fillMaxHeight()
+                                .padding(bottom = 6.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            yTicks.forEach { frac ->
+                                Text(
+                                    text = if (frac == 0.0) "0" else formatCompactMetric(maxTotal * frac, masked),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                    color = accents.textMuted,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Canvas(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .pointerInput(chartData.labels.size) {
+                                    detectTapGestures { offset ->
+                                        if (size.width > 0 && chartData.labels.isNotEmpty()) {
+                                            val idx = ((offset.x / size.width.toFloat()) * chartData.labels.size)
+                                                .toInt().coerceIn(0, chartData.labels.lastIndex)
+                                            activeBarIdx = if (activeBarIdx == idx) null else idx
+                                        }
+                                    }
+                                }
+                        ) {
+                            val count = chartData.labels.size.coerceAtLeast(1)
+                            val slotW = size.width / count
+                            val barW = (slotW * 0.58f).coerceIn(5f, 44f)
+                            val baselineY = size.height - 6f
+                            val drawH = baselineY - 8f
+                            yTicks.forEach { frac ->
+                                val y = baselineY - (drawH * frac.toFloat())
+                                drawLine(
+                                    color = accents.borderSubtle.copy(alpha = if (frac == 0.0) 0.8f else 0.35f),
+                                    start = Offset(0f, y),
+                                    end = Offset(size.width, y),
+                                    strokeWidth = if (frac == 0.0) 1.5f else 1f,
+                                    pathEffect = if (frac == 0.0) null else PathEffect.dashPathEffect(floatArrayOf(5f, 5f))
+                                )
+                            }
+                            chartData.labels.indices.forEach { idx ->
+                                val cashV = max(0.0, chartData.cashValues.getOrElse(idx) { 0.0 })
+                                val credV = max(0.0, chartData.creditValues.getOrElse(idx) { 0.0 })
+                                val cashH = ((cashV / maxTotal).toFloat() * drawH).coerceAtLeast(if (cashV > 0.0) 4f else 0f)
+                                val credH = ((credV / maxTotal).toFloat() * drawH).coerceAtLeast(if (credV > 0.0) 4f else 0f)
+                                val left = idx * slotW + (slotW - barW) / 2f
+                                val alpha = if (activeBarIdx == null || activeBarIdx == idx) 0.94f else 0.45f
+                                if (cashH > 0f) {
+                                    drawRoundRect(
+                                        color = accents.emerald.copy(alpha = alpha),
+                                        topLeft = Offset(left, baselineY - cashH),
+                                        size = Size(barW, cashH),
+                                        cornerRadius = CornerRadius(6f, 6f)
+                                    )
+                                }
+                                if (credH > 0f) {
+                                    drawRoundRect(
+                                        color = accents.gold.copy(alpha = alpha),
+                                        topLeft = Offset(left, baselineY - cashH - credH),
+                                        size = Size(barW, credH),
+                                        cornerRadius = CornerRadius(6f, 6f)
+                                    )
                                 }
                             }
                         }
-                ) {
-                    val count = chartData.labels.size.coerceAtLeast(1)
-                    val slotW = size.width / count
-                    val barW = (slotW * 0.6f).coerceIn(5f, 44f)
-                    val baselineY = size.height - 6f
-                    val drawH = baselineY - 8f
-                    drawLine(
-                        color = accents.borderSubtle,
-                        start = Offset(0f, baselineY),
-                        end = Offset(size.width, baselineY),
-                        strokeWidth = 2f
-                    )
-                    chartData.labels.indices.forEach { idx ->
-                        val cashV = max(0.0, chartData.cashValues.getOrElse(idx) { 0.0 })
-                        val credV = max(0.0, chartData.creditValues.getOrElse(idx) { 0.0 })
-                        val cashH = ((cashV / maxTotal).toFloat() * drawH).coerceAtLeast(if (cashV > 0.0) 4f else 0f)
-                        val credH = ((credV / maxTotal).toFloat() * drawH).coerceAtLeast(if (credV > 0.0) 4f else 0f)
-                        val left = idx * slotW + (slotW - barW) / 2f
-                        val alpha = if (activeBarIdx == null || activeBarIdx == idx) 0.92f else 0.45f
-                        if (cashH > 0f) {
-                            drawRoundRect(
-                                color = accents.emerald.copy(alpha = alpha),
-                                topLeft = Offset(left, baselineY - cashH),
-                                size = Size(barW, cashH),
-                                cornerRadius = CornerRadius(5f, 5f)
-                            )
-                        }
-                        if (credH > 0f) {
-                            drawRoundRect(
-                                color = accents.gold.copy(alpha = alpha),
-                                topLeft = Offset(left, baselineY - cashH - credH),
-                                size = Size(barW, credH),
-                                cornerRadius = CornerRadius(5f, 5f)
-                            )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    val stride = when {
+                        chartData.labels.size > 20 -> 5
+                        chartData.labels.size > 12 -> 3
+                        else -> 1
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 42.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        chartData.labels.forEachIndexed { idx, lbl ->
+                            if (idx % stride == 0 || idx == chartData.labels.lastIndex) {
+                                Text(lbl, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
+                            }
                         }
                     }
-                }
 
-                Spacer(Modifier.height(4.dp))
-                val stride = when {
-                    chartData.labels.size > 20 -> 5
-                    chartData.labels.size > 12 -> 3
-                    else -> 1
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    chartData.labels.forEachIndexed { idx, lbl ->
-                        if (idx % stride == 0 || idx == chartData.labels.lastIndex) {
-                            Text(lbl, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = accents.textMuted)
-                        }
-                    }
-                }
-
-                activeBarIdx?.let { idx ->
-                    if (idx in chartData.labels.indices) {
-                        val c = chartData.cashValues.getOrElse(idx) { 0.0 }
-                        val cr = chartData.creditValues.getOrElse(idx) { 0.0 }
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(chartData.labels[idx], style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = accents.cyan)
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Cash", style = MaterialTheme.typography.bodySmall, color = accents.emerald)
-                                    Text(InputGuards.formatMoney(c, currency, masked), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                                }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Pending Credit", style = MaterialTheme.typography.bodySmall, color = accents.gold)
-                                    Text(InputGuards.formatMoney(cr, currency, masked), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    activeBarIdx?.let { idx ->
+                        if (idx in chartData.labels.indices) {
+                            val c = chartData.cashValues.getOrElse(idx) { 0.0 }
+                            val cr = chartData.creditValues.getOrElse(idx) { 0.0 }
+                            Spacer(Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, accents.borderSubtle),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(chartData.labels[idx], style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = accents.cyan)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Cash", style = MaterialTheme.typography.bodySmall, color = accents.emerald)
+                                        Text(InputGuards.formatMoney(c, currency, masked), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                    }
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Pending Credit", style = MaterialTheme.typography.bodySmall, color = accents.gold)
+                                        Text(InputGuards.formatMoney(cr, currency, masked), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                    }
                                 }
                             }
                         }
@@ -493,12 +605,13 @@ fun SalesAnalyticsCard(
             }
         }
 
+        Spacer(Modifier.height(12.dp))
         val pieTotal = InputGuards.round2(chartData.totalCash + chartData.totalCredit)
         OverviewDonutSummaryCard(
             title = "Total: ${InputGuards.formatMoney(pieTotal, currency, masked)} - ${selectedPeriod.label}",
             items = listOf(
-                "Cash" to chartData.totalCash,
-                "Pending Credit" to chartData.totalCredit
+                "Cash Sales (Inc. Received Credits)" to chartData.totalCash,
+                "Pending Credits" to chartData.totalCredit
             ),
             currency = currency,
             masked = masked
@@ -524,140 +637,169 @@ fun SalesSummaryCard(
         ) {
             Text(
                 text = "Summary",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            if (customerFilter.isNotBlank()) {
-                Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
-                    Text(
-                        text = customerFilter.trim(),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = accents.emerald,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            SalesAnalyticsEngine.SalesSummaryPeriod.entries.forEach { p ->
-                val selected = p == selectedPeriod
-                Surface(
-                    onClick = { onSelectPeriod(p) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (selected) accents.softPillFill else accents.inputFill,
-                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                    modifier = Modifier
-                        .defaultMinSize(minHeight = 38.dp)
-                        .testTag("sales_summary_period_${p.key}")
-                ) {
-                    Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = p.label,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                            ),
-                            color = if (selected) accents.emerald else accents.textMuted,
-                            maxLines = 1
-                        )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SalesAnalyticsEngine.SalesSummaryPeriod.entries.forEach { p ->
+                    val selected = p == selectedPeriod
+                    Surface(
+                        onClick = { onSelectPeriod(p) },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (selected) accents.softPillFill else accents.inputFill,
+                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 34.dp)
+                            .testTag("sales_summary_period_${p.key}")
+                    ) {
+                        Box(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = p.label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.5.sp
+                                ),
+                                color = if (selected) accents.emerald else accents.textMuted,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
         }
-
-        Spacer(Modifier.height(14.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = selectedPeriod.title,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                color = accents.textMuted
-            )
-            summary.marginPercent?.let { m ->
-                val chipColor = if (m >= 0) accents.emerald else accents.danger
-                Surface(shape = RoundedCornerShape(10.dp), color = chipColor.copy(alpha = 0.14f)) {
-                    Text(
-                        text = "$m% margin",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = chipColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
+        if (customerFilter.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Surface(shape = RoundedCornerShape(999.dp), color = accents.softPillFill) {
+                Text(
+                    text = customerFilter.trim(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.emerald,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
             }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = InputGuards.formatMoney(summary.totalValue, currency, masked),
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = "Total value (${InputGuards.formatKg(summary.quantityKg)})",
-            style = MaterialTheme.typography.bodySmall,
-            color = accents.textMuted
-        )
-
-        Spacer(Modifier.height(10.dp))
-        val cashV = max(0.0, summary.cashAmount)
-        val credV = max(0.0, summary.pendingCreditAmount)
-        val totalSplit = cashV + credV
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(accents.inputFill)
-        ) {
-            if (totalSplit > 0.0) {
-                if (cashV > 0.0) {
-                    Box(Modifier.weight(max(0.02f, (cashV / totalSplit).toFloat())).fillMaxHeight().background(accents.emerald))
-                }
-                if (credV > 0.0) {
-                    Box(Modifier.weight(max(0.02f, (credV / totalSplit).toFloat())).fillMaxHeight().background(accents.gold))
-                }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        val cashPct = if (totalSplit > 0.0) ((cashV / totalSplit) * 100.0).roundToInt() else 0
-        val credPct = if (totalSplit > 0.0) 100 - cashPct else 0
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Cash $cashPct%", style = MaterialTheme.typography.labelSmall, color = accents.emerald)
-            Text("Credit $credPct%", style = MaterialTheme.typography.labelSmall, color = accents.gold)
         }
 
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SalesKpiTile("Quantity", InputGuards.formatKg(summary.quantityKg), accents.cyan, Modifier.weight(1f))
-            SalesKpiTile(
-                "Net profit",
-                InputGuards.formatMoney(summary.netProfit, currency, masked),
-                if (summary.netProfit >= 0.0) accents.emerald else accents.danger,
-                Modifier.weight(1f)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SalesKpiTile(
-                "Cash (incl. received)",
-                InputGuards.formatMoney(summary.cashAmount, currency, masked),
-                accents.emerald,
-                Modifier.weight(1f)
-            )
-            SalesKpiTile(
-                "Pending credits",
-                InputGuards.formatMoney(summary.pendingCreditAmount, currency, masked),
-                accents.gold,
-                Modifier.weight(1f)
-            )
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = accents.inputFill,
+            border = BorderStroke(1.dp, accents.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = selectedPeriod.title,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    summary.marginPercent?.let { m ->
+                        val chipColor = if (m >= 0) accents.emerald else accents.danger
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = chipColor.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, chipColor.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "$m% margin",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = chipColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "TOTAL VALUE",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                    color = accents.textMuted
+                )
+                Text(
+                    text = InputGuards.formatMoney(summary.totalValue, currency, masked),
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.emerald
+                )
+
+                Spacer(Modifier.height(10.dp))
+                val cashV = max(0.0, summary.cashAmount)
+                val credV = max(0.0, summary.pendingCreditAmount)
+                val totalSplit = cashV + credV
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    if (totalSplit > 0.0) {
+                        if (cashV > 0.0) {
+                            Box(Modifier.weight(max(0.02f, (cashV / totalSplit).toFloat())).fillMaxHeight().background(accents.emerald))
+                        }
+                        if (credV > 0.0) {
+                            Box(Modifier.weight(max(0.02f, (credV / totalSplit).toFloat())).fillMaxHeight().background(accents.gold))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                val cashPct = if (totalSplit > 0.0) ((cashV / totalSplit) * 100.0).roundToInt() else 0
+                val credPct = if (totalSplit > 0.0) 100 - cashPct else 0
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(accents.emerald))
+                        Text(
+                            "Cash ${InputGuards.formatMoney(summary.cashAmount, currency, masked)} $cashPct%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(accents.gold))
+                        Text(
+                            "Credit ${InputGuards.formatMoney(summary.pendingCreditAmount, currency, masked)} $credPct%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SarimHalfRingKpiBox("QUANTITY", InputGuards.formatKg(summary.quantityKg), accents.cyan, Modifier.weight(1f))
+                    SarimHalfRingKpiBox(
+                        "NET PROFIT",
+                        InputGuards.formatMoney(summary.netProfit, currency, masked),
+                        if (summary.netProfit >= 0.0) accents.emerald else accents.danger,
+                        Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SarimHalfRingKpiBox(
+                        "CASH (INCL. RECEIVED)",
+                        InputGuards.formatMoney(summary.cashAmount, currency, masked),
+                        accents.emerald,
+                        Modifier.weight(1f)
+                    )
+                    SarimHalfRingKpiBox(
+                        "PENDING CREDITS",
+                        InputGuards.formatMoney(summary.pendingCreditAmount, currency, masked),
+                        accents.gold,
+                        Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
