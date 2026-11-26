@@ -62,6 +62,8 @@ import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import android.content.Intent
+import android.net.Uri
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -79,6 +81,7 @@ fun CustomersDirectoryCard(
     onEditCustomer: (String) -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     SarimCard(contentPadding = PaddingValues(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -98,7 +101,7 @@ fun CustomersDirectoryCard(
                     color = accents.softPillFill
                 ) {
                     Text(
-                        text = "${directory.totalCount} active",
+                        text = "${directory.totalCount} customers",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = accents.emerald,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -139,7 +142,7 @@ fun CustomersDirectoryCard(
         SarimPillInput(
             value = searchQuery,
             onValueChange = onSearchChange,
-            placeholder = "Search name, phone, page...",
+            placeholder = "Search customers...",
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             testTag = "sales_customer_search"
         )
@@ -232,57 +235,29 @@ fun CustomersDirectoryCard(
                                         }
                                     }
                                 }
-                                Text(
-                                    text = buildString {
-                                        append(item.phone.ifBlank { "No phone" })
-                                        if (item.quantity > 0.0) {
-                                            append(" • ${InputGuards.formatKg(item.quantity)}")
-                                        }
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = accents.textMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Column(horizontalAlignment = Alignment.End) {
-                                if (isSettled) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = accents.emerald.copy(alpha = 0.14f)
-                                    ) {
-                                        Text(
-                                            text = if (masked) "••••" else "Settled",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = accents.emerald,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                } else {
-                                    val creditTxt = if (item.credit < 0.0) {
-                                        "${InputGuards.formatMoney(-item.credit, currency, masked)} CR"
-                                    } else {
-                                        InputGuards.formatMoney(item.credit, currency, masked)
-                                    }
+                                if (item.phone.isNotBlank()) {
                                     Text(
-                                        text = creditTxt,
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                        color = creditColor
+                                        text = item.phone,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accents.cyan,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.clickable {
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + item.phone.filter { it.isDigit() || it == '+' }))
+                                                )
+                                            }
+                                        }
                                     )
                                 }
                             }
-                            IconButton(
-                                onClick = { onEditCustomer(item.name) },
-                                modifier = Modifier.size(44.dp).testTag("edit_cust_$idx")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Edit ${item.name}",
-                                    tint = accents.textMuted,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = InputGuards.formatMoney(if (isSettled) 0.0 else item.credit, currency, masked),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = creditColor
+                            )
                         }
                     }
                 }

@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,8 +50,6 @@ import com.gullzubair.sarim.ui.components.SalesSaveConfirmModel
 import com.gullzubair.sarim.ui.components.SalesSummaryCard
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.TabHeading
-import com.gullzubair.sarim.ui.components.SarimPillInput
-import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
@@ -97,19 +93,18 @@ fun SalesScreen(
     var customerPhone by remember { mutableStateOf("") }
     var selectedRep by remember { mutableStateOf("NONE") }
     var selectedStore by remember(activeStores) { mutableStateOf(activeStores.firstOrNull()) }
-    var paymentType by remember { mutableStateOf("CASH") }
+    var paymentType by remember { mutableStateOf("CREDIT") }
     var qtyStr by remember { mutableStateOf("") }
     var rateStr by remember { mutableStateOf("") }
     var collectedStr by remember { mutableStateOf("") }
     var expiredStr by remember { mutableStateOf("") }
     var repReturnedStr by remember { mutableStateOf("") }
     var repExpiredStr by remember { mutableStateOf("") }
-    var addToLedger by remember { mutableStateOf(true) }
+    var addToLedger by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf("") }
 
     // Directory, Analytics, Summary & History controls
     var customerSearch by remember { mutableStateOf("") }
-    var historySearch by remember { mutableStateOf("") }
     var chartPeriod by remember { mutableStateOf(SalesAnalyticsEngine.SalesChartPeriod.WEEK) }
     var summaryPeriod by remember { mutableStateOf(SalesAnalyticsEngine.SalesSummaryPeriod.DAY) }
 
@@ -137,12 +132,14 @@ fun SalesScreen(
 
     fun resetForm() {
         editingSale = null
+        // Web resets to Direct / Credit / first store and leaves the date alone.
         entryMode = SalesEntryMode.SALE
-        dateIso = todayIso
         customerName = ""
         customerPhone = ""
         selectedRep = "NONE"
-        paymentType = "CASH"
+        selectedStore = activeStores.firstOrNull()
+        paymentType = "CREDIT"
+        addToLedger = false
         qtyStr = ""
         collectedStr = ""
         expiredStr = ""
@@ -299,16 +296,11 @@ fun SalesScreen(
         SalesAnalyticsEngine.computeCustomerRunningBalances(snapshot)
     }
 
-    val filteredHistory = remember(snapshot, customerName, historySearch) {
+    val filteredHistory = remember(snapshot, customerName) {
         val cf = customerName.trim().lowercase()
-        val hs = historySearch.trim().lowercase()
         snapshot.sales.filter { s ->
             if (s.deletedAt != null || !SalesAnalyticsEngine.isAdminSaleProfile(s.currentRepProfile)) return@filter false
             if (cf.isNotBlank() && !s.customerName.lowercase().contains(cf)) return@filter false
-            if (hs.isNotBlank()) {
-                val hay = "${s.customerName} ${s.paymentType} ${s.salesRep} ${s.supplyStore} ${s.notes} ${s.date}".lowercase()
-                if (!hay.contains(hs)) return@filter false
-            }
             true
         }.sortedWith(compareByDescending<SalesRecord> { it.date }.thenByDescending { it.timestamp })
     }
@@ -698,35 +690,19 @@ fun SalesScreen(
                         )
                     }
                     Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = historySearch,
-                        onValueChange = { historySearch = it },
-                        placeholder = "Filter history by customer, store, rep...",
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        testTag = "sales_history_search"
-                    )
-                    Spacer(Modifier.height(10.dp))
                     if (filteredHistory.isEmpty()) {
                         EmptyStateCard(
                             title = "No sales history",
-                            detail = if (customerName.isNotBlank() || historySearch.isNotBlank()) {
+                            detail = if (customerName.isNotBlank()) {
                                 "No matching entries found."
                             } else {
                                 "Save a sale or collection above to see it here."
                             }
                         )
                     } else {
-                        SarimYearMonthDayTree(
-                            items = filteredHistory,
-                            dateOf = { it.date },
-                            summaryLabel = { list ->
-                                val kg = list.sumOf { FinanceEngine.soldQuantity(it) }
-                                val tot = FinanceEngine.periodTotals(
-                                    list.map { item -> item to FinanceEngine.effectiveSaleValue(item, snapshot.customers, snapshot.stores) }
-                                )
-                                "${InputGuards.formatKg(kg)} sold • Sold ${InputGuards.formatMoney(tot.totalSale, currency, masked)} • Rec ${InputGuards.formatMoney(tot.totalReceived, currency, masked)}"
-                            },
-                            itemRow = { s ->
+                        // Web: flat list of history cards, filtered only by the typed customer name.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            filteredHistory.forEach { s ->
                                 SalesHistoryRowCard(
                                     s = s,
                                     stores = snapshot.stores,
@@ -737,7 +713,7 @@ fun SalesScreen(
                                     onClick = { selectedSale = s }
                                 )
                             }
-                        )
+                        }
                     }
                 }
             }
