@@ -16,11 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -140,11 +140,11 @@ fun parseDialogMessage(message: String): ParsedDialogMessage {
 }
 
 private fun toneIcon(tone: DialogTone, title: String, confirmText: String): ImageVector = when (tone) {
-    DialogTone.Danger -> if (DELETE_RE.containsMatchIn("$title $confirmText")) Icons.Default.DeleteOutline else Icons.Default.WarningAmber
-    DialogTone.Warning -> Icons.Default.WarningAmber
-    DialogTone.Error -> Icons.Default.ErrorOutline
-    DialogTone.Success -> Icons.Default.CheckCircleOutline
-    DialogTone.Primary -> Icons.Default.HelpOutline
+    DialogTone.Danger -> if (DELETE_RE.containsMatchIn("$title $confirmText")) Icons.Rounded.DeleteSweep else Icons.Rounded.WarningAmber
+    DialogTone.Warning -> Icons.Rounded.WarningAmber
+    DialogTone.Error -> Icons.Rounded.ErrorOutline
+    DialogTone.Success -> Icons.Rounded.CheckCircle
+    DialogTone.Primary -> Icons.Rounded.HelpOutline
 }
 
 /** A tick-box row shown above the buttons (web showGlassConfirm `checkbox`). */
@@ -180,7 +180,7 @@ fun SarimConfirmDialog(
         DialogTone.Error -> accents.danger to accents.danger
         DialogTone.Primary -> accents.cyan to accents.emerald
     }
-    val ink = Color(0xFF03170B)
+    val ink = if (accents.isDark) Color(0xFF03170B) else Color.White
     val strong = MaterialTheme.colorScheme.onSurface
     val faint = accents.textMuted
     val safeFirst = !alertOnly && resolved == DialogTone.Danger
@@ -192,24 +192,30 @@ fun SarimConfirmDialog(
     ) {
         Box(Modifier.padding(16.dp).widthIn(max = 400.dp).fillMaxWidth()) {
             Surface(
-                shape = RoundedCornerShape(26.dp),
-                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(32.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                tonalElevation = 6.dp,
+                shadowElevation = 14.dp,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.background(Brush.linearGradient(listOf(g1.copy(alpha = 0.10f), Color.Transparent)))) {
+                Column(Modifier.background(Brush.linearGradient(listOf(g1.copy(alpha = 0.12f), Color.Transparent)))) {
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 20.dp),
+                        Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 22.dp),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Box(
-                            Modifier.size(46.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(13.dp)),
+                            Modifier.size(50.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(16.dp)),
                             contentAlignment = Alignment.Center
                         ) { Icon(toneIcon(resolved, title, confirmText), null, tint = ink, modifier = Modifier.size(26.dp)) }
-                        Surface(shape = RoundedCornerShape(999.dp), color = strong.copy(alpha = 0.12f)) {
-                            Row(Modifier.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(toneIcon(resolved, title, confirmText), null, tint = g2, modifier = Modifier.size(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = g1.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, g1.copy(alpha = 0.25f))
+                        ) {
+                            Row(Modifier.padding(start = 10.dp, end = 14.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(toneIcon(resolved, title, confirmText), null, tint = g1, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.size(6.dp))
                                 Text(resolved.eyebrow.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = strong)
                             }

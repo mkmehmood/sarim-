@@ -17,9 +17,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -251,8 +251,8 @@ fun CalculatorItemListDialog(
                             ) {
                                 Text(pair.first, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 Text(InputGuards.formatMoney(amt, currency, masked), style = MaterialTheme.typography.titleSmall, color = accents.danger)
-                                IconButton(onClick = { onRemoveAt(idx) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Close, contentDescription = "Remove ${pair.first}", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                                IconButton(onClick = { onRemoveAt(idx) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Remove ${pair.first}", tint = accents.textMuted, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -449,7 +449,7 @@ private fun CalcAccordion(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                 Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                     contentDescription = title,
                     tint = accents.emerald,
                     modifier = Modifier.size(18.dp)

@@ -41,12 +41,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.VerifiedUser
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -645,12 +645,12 @@ private fun AuthInputField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(InputBg)
                 .border(
                     width = if (focused) 1.5.dp else 1.dp,
                     color = if (focused) SplashEmerald else InputBorder,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(18.dp)
                 )
                 .padding(horizontal = 10.dp)
         ) {
@@ -721,7 +721,7 @@ private fun AuthInputField(
                     modifier = Modifier.testTag("toggle_password_visibility")
                 ) {
                     Icon(
-                        imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                         contentDescription = if (passwordVisible) "Hide password" else "Show password",
                         tint = InkSecondary,
                         modifier = Modifier.size(20.dp)
@@ -904,7 +904,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             value = email,
                             onValueChange = { email = it },
                             placeholder = "name@example.com",
-                            leadingIcon = Icons.Outlined.Email,
+                            leadingIcon = Icons.Rounded.Email,
                             imeAction = ImeAction.Next,
                             keyboardType = KeyboardType.Email,
                             onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
@@ -918,7 +918,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             value = password,
                             onValueChange = { password = it },
                             placeholder = "Enter your password",
-                            leadingIcon = Icons.Outlined.Lock,
+                            leadingIcon = Icons.Rounded.Lock,
                             isPassword = true,
                             passwordVisible = passwordVisible,
                             onTogglePasswordVisibility = { passwordVisible = !passwordVisible },
@@ -1046,7 +1046,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                     )
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Default.AccountCircle,
+                                        imageVector = Icons.Rounded.AccountCircle,
                                         contentDescription = null,
                                         tint = SplashEmerald,
                                         modifier = Modifier.size(19.dp)
@@ -1110,7 +1110,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.VerifiedUser,
+                                imageVector = Icons.Rounded.VerifiedUser,
                                 contentDescription = "Protected workspace",
                                 tint = SplashEmerald,
                                 modifier = Modifier.size(16.dp)

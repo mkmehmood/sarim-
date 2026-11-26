@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -135,14 +136,14 @@ fun ProductionDetailSheet(
                                 )
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
-                        modifier = Modifier.testTag("prod_sheet_share_photos")
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp).testTag("prod_sheet_share_photos")
                     ) {
-                        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Share, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(5.dp))
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Share, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text("Share Captioned", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
                         }
                     }

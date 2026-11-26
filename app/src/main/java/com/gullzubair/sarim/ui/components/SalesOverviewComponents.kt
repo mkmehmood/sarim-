@@ -25,10 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,27 +110,27 @@ fun CustomersDirectoryCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(
                     onClick = onExportAllPdf,
-                    modifier = Modifier.size(44.dp).testTag("sales_export_all_customers_pdf")
+                    modifier = Modifier.size(48.dp).testTag("sales_export_all_customers_pdf")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.PictureAsPdf,
+                        imageVector = Icons.Rounded.PictureAsPdf,
                         contentDescription = "Download All Customers PDF",
                         tint = accents.cyan
                     )
                 }
                 Surface(
                     onClick = onAddCustomer,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.size(40.dp).testTag("sales_add_customer_btn")
+                    modifier = Modifier.size(48.dp).testTag("sales_add_customer_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = Icons.Rounded.Add,
                             contentDescription = "Add New Customer",
                             tint = accents.emerald,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -143,7 +142,7 @@ fun CustomersDirectoryCard(
             value = searchQuery,
             onValueChange = onSearchChange,
             placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             testTag = "sales_customer_search"
         )
 

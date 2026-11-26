@@ -11,9 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -102,7 +101,7 @@ fun EditHistorySection(
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Default.History, contentDescription = null, tint = accents.textMuted, modifier = Modifier.size(16.dp))
+            Icon(Icons.Rounded.History, contentDescription = null, tint = accents.textMuted, modifier = Modifier.size(16.dp))
             Text(
                 text = "EDIT HISTORY",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -144,9 +143,9 @@ fun EditHistorySection(
                             if (canDelete) {
                                 IconButton(
                                     onClick = { pendingDeleteIdx = idx },
-                                    modifier = Modifier.size(40.dp).testTag("edit_history_del_$idx")
+                                    modifier = Modifier.size(48.dp).testTag("edit_history_del_$idx")
                                 ) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete history entry", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete history entry", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }

@@ -24,10 +24,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -358,8 +358,8 @@ internal fun CustomerLedgerBody(
             onBack = onBack,
             trailingContent = {
                 Box {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("customer_menu_btn")) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More actions", tint = accents.textMuted)
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp).testTag("customer_menu_btn")) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "More actions", tint = accents.textMuted)
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
@@ -533,7 +533,7 @@ internal fun CustomerLedgerBody(
                             value = search,
                             onValueChange = { search = it },
                             placeholder = "Search history...",
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                             modifier = Modifier.weight(1f),
                             testTag = "customer_history_search"
                         )
@@ -645,7 +645,7 @@ internal fun CustomerLedgerBody(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        if (item.collapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                        if (item.collapsed) Icons.AutoMirrored.Rounded.KeyboardArrowRight else Icons.Rounded.KeyboardArrowDown,
                                         contentDescription = null,
                                         tint = accents.textMuted,
                                         modifier = Modifier.size(18.dp)

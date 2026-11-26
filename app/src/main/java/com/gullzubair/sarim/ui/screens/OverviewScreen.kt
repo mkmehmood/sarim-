@@ -1,9 +1,12 @@
 package com.gullzubair.sarim.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,10 +16,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.ArrowDropUp
+import androidx.compose.material.icons.rounded.FactCheck
+import androidx.compose.material.icons.rounded.Factory
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.PointOfSale
+import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.Warehouse
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,11 +47,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,8 +74,10 @@ import com.gullzubair.sarim.ui.components.OverviewSalesPanel
 import com.gullzubair.sarim.ui.components.OverviewStockPanel
 import com.gullzubair.sarim.ui.components.RepairLinksConfirmDialog
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.SarimIconBadge
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.SarimMotion
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -65,6 +88,7 @@ private data class SparkTileModel(
     val subtitle: String,
     val series: List<Double>?,
     val lineColor: Color,
+    val icon: ImageVector,
     val isAlert: Boolean = false,
     val isHero: Boolean = false
 )
@@ -111,6 +135,7 @@ fun OverviewScreen(
                 subtitle = if (summary.prodValue > 0) "${String.format("%.1f", summary.marginPct)}% margin on ${InputGuards.formatMoney(summary.prodValue, currency, masked)}" else "",
                 series = summary.months.map { it.prodProfit },
                 lineColor = if (summary.prodProfit < 0) accents.danger else accents.emerald,
+                icon = Icons.Rounded.TrendingUp,
                 isAlert = summary.prodProfit < 0,
                 isHero = true
             ),
@@ -119,14 +144,16 @@ fun OverviewScreen(
                 value = InputGuards.formatMoney(summary.salesValue, currency, masked),
                 subtitle = "${summary.salesCount} sale${if (summary.salesCount == 1) "" else "s"}",
                 series = summary.months.map { it.salesValue },
-                lineColor = accents.emerald
+                lineColor = accents.emerald,
+                icon = Icons.Rounded.PointOfSale
             ),
             SparkTileModel(
                 label = "Produced",
                 value = InputGuards.formatKg(summary.prodKg),
                 subtitle = if (summary.returnsKg > 0) "+${InputGuards.formatKg(summary.returnsKg)} returns" else "Cost ${InputGuards.formatMoney(summary.prodCost, currency, masked)}",
                 series = summary.months.map { it.prodKg },
-                lineColor = accents.cyan
+                lineColor = accents.cyan,
+                icon = Icons.Rounded.Inventory2
             ),
             SparkTileModel(
                 label = "Remaining",
@@ -134,6 +161,7 @@ fun OverviewScreen(
                 subtitle = "${InputGuards.fmtNum(inKg, 0)} in • ${InputGuards.fmtNum(summary.soldKg, 0)} sold",
                 series = null,
                 lineColor = if (summary.remainingKg < 0) accents.danger else accents.gold,
+                icon = Icons.Rounded.Warehouse,
                 isAlert = summary.remainingKg < 0
             ),
             SparkTileModel(
@@ -141,28 +169,32 @@ fun OverviewScreen(
                 value = InputGuards.formatMoney(summary.netCash, currency, masked),
                 subtitle = "In ${InputGuards.formatMoney(summary.cashIn, currency, masked)} • Out ${InputGuards.formatMoney(summary.cashOut, currency, masked)}",
                 series = summary.months.map { it.cashIn - it.cashOut },
-                lineColor = if (summary.netCash < 0) accents.danger else accents.emerald
+                lineColor = if (summary.netCash < 0) accents.danger else accents.emerald,
+                icon = Icons.Rounded.AccountBalanceWallet
             ),
             SparkTileModel(
                 label = "Expenses",
                 value = InputGuards.formatMoney(summary.expenses, currency, masked),
                 subtitle = "",
                 series = summary.months.map { it.expenses },
-                lineColor = accents.gold
+                lineColor = accents.gold,
+                icon = Icons.Rounded.ReceiptLong
             ),
             SparkTileModel(
                 label = "Owed to you",
                 value = InputGuards.formatMoney(if (summary.owedAging.count > 0) summary.owedAging.total else summary.openCreditValue, currency, masked),
                 subtitle = "${if (summary.owedAging.count > 0) summary.owedAging.count else summary.openCreditCount} unreceived",
                 series = null,
-                lineColor = accents.gold
+                lineColor = accents.gold,
+                icon = Icons.Rounded.Schedule
             ),
             SparkTileModel(
                 label = "Stock",
                 value = InputGuards.formatMoney(summary.stockValue, currency, masked),
                 subtitle = "${summary.stockItemsCount} material${if (summary.stockItemsCount == 1) "" else "s"}${if (summary.outOfStockNames.isNotEmpty()) " • ${summary.outOfStockNames.size} out" else ""}",
                 series = null,
-                lineColor = accents.purple
+                lineColor = accents.purple,
+                icon = Icons.Rounded.Layers
             )
         )
     }
@@ -193,11 +225,13 @@ fun OverviewScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 6, 12).forEach { m ->
                         val selected = windowMonths == m
+                        val bg by animateColorAsState(if (selected) accents.softPillFill else accents.inputFill, SarimMotion.ColorSpring, label = "win_bg")
+                        val border by animateColorAsState(if (selected) accents.emerald else accents.borderSubtle, SarimMotion.ColorSpring, label = "win_bd")
                         Surface(
                             onClick = { windowMonths = m },
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (selected) accents.softPillFill else accents.inputFill,
-                            border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                            shape = RoundedCornerShape(999.dp),
+                            color = bg,
+                            border = BorderStroke(1.dp, border),
                             modifier = Modifier.testTag("overview_window_${m}m")
                         ) {
                             Text(
@@ -285,26 +319,44 @@ fun OverviewScreen(
                     val display = if (panel == "Prod") "Production" else panel
                     val selected = activePanel == panel
                     val label = if (panel == "Checks" && issueCount > 0) "$display  $issueCount" else display
+                    val panelIcon = when (panel) {
+                        "Sales" -> Icons.Rounded.PointOfSale
+                        "Prod" -> Icons.Rounded.Factory
+                        "Money" -> Icons.Rounded.AccountBalanceWallet
+                        "Stock" -> Icons.Rounded.Layers
+                        "Checks" -> Icons.Rounded.FactCheck
+                        else -> Icons.Rounded.History
+                    }
+                    val bg by animateColorAsState(if (selected) accents.softPillFill else accents.inputFill, SarimMotion.ColorSpring, label = "panel_bg")
+                    val border by animateColorAsState(
+                        when {
+                            selected -> accents.emerald
+                            panel == "Checks" && summary.audit.errors > 0 -> accents.danger.copy(alpha = 0.5f)
+                            else -> accents.borderSubtle
+                        },
+                        SarimMotion.ColorSpring,
+                        label = "panel_bd"
+                    )
+                    val fg = if (selected) accents.emerald else if (panel == "Checks" && summary.audit.errors > 0) accents.danger else accents.textMuted
                     Surface(
                         onClick = { activePanel = panel },
-                        shape = RoundedCornerShape(18.dp),
-                        color = if (selected) accents.softPillFill else accents.inputFill,
-                        border = BorderStroke(
-                            1.dp,
-                            when {
-                                selected -> accents.emerald
-                                panel == "Checks" && summary.audit.errors > 0 -> accents.danger.copy(alpha = 0.5f)
-                                else -> accents.borderSubtle
-                            }
-                        ),
+                        shape = RoundedCornerShape(999.dp),
+                        color = bg,
+                        border = BorderStroke(1.dp, border),
                         modifier = Modifier.testTag("overview_panel_${panel.lowercase()}")
                     ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (selected) accents.emerald else if (panel == "Checks" && summary.audit.errors > 0) accents.danger else accents.textMuted,
-                            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(panelIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = fg
+                            )
+                        }
                     }
                 }
             }
@@ -429,16 +481,36 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
     }
     SarimCard(
         modifier = modifier,
-        accentBorder = if (tile.isAlert) accents.danger.copy(alpha = 0.45f) else if (tile.isHero) accents.emerald.copy(alpha = 0.45f) else null,
-        contentPadding = PaddingValues(13.dp)
+        accentBorder = if (tile.isAlert) accents.danger.copy(alpha = 0.5f) else if (tile.isHero) accents.emerald.copy(alpha = 0.55f) else null,
+        contentPadding = PaddingValues(14.dp)
     ) {
-        Text(tile.label, style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)
-        Spacer(Modifier.height(2.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                tile.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = accents.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            SarimIconBadge(
+                icon = tile.icon,
+                tint = tile.lineColor,
+                size = 26.dp,
+                cornerRadius = 9.dp,
+                iconSize = 14.dp
+            )
+        }
+        Spacer(Modifier.height(4.dp))
         Text(
             tile.value,
             fontFamily = JakartaFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.5.sp,
             color = if (tile.isAlert) accents.danger else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -449,7 +521,7 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
         }
         val pts = tile.series
         if (pts != null && pts.size >= 2) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(7.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Canvas(modifier = Modifier.weight(1f).height(24.dp)) {
                     val maxV = pts.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
@@ -472,11 +544,26 @@ private fun OverviewSparkTile(tile: SparkTileModel, modifier: Modifier = Modifie
                 }
                 if (deltaPct != null) {
                     Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (deltaPct >= 0) "▲$deltaPct%" else "▼${abs(deltaPct)}%",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                        color = if (deltaPct >= 0) accents.emerald else accents.danger
-                    )
+                    val deltaColor = if (deltaPct >= 0) accents.emerald else accents.danger
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(deltaColor.copy(alpha = 0.14f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (deltaPct >= 0) Icons.Rounded.ArrowDropUp else Icons.Rounded.ArrowDropDown,
+                            contentDescription = null,
+                            tint = deltaColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            "${abs(deltaPct)}%",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
+                            color = deltaColor
+                        )
+                    }
                 }
             }
         }

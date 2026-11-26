@@ -1,6 +1,11 @@
 package com.gullzubair.sarim.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,15 +28,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Balance
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Balance
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -78,6 +84,7 @@ import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.SarimMotion
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import java.util.Locale
 
@@ -229,9 +236,9 @@ fun StoreManagerScreen(
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(accents.softPillFill)
-                                    .border(1.dp, accents.emerald.copy(alpha = 0.35f), CircleShape),
+                                    .border(1.dp, accents.emerald.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(badge, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
@@ -507,7 +514,12 @@ fun FormulaStoreScreen(
             }
         }
 
-        // Emerald Speed-Dial FAB
+        // Material 3 Expressive Speed-Dial FAB
+        val fabRotation by animateFloatAsState(
+            targetValue = if (speedDialExpanded) 45f else 0f,
+            animationSpec = SarimMotion.SpatialSpring,
+            label = "formula_fab_rot"
+        )
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -516,17 +528,21 @@ fun FormulaStoreScreen(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            AnimatedVisibility(visible = speedDialExpanded) {
+            AnimatedVisibility(
+                visible = speedDialExpanded,
+                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+            ) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SpeedDialRow(label = "Correction", icon = Icons.Outlined.Build, testTag = "formula_fab_fix") {
+                    SpeedDialRow(label = "Correction", icon = Icons.Rounded.Build, testTag = "formula_fab_fix") {
                         speedDialExpanded = false
                         onOpenFix(firstFormulaId)
                     }
-                    SpeedDialRow(label = "Batching", icon = Icons.Outlined.Balance, testTag = "formula_fab_mix") {
+                    SpeedDialRow(label = "Batching", icon = Icons.Rounded.Balance, testTag = "formula_fab_mix") {
                         speedDialExpanded = false
                         onOpenMix(firstFormulaId)
                     }
-                    SpeedDialRow(label = "Formula", icon = Icons.Outlined.Science, testTag = "formula_fab_new") {
+                    SpeedDialRow(label = "Formula", icon = Icons.Rounded.Science, testTag = "formula_fab_new") {
                         speedDialExpanded = false
                         onEditFormula("")
                     }
@@ -534,16 +550,17 @@ fun FormulaStoreScreen(
             }
             FloatingActionButton(
                 onClick = { speedDialExpanded = !speedDialExpanded },
-                shape = CircleShape,
+                shape = RoundedCornerShape(20.dp),
                 containerColor = accents.emerald,
-                contentColor = Color.White,
+                contentColor = if (accents.isDark) Color(0xFF022011) else Color.White,
                 modifier = Modifier
-                    .size(58.dp)
+                    .size(60.dp)
                     .testTag("formula_speed_dial_fab")
             ) {
                 Icon(
-                    imageVector = if (speedDialExpanded) Icons.Default.Close else Icons.Default.Add,
-                    contentDescription = "Formula actions"
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = "Formula actions",
+                    modifier = Modifier.size(26.dp).rotate(fabRotation)
                 )
             }
         }
@@ -586,23 +603,23 @@ private fun SpeedDialRow(
             .testTag(testTag)
     ) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = accents.headerFrosted,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = BorderStroke(1.dp, accents.borderSubtle),
-            shadowElevation = 4.dp
+            shadowElevation = 6.dp
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
             )
         }
         Surface(
-            shape = CircleShape,
+            shape = RoundedCornerShape(16.dp),
             color = accents.emerald,
-            contentColor = Color.White,
-            shadowElevation = 4.dp,
-            modifier = Modifier.size(44.dp)
+            contentColor = if (accents.isDark) Color(0xFF022011) else Color.White,
+            shadowElevation = 6.dp,
+            modifier = Modifier.size(46.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
@@ -760,7 +777,7 @@ fun FormulaEditScreen(
                                 placeholder = "Tap or type",
                                 trailingIcon = {
                                     IconButton(onClick = { matMenuOpen = true }, modifier = Modifier.size(40.dp)) {
-                                        Text("▾", style = MaterialTheme.typography.titleMedium, color = accents.emerald)
+                                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Pick material", tint = accents.emerald)
                                     }
                                 }
                             )
@@ -829,14 +846,14 @@ fun FormulaEditScreen(
 
                         Surface(
                             onClick = { if (ingredients.size > 1) ingredients.removeAt(idx) },
-                            shape = CircleShape,
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.danger.copy(alpha = 0.14f),
                             modifier = Modifier
                                 .padding(top = 18.dp)
                                 .size(48.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text("×", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = accents.danger)
+                                Icon(Icons.Rounded.Close, contentDescription = "Remove ingredient", tint = accents.danger, modifier = Modifier.size(18.dp))
                             }
                         }
                     }

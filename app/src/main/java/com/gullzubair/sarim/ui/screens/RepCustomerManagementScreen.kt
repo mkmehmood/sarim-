@@ -23,11 +23,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -292,11 +292,11 @@ fun RepCustomerManagementScreen(
                         },
                         modifier = Modifier.size(48.dp).testTag("rep_cust_export_pdf")
                     ) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF statement", tint = accents.cyan)
+                        Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export PDF statement", tint = accents.cyan)
                     }
                     Surface(
                         onClick = onEdit,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("rep_cust_edit_btn")
@@ -305,7 +305,7 @@ fun RepCustomerManagementScreen(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit customer", tint = accents.emerald, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Rounded.Edit, contentDescription = "Edit customer", tint = accents.emerald, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
                             Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                         }
@@ -427,7 +427,7 @@ fun RepCustomerManagementScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center
                                     ) {
-                                        Icon(Icons.Default.Call, contentDescription = "Call customer", tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.Call, contentDescription = "Call customer", tint = accents.emerald, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text(client?.phone.orEmpty(), style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                                     }
@@ -439,7 +439,7 @@ fun RepCustomerManagementScreen(
                                         val uri = Uri.parse("geo:${bestGps.first},${bestGps.second}?q=${bestGps.first},${bestGps.second}(${Uri.encode(customerName)})")
                                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                                     },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = accents.inputFill,
                                     border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.45f)),
                                     modifier = Modifier.weight(1f).testTag("rep_cust_maps_btn")
@@ -449,7 +449,7 @@ fun RepCustomerManagementScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center
                                     ) {
-                                        Icon(Icons.Default.LocationOn, contentDescription = "Open in Maps", tint = accents.cyan, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.LocationOn, contentDescription = "Open in Maps", tint = accents.cyan, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text("Open Maps", style = MaterialTheme.typography.labelLarge, color = accents.cyan)
                                     }
@@ -465,7 +465,7 @@ fun RepCustomerManagementScreen(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = "Search rep history...",
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "rep_cust_search"
                 )

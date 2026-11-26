@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -128,12 +128,12 @@ fun RepEntryCard(
             if (isEditing) {
                 Surface(
                     onClick = onCancelEdit,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(999.dp),
                     color = accents.danger.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
-                    modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("rep_cancel_edit_btn")
+                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).testTag("rep_cancel_edit_btn")
                 ) {
-                    Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
                         Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger)
                     }
                 }
@@ -146,11 +146,11 @@ fun RepEntryCard(
                         val selected = entryMode == mode
                         Surface(
                             onClick = { onSelectEntryMode(mode) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier
-                                .defaultMinSize(minHeight = 40.dp)
+                                .defaultMinSize(minHeight = 48.dp)
                                 .testTag("rep_mode_${mode.name.lowercase()}")
                         ) {
                             Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -185,12 +185,12 @@ fun RepEntryCard(
                             onClearCustomer()
                             showSuggestions = false
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = Color.Transparent,
-                        modifier = Modifier.size(36.dp).testTag("rep_clear_cust_btn")
+                        modifier = Modifier.size(48.dp).testTag("rep_clear_cust_btn")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -272,7 +272,7 @@ fun RepEntryCard(
                 onValueChange = { onCustomerPhoneChange(it.take(32)) },
                 label = "Mobile number",
                 placeholder = "03XX-XXXXXXX",
-                leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 testTag = "rep_new_phone_input"
             )
         }
@@ -476,7 +476,7 @@ fun RepBlockingAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = accents.gold)
+                Icon(Icons.Rounded.Warning, contentDescription = null, tint = accents.gold)
                 Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
         },

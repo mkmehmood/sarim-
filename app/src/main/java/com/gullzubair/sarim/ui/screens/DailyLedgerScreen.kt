@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -182,13 +182,13 @@ fun DailyLedgerScreen(
                                     summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
                                 )
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
-                            modifier = Modifier.size(40.dp).testTag("ledger_export_pdf_btn")
+                            modifier = Modifier.size(48.dp).testTag("ledger_export_pdf_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PictureAsPdf, contentDescription = "Export Daily Ledger to PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export Daily Ledger to PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -460,7 +460,7 @@ fun DailyLedgerScreen(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         placeholder = "Search by party, category, mode, amount...",
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = accents.textMuted) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = accents.textMuted) },
                         testTag = "ledger_search_input"
                     )
                 }

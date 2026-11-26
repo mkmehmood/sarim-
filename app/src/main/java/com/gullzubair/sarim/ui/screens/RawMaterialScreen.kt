@@ -21,9 +21,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -143,13 +143,14 @@ fun RawMaterialScreen(
                                 onValueChange = { name = it.take(80) },
                                 label = "Search or add material",
                                 placeholder = "Search saved or type new",
-                                leadingIcon = { Icon(Icons.Outlined.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                leadingIcon = { Icon(Icons.Rounded.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 trailingIcon = if (materials.isNotEmpty()) {
                                     {
-                                        Text(
-                                            "▾",
-                                            modifier = Modifier.clickable { matMenuOpen = true }.padding(12.dp),
-                                            color = accents.emerald
+                                        Icon(
+                                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                                            contentDescription = "Choose saved material",
+                                            tint = accents.emerald,
+                                            modifier = Modifier.clickable { matMenuOpen = true }.padding(12.dp).size(20.dp)
                                         )
                                     }
                                 } else null,
@@ -264,7 +265,11 @@ fun RawMaterialScreen(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("${list.size} ${if (list.size == 1) "entry" else "entries"}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                                Icon(if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, contentDescription = null)
+                                Icon(
+                                    if (expanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = accents.textMuted
+                                )
                             }
                         }
                         AnimatedVisibility(visible = expanded) {

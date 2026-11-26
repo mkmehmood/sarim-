@@ -26,12 +26,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -250,7 +250,7 @@ fun AdminRepViewCard(
                                     )
                                 }
                             }
-                            Icon(Icons.Default.LocationOn, contentDescription = "Open in Maps", tint = kindColor, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.LocationOn, contentDescription = "Open in Maps", tint = kindColor, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -407,17 +407,17 @@ fun RepCustomersDirectoryCard(
                     onClick = onExportPdf,
                     modifier = Modifier.size(48.dp).testTag("rep_export_clients_pdf")
                 ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.cyan)
+                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.cyan)
                 }
                 Surface(
                     onClick = onAddCustomer,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.size(44.dp).testTag("rep_add_client_btn")
+                    modifier = Modifier.size(48.dp).testTag("rep_add_client_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Rounded.Add, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -428,7 +428,7 @@ fun RepCustomersDirectoryCard(
             value = searchQuery,
             onValueChange = onSearchChange,
             placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             testTag = "rep_customer_search"
         )
 
@@ -508,7 +508,7 @@ fun RepCustomersDirectoryCard(
                                         }
                                     }
                                     if (item.locationConfirmed) {
-                                        Icon(Icons.Default.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
+                                        Icon(Icons.Rounded.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
                                     }
                                 }
                                 Text(
@@ -539,14 +539,14 @@ fun RepCustomersDirectoryCard(
                                     onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.phone}"))) } },
                                     modifier = Modifier.size(48.dp).testTag("rep_call_btn_$idx")
                                 ) {
-                                    Icon(Icons.Default.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(18.dp))
                                 }
                             }
                             IconButton(
                                 onClick = { onEditCustomer(item.name) },
                                 modifier = Modifier.size(48.dp).testTag("rep_edit_client_btn_$idx")
                             ) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(17.dp))
+                                Icon(Icons.Rounded.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(17.dp))
                             }
                         }
                     }
@@ -632,7 +632,7 @@ fun RepHistoryRowCard(
                     }
                     EditedBadge(r.isEdited)
                     if (r.gpsLat != null && r.gpsLng != null) {
-                        Icon(Icons.Default.LocationOn, contentDescription = "GPS tagged", tint = accents.cyan, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Rounded.LocationOn, contentDescription = "GPS tagged", tint = accents.cyan, modifier = Modifier.size(13.dp))
                     }
                 }
                 val meta = buildList {

@@ -24,11 +24,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -596,7 +596,7 @@ fun PaymentsScreen(
                     ) {
                         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                             Icon(
-                                Icons.Default.CameraAlt,
+                                Icons.Rounded.CameraAlt,
                                 contentDescription = if (hasAttachedPhoto) "Photo attached — tap to replace" else "Attach photo",
                                 tint = if (hasAttachedPhoto) accents.emerald else accents.gold,
                                 modifier = Modifier.size(20.dp)
@@ -637,7 +637,7 @@ fun PaymentsScreen(
                             },
                             modifier = Modifier.size(48.dp).testTag("pay_photo_clear_btn")
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove attached photo", tint = accents.danger)
+                            Icon(Icons.Rounded.Close, contentDescription = "Remove attached photo", tint = accents.danger)
                         }
                     }
                 }
@@ -1041,13 +1041,13 @@ fun PaymentsScreen(
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.size(48.dp).testTag("unified_export_pdf_btn")
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -1080,26 +1080,26 @@ fun PaymentsScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(
                             onClick = onOpenAddEntity,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald),
-                            modifier = Modifier.weight(1f).testTag("pay_add_entity_btn")
+                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("pay_add_entity_btn")
                         ) {
                             Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.Add, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Add Entity", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                             }
                         }
                         Surface(
                             onClick = onOpenPaymentTransfer,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.weight(1f).testTag("pay_transfer_entity_btn")
+                            modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("pay_transfer_entity_btn")
                         ) {
                             Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Transfer", style = MaterialTheme.typography.labelLarge)
                             }

@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -399,8 +399,8 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         color = if (editingCalc != null) accents.cyan else accents.textMuted
                     )
                     if (editingCalc != null) {
-                        IconButton(onClick = { showDiscardDialog = true }, modifier = Modifier.size(40.dp).testTag("calc_cancel_edit_btn")) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel edit")
+                        IconButton(onClick = { showDiscardDialog = true }, modifier = Modifier.size(48.dp).testTag("calc_cancel_edit_btn")) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Cancel edit")
                         }
                     }
                 }

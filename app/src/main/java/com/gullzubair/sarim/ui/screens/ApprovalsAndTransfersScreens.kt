@@ -26,10 +26,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -203,13 +203,13 @@ fun ApprovalsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Box(
                             modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(if (pendingList.isEmpty()) accents.softPillFill else accents.gold.copy(alpha = 0.16f)),
                             contentAlignment = Alignment.Center
                         ) {
                             if (pendingList.isEmpty()) {
-                                Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(26.dp))
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(26.dp))
                             } else {
                                 Text(
                                     text = "${pendingList.size}",
@@ -236,7 +236,7 @@ fun ApprovalsScreen(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         placeholder = "Search by name, item or amount",
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = accents.textMuted) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = accents.textMuted) },
                         testTag = "approvals_search_input"
                     )
                 }
@@ -348,7 +348,7 @@ fun ApprovalsScreen(
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = accents.danger),
                                             modifier = Modifier.weight(1f).height(50.dp).testTag("reject_${item.id}")
                                         ) {
-                                            Icon(Icons.Default.Close, contentDescription = null)
+                                            Icon(Icons.Rounded.Close, contentDescription = null)
                                             Spacer(Modifier.width(4.dp))
                                             Text("Discard")
                                         }
@@ -727,7 +727,7 @@ fun PaymentTransferScreen(
                             modifier = Modifier.size(50.dp).testTag("pt_photo_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald)
+                                Icon(Icons.Rounded.PhotoCamera, contentDescription = "Attach voucher photo", tint = accents.emerald)
                             }
                         }
                     }

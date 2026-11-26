@@ -21,8 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +52,7 @@ import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimGradientButton
+import com.gullzubair.sarim.ui.components.SarimIconBadge
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.JakartaFont
@@ -305,15 +308,13 @@ fun BatchMixScreen(
                             contentPadding = PaddingValues(14.dp)
                         ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(accents.softPillFill),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
-                                }
+                                SarimIconBadge(
+                                    icon = Icons.Rounded.ReceiptLong,
+                                    tint = accents.emerald,
+                                    containerColor = accents.softPillFill,
+                                    size = 40.dp,
+                                    iconSize = 20.dp
+                                )
                                 Spacer(Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(m.name.ifBlank { "Saved Mix" }, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
@@ -348,7 +349,7 @@ fun BatchMixScreen(
                                     },
                                     modifier = Modifier.size(48.dp)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete saved mix", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete saved mix", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -514,12 +515,21 @@ fun BatchFixScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable { customMixedExpanded = !customMixedExpanded }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            Icon(
+                                imageVector = if (customMixedExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = accents.emerald,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Text(
-                                text = if (customMixedExpanded) "▾ Mixed differently than the formula?" else "▸ Mixed differently than the formula?",
+                                text = "Mixed differently than the formula?",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = accents.emerald
                             )
@@ -761,7 +771,7 @@ fun BatchFixScreen(
                                     },
                                     modifier = Modifier.size(48.dp)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete saved correction", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete saved correction", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -777,10 +787,10 @@ private fun MixPillToggle(label: String, selected: Boolean, onClick: () -> Unit)
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(999.dp),
         color = if (selected) accents.softPillFill else accents.inputFill,
         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(

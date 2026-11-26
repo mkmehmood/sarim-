@@ -1,12 +1,12 @@
 package com.gullzubair.sarim.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -34,9 +34,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -262,11 +261,11 @@ fun ProductionEntryCard(
                     val selected = selectedStore?.key == st.key
                     Surface(
                         onClick = { onSelectStore(st) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
-                            .defaultMinSize(minHeight = 44.dp)
+                            .defaultMinSize(minHeight = 48.dp)
                             .testTag("prod_store_pill_${st.key}")
                     ) {
                         Box(
@@ -354,7 +353,7 @@ fun ProductionEntryCard(
                         Surface(
                             onClick = onAttachPhotoClick,
                             enabled = photoSlots.size < 6,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
                             modifier = Modifier
@@ -363,7 +362,7 @@ fun ProductionEntryCard(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.Default.CameraAlt,
+                                    Icons.Rounded.CameraAlt,
                                     contentDescription = "Attach photo",
                                     tint = accents.emerald,
                                     modifier = Modifier.size(20.dp)
@@ -397,7 +396,7 @@ fun ProductionEntryCard(
                                     .testTag("prod_clear_photos_btn")
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
+                                    Icons.Rounded.Close,
                                     contentDescription = "Remove attached photos",
                                     tint = accents.danger
                                 )
@@ -424,7 +423,7 @@ fun ProductionEntryCard(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .clickable { onPreviewPhotoAt(idx) }
                                 .testTag("prod_photo_thumb_$idx")
                         )
@@ -432,7 +431,7 @@ fun ProductionEntryCard(
                             onClick = { onRemovePhotoAt(idx) },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .size(36.dp)
+                                .size(48.dp)
                                 .testTag("prod_photo_remove_$idx")
                         ) {
                             Box(
@@ -443,7 +442,7 @@ fun ProductionEntryCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
+                                    Icons.Rounded.Close,
                                     contentDescription = "Remove photo ${idx + 1}",
                                     tint = Color.White,
                                     modifier = Modifier.size(12.dp)
@@ -624,9 +623,9 @@ fun ProductionHistoryRowCard(
         else -> accents.danger
     }
     val leadIcon = when {
-        rec.isTransfer -> Icons.Default.SwapHoriz
-        rec.isReturn -> Icons.Default.Replay
-        else -> Icons.Default.Inventory2
+        rec.isTransfer -> Icons.Rounded.SwapHoriz
+        rec.isReturn -> Icons.Rounded.Replay
+        else -> Icons.Rounded.Inventory2
     }
     val canEdit = onEdit != null && !rec.isMerged && !rec.isReturn && !rec.isTransfer
     val canDelete = !rec.isMerged
@@ -680,12 +679,13 @@ fun ProductionHistoryRowCard(
                         modifier = Modifier.testTag("prod_photo_check_${rec.id}")
                     )
                 }
-                Box(
-                    modifier = Modifier.size(38.dp).clip(CircleShape).background(tone.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(leadIcon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
-                }
+                SarimIconBadge(
+                    icon = leadIcon,
+                    tint = tone,
+                    size = 40.dp,
+                    cornerRadius = 14.dp,
+                    iconSize = 20.dp
+                )
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -785,13 +785,13 @@ fun ProductionHistoryRowCard(
                     // actions row (web `.tbl-action-row`: Edit + Delete)
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HistoryActionButton("Details", Icons.Default.Info, accents.textMuted, Modifier.weight(1f), "prod_hist_details_${rec.id}", onOpenDetails)
+                        HistoryActionButton("Details", Icons.Rounded.Info, accents.textMuted, Modifier.weight(1f), "prod_hist_details_${rec.id}", onOpenDetails)
                         if (canEdit) {
-                            HistoryActionButton("Edit", Icons.Default.Edit, accents.emerald, Modifier.weight(1f), "prod_hist_edit_${rec.id}") { onEdit?.invoke() }
+                            HistoryActionButton("Edit", Icons.Rounded.Edit, accents.emerald, Modifier.weight(1f), "prod_hist_edit_${rec.id}") { onEdit?.invoke() }
                         }
                         if (canDelete) {
                             HistoryActionButton(
-                                if (rec.isTransfer) "Recycle" else "Delete", Icons.Default.Delete, accents.danger,
+                                if (rec.isTransfer) "Recycle" else "Delete", Icons.Rounded.Delete, accents.danger,
                                 Modifier.weight(1f), "prod_hist_delete_${rec.id}", onDelete
                             )
                         }

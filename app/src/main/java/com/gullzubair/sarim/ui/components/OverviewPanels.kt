@@ -21,10 +21,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -411,7 +411,7 @@ fun OverviewChecksPanel(
                         modifier = Modifier.testTag("overview_reprice_sales_btn")
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Rounded.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
                             Text("Reprice Zero-Cost", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
                         }
@@ -464,7 +464,7 @@ fun OverviewChecksPanel(
         if (a.findings.isEmpty()) {
             SarimCard(accentBorder = accents.emerald) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accents.emerald)
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = accents.emerald)
                     Spacer(Modifier.width(10.dp))
                     Text("Zero discrepancies detected across stores, inventory, sales, and collections.", style = MaterialTheme.typography.bodyMedium)
                 }
@@ -479,7 +479,7 @@ fun OverviewChecksPanel(
                         .testTag("ov_finding_${finding.id}")
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = color)
+                        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = color)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text("${finding.title} (${finding.label}${if (finding.date.isNotBlank()) " • ${finding.date}" else ""})", style = MaterialTheme.typography.titleSmall, color = color)
