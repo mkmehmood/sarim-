@@ -3,8 +3,6 @@ package com.gullzubair.sarim.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,12 +10,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,18 +35,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.CalendarToday
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,22 +105,21 @@ import kotlinx.coroutines.flow.SharedFlow
 import java.time.Instant
 import java.time.ZoneOffset
 
-/** Expressive screen title: large, heavy Playfair headline with tight tracking. */
+/** Web parity: `h1.u-heading-bold` - Playfair Display, weight 800, 1.75rem (~21sp on phone), -0.02em tracking. */
 @Composable
 fun TabHeading(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
-        style = MaterialTheme.typography.headlineMedium,
+        fontFamily = com.gullzubair.sarim.ui.theme.PlayfairFont,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 21.sp,
+        lineHeight = 24.sp,
+        letterSpacing = (-0.42).sp,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier
     )
 }
 
-/**
- * Expressive filled card: a tonal container with a large (28dp) corner radius and no drop shadow.
- * Depth comes from the surface-container tone rather than elevation; pass [accentBorder] to
- * outline a card that needs to draw attention (errors, selections).
- */
 @Composable
 fun SarimCard(
     modifier: Modifier = Modifier,
@@ -135,17 +128,17 @@ fun SarimCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(28.dp)
-    val borderWidth = if (accentBorder != null) 2.dp else accents.cardBorderWidth
+    val shape = RoundedCornerShape(22.dp)
+    val bgBrush = remember(accents.glassTop, accents.glassBottom) {
+        Brush.verticalGradient(listOf(accents.glassTop, accents.glassBottom, accents.glassBottom))
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(elevation = if (accents.isDark) 0.dp else 5.dp, shape = shape, ambientColor = Color(0x14059669), spotColor = Color(0x14059669))
             .clip(shape)
-            .background(accents.glassTop)
-            .then(
-                if (borderWidth > 0.dp) Modifier.border(borderWidth, accentBorder ?: accents.borderSubtle, shape)
-                else Modifier
-            )
+            .background(bgBrush)
+            .border(accents.cardBorderWidth, accentBorder ?: accents.borderSubtle, shape)
     ) {
         Column(modifier = Modifier.padding(contentPadding), content = content)
     }
@@ -161,12 +154,14 @@ fun SarimSubpageHeader(
     trailingContent: @Composable (() -> Unit)? = null
 ) {
     val accents = LocalSarimAccents.current
-    // Expressive top bar: a tonal container with a large bottom radius, no hairline and no shadow.
-    val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+    val shape = RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = if (accents.isDark) 0.dp else 6.dp, shape = shape, ambientColor = Color(0x16059669), spotColor = Color(0x16059669)),
         color = accents.headerFrosted,
-        shape = shape
+        shape = shape,
+        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.7f))
     ) {
         Row(
             modifier = Modifier
@@ -176,16 +171,16 @@ fun SarimSubpageHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
-                FilledTonalIconButton(
+                IconButton(
                     onClick = onBack,
                     modifier = Modifier.size(48.dp).testTag("nav_back_btn")
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back"
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                Spacer(Modifier.width(10.dp))
             }
             if (leadingIcon != null) {
                 leadingIcon()
@@ -196,8 +191,8 @@ fun SarimSubpageHeader(
                     Text(
                         text = title.uppercase(),
                         fontFamily = CinzelFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
                         letterSpacing = 0.8.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -206,7 +201,7 @@ fun SarimSubpageHeader(
                     if (!badgeText.isNullOrBlank()) {
                         Surface(
                             color = accents.softPillFill,
-                            shape = RoundedCornerShape(50)
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Text(
                                 text = badgeText.uppercase(),
@@ -232,63 +227,6 @@ fun SarimSubpageHeader(
     }
 }
 
-/**
- * Shared body for the primary / danger action buttons.
- *
- * Expressive behaviour: a solid tonal fill, a 52dp touch target, and a shape morph — the pill
- * squares off to a 16dp radius while pressed and springs back with a slight overshoot.
- */
-@Composable
-private fun ExpressiveActionButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier,
-    enabled: Boolean,
-    testTag: String?,
-    fillWidth: Boolean,
-    container: Color,
-    content: Color
-) {
-    val context = LocalContext.current
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val corner by animateDpAsState(
-        targetValue = if (pressed) 16.dp else 26.dp,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
-        label = "actionButtonCorner"
-    )
-    val shape = RoundedCornerShape(corner)
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    Box(
-        modifier = modifier
-            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
-            .defaultMinSize(minHeight = 52.dp)
-            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .clip(shape)
-            .background(if (enabled) container else onSurface.copy(alpha = 0.12f))
-            .clickable(
-                interactionSource = interaction,
-                indication = LocalIndication.current,
-                enabled = enabled
-            ) {
-                FeedbackHelper.triggerHaptic(context)
-                FeedbackHelper.triggerSound(context)
-                onClick()
-            }
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            fontSize = 15.sp,
-            color = if (enabled) content else onSurface.copy(alpha = 0.38f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
 @Composable
 fun SarimGradientButton(
     text: String,
@@ -297,16 +235,40 @@ fun SarimGradientButton(
     enabled: Boolean = true,
     testTag: String? = null
 ) {
-    ExpressiveActionButton(
-        text = text,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        testTag = testTag,
-        fillWidth = true,
-        container = MaterialTheme.colorScheme.primary,
-        content = MaterialTheme.colorScheme.onPrimary
-    )
+    val context = LocalContext.current
+    val shape = RoundedCornerShape(50)
+    val ctaAccents = LocalSarimAccents.current
+    val brush = if (enabled) {
+        Brush.horizontalGradient(listOf(if (ctaAccents.isDark) CtaGradientStart else CtaGradientStartLight, CtaGradientEnd))
+    } else {
+        Brush.horizontalGradient(listOf(Color(0xFFCFE0D9), Color(0xFFD8E6DF)))
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 42.dp)
+            .height(42.dp)
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .shadow(if (enabled) 4.dp else 0.dp, shape, ambientColor = Color(0x3310B981), spotColor = Color(0x3310B981))
+            .clip(shape)
+            .background(brush)
+            .clickable(enabled = enabled) {
+                FeedbackHelper.triggerHaptic(context)
+                FeedbackHelper.triggerSound(context)
+                onClick()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontFamily = JakartaFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.3.sp,
+            color = if (enabled) CtaTextDark else Color(0xFF6B8077),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -317,16 +279,43 @@ fun SarimDangerButton(
     enabled: Boolean = true,
     testTag: String? = null
 ) {
-    ExpressiveActionButton(
-        text = text,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        testTag = testTag,
-        fillWidth = false,
-        container = MaterialTheme.colorScheme.error,
-        content = MaterialTheme.colorScheme.onError
-    )
+    val context = LocalContext.current
+    val shape = RoundedCornerShape(50)
+    val dangerDark = LocalSarimAccents.current.isDark
+    val brush = if (enabled) {
+        Brush.horizontalGradient(listOf(
+            if (dangerDark) DangerGradientStart else DangerGradientStartLight,
+            if (dangerDark) DangerGradientEnd else DangerGradientEndLight
+        ))
+    } else {
+        Brush.horizontalGradient(listOf(Color(0xFFE7B8B5), Color(0xFFEBC1B4)))
+    }
+    Box(
+        modifier = modifier
+            .defaultMinSize(minHeight = 42.dp)
+            .height(42.dp)
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .shadow(if (enabled) 3.dp else 0.dp, shape, ambientColor = Color(0x33EF4444), spotColor = Color(0x33EF4444))
+            .clip(shape)
+            .background(brush)
+            .clickable(enabled = enabled) {
+                FeedbackHelper.triggerHaptic(context)
+                FeedbackHelper.triggerSound(context)
+                onClick()
+            }
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontFamily = JakartaFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.3.sp,
+            color = if (enabled) Color(0xFF03170B) else Color.White.copy(alpha = 0.8f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -370,14 +359,13 @@ fun SarimPillInput(
             keyboardOptions = keyboardOptions,
             visualTransformation = visualTransformation,
             singleLine = singleLine,
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = accents.inputFill,
                 unfocusedContainerColor = accents.inputFill,
                 disabledContainerColor = accents.inputFill.copy(alpha = 0.6f),
                 focusedBorderColor = accents.emerald,
-                unfocusedBorderColor = accents.inputBorder,
-                cursorColor = accents.emerald
+                unfocusedBorderColor = accents.inputBorder
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -395,11 +383,12 @@ fun SarimHalfRingKpiBox(
     labelColor: Color = LocalSarimAccents.current.textMuted
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(22.dp)
     Box(
         modifier = modifier
             .clip(shape)
-            .background(accents.inputFill)
+            .background(accents.inputFill.copy(alpha = 0.72f))
+            .border(1.dp, accents.borderSubtle, shape)
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
             val strokePx = 2.5.dp.toPx()
@@ -436,17 +425,18 @@ fun SarimHalfRingKpiBox(
 
 @Composable
 fun SarimNoteBanner(text: String, modifier: Modifier = Modifier) {
-    // Expressive notes sit on the tertiary (gold) container rather than an outlined cream box.
+    val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = RoundedCornerShape(24.dp)
+        color = if (accents.isDark) Color(0xFF231B0E) else Color(0xFFFFFBF2),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.7f))
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onTertiaryContainer,
-            modifier = Modifier.padding(16.dp)
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(14.dp)
         )
     }
 }
@@ -549,7 +539,7 @@ fun DatePickerField(
         }
         Surface(
             onClick = { open = true },
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.inputFill,
             border = BorderStroke(1.dp, accents.inputBorder),
             modifier = Modifier
@@ -571,7 +561,7 @@ fun DatePickerField(
                     overflow = TextOverflow.Ellipsis
                 )
                 Icon(
-                    Icons.Rounded.CalendarToday,
+                    Icons.Default.CalendarToday,
                     contentDescription = "Pick $label",
                     tint = accents.textMuted,
                     modifier = Modifier.size(18.dp)
@@ -635,7 +625,7 @@ fun <T> PickerField(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 52.dp)
                     .testTag(testTag),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.inputBorder)
             ) {
@@ -653,7 +643,7 @@ fun <T> PickerField(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Open $label menu")
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Open $label menu")
                 }
             }
         }
@@ -723,7 +713,7 @@ fun EmptyStateCard(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(accents.softPillFill),
                     contentAlignment = Alignment.Center
                 ) {
@@ -779,7 +769,7 @@ fun <T> SarimYearMonthDayTree(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(summaryLabel(yearItems), style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
                         Icon(
-                            if (yearExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            if (yearExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = "Toggle $year",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
@@ -806,7 +796,7 @@ fun <T> SarimYearMonthDayTree(
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(summaryLabel(monthItems), style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                     Icon(
-                                        if (monthExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        if (monthExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                         contentDescription = "Toggle $ym"
                                     )
                                 }
@@ -842,7 +832,7 @@ fun <T> SarimYearMonthDayTree(
                                                     Text(summaryLabel(dayItems), style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                                                 }
                                                 Icon(
-                                                    if (dayExpanded) Icons.Rounded.KeyboardArrowDown else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                                    if (dayExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                                     contentDescription = "Toggle $dayIso"
                                                 )
                                             }

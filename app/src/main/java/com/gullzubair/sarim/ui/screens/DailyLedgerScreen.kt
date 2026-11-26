@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.PictureAsPdf
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -141,13 +141,13 @@ fun DailyLedgerScreen(
                             if (showComposer) editingId = null
                             showComposer = !showComposer
                         },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("ledger_toggle_composer")
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Add, contentDescription = "New entry", tint = accents.emerald, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Add, contentDescription = "New entry", tint = accents.emerald, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Entry", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
                         }
@@ -174,13 +174,13 @@ fun DailyLedgerScreen(
                                 summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
                             )
                         },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.testTag("ledger_export_pdf_btn")
                     ) {
                         Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -203,7 +203,7 @@ fun DailyLedgerScreen(
                                 val sel = entryType == type
                                 Surface(
                                     onClick = { entryType = type },
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = if (sel) accents.softPillFill else accents.inputFill,
                                     border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                     modifier = Modifier.weight(1f).testTag("ledger_type_${type.lowercase()}")
@@ -221,7 +221,7 @@ fun DailyLedgerScreen(
                                     val sel = expenseScope == k
                                     Surface(
                                         onClick = { expenseScope = k },
-                                        shape = RoundedCornerShape(20.dp),
+                                        shape = RoundedCornerShape(14.dp),
                                         color = if (sel) accents.softPillFill else accents.inputFill,
                                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                         modifier = Modifier.weight(1f)
@@ -361,7 +361,7 @@ fun DailyLedgerScreen(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         placeholder = "Search by party, category, mode, amount...",
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = accents.textMuted) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = accents.textMuted) },
                         testTag = "ledger_search_input"
                     )
                 }
@@ -388,7 +388,7 @@ fun DailyLedgerScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedVoucher = item }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -508,7 +508,7 @@ fun DailyLedgerScreen(
                                 selectedVoucher = null
                                 showComposer = true
                             },
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(22.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald),
                             modifier = Modifier.height(50.dp).weight(0.28f)

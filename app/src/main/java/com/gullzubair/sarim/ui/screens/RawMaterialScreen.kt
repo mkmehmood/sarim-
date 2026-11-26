@@ -21,9 +21,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -143,7 +143,7 @@ fun RawMaterialScreen(
                                 onValueChange = { name = it.take(80) },
                                 label = "Search or add material",
                                 placeholder = "Search saved or type new",
-                                leadingIcon = { Icon(Icons.Rounded.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                leadingIcon = { Icon(Icons.Outlined.Inventory2, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 trailingIcon = if (materials.isNotEmpty()) {
                                     {
                                         Text(
@@ -224,7 +224,7 @@ fun RawMaterialScreen(
                                     supplierMode = k
                                     if (k == "none") supplier = ""
                                 },
-                                shape = RoundedCornerShape(24.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.defaultMinSize(minHeight = 48.dp)
@@ -264,7 +264,7 @@ fun RawMaterialScreen(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("${list.size} ${if (list.size == 1) "entry" else "entries"}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                                Icon(if (expanded) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowRight, contentDescription = null)
+                                Icon(if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight, contentDescription = null)
                             }
                         }
                         AnimatedVisibility(visible = expanded) {
@@ -375,7 +375,7 @@ fun RawMaterialScreen(
 private fun StatsStrip(cols: List<Triple<String, String, Color>>) {
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = accents.softPillFill,
         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()

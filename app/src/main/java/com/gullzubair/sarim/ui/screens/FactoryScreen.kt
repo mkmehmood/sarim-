@@ -580,7 +580,7 @@ fun FactoryScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .clickable { selectedFactoryRec = rec }
                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -730,9 +730,9 @@ private fun FactoryCallout(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(accents.inputFill)
-            .border(1.dp, accents.borderSubtle, RoundedCornerShape(20.dp))
+            .border(1.dp, accents.borderSubtle, RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) { content() }
 }
@@ -748,9 +748,9 @@ private fun FactoryStatTile(
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(accents.inputFill)
-            .border(1.dp, tone.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+            .border(1.dp, tone.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(label.uppercase(), fontFamily = JakartaFont, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 0.5.sp, color = accents.textMuted, maxLines = 1)
@@ -768,9 +768,9 @@ private fun FactoryStatRow(title: String, pairs: List<Pair<String, String>>) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(accents.inputFill)
-            .border(1.dp, accents.borderSubtle, RoundedCornerShape(20.dp))
+            .border(1.dp, accents.borderSubtle, RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

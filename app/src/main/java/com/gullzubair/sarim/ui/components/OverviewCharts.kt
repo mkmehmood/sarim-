@@ -113,7 +113,7 @@ fun OverviewInteractiveLineChart(
                 val isOff = disabledIndices[idx] == true
                 Surface(
                     onClick = { disabledIndices[idx] = !isOff },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = if (isOff) accents.inputFill else s.color.copy(alpha = 0.14f),
                     border = BorderStroke(1.dp, if (isOff) accents.borderSubtle else s.color.copy(alpha = 0.6f))
                 ) {
@@ -267,7 +267,7 @@ fun OverviewInteractiveLineChart(
                 if (idx in labels.indices) {
                     Spacer(Modifier.height(8.dp))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()

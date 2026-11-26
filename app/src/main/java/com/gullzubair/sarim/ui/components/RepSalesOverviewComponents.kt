@@ -26,12 +26,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Call
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.PictureAsPdf
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -116,7 +116,7 @@ fun AdminRepViewCard(
 
         if (routeStops.isEmpty()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -137,7 +137,7 @@ fun AdminRepViewCard(
             val otherColor = accents.purple
 
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = accents.inputFill,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
@@ -219,7 +219,7 @@ fun AdminRepViewCard(
                             val uri = Uri.parse("geo:${stop.lat},${stop.lng}?q=${stop.lat},${stop.lng}(${Uri.encode(stop.label)})")
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth().testTag("rep_route_stop_$idx")
@@ -250,7 +250,7 @@ fun AdminRepViewCard(
                                     )
                                 }
                             }
-                            Icon(Icons.Rounded.LocationOn, contentDescription = "Open in Maps", tint = kindColor, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.LocationOn, contentDescription = "Open in Maps", tint = kindColor, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -306,7 +306,7 @@ fun AdminRepAnalyticsCard(
                 val selected = selectedPeriod == p
                 Surface(
                     onClick = { onSelectPeriod(p) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = if (selected) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                     modifier = Modifier.defaultMinSize(minHeight = 36.dp).testTag("rep_analytics_period_${p.key}")
@@ -320,7 +320,7 @@ fun AdminRepAnalyticsCard(
 
         Spacer(Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = accents.softPillFill,
             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
             modifier = Modifier.fillMaxWidth()
@@ -393,7 +393,7 @@ fun RepCustomersDirectoryCard(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Surface(shape = RoundedCornerShape(14.dp), color = accents.softPillFill) {
+                Surface(shape = RoundedCornerShape(10.dp), color = accents.softPillFill) {
                     Text(
                         text = "${directory.totalCount}",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -407,17 +407,17 @@ fun RepCustomersDirectoryCard(
                     onClick = onExportPdf,
                     modifier = Modifier.size(48.dp).testTag("rep_export_clients_pdf")
                 ) {
-                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.cyan)
+                    Icon(Icons.Default.PictureAsPdf, contentDescription = "Export rep clients PDF", tint = accents.cyan)
                 }
                 Surface(
                     onClick = onAddCustomer,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald),
                     modifier = Modifier.size(44.dp).testTag("rep_add_client_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Add, contentDescription = "Add Rep Customer", tint = accents.emerald, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -428,7 +428,7 @@ fun RepCustomersDirectoryCard(
             value = searchQuery,
             onValueChange = onSearchChange,
             placeholder = "Search customers...",
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             testTag = "rep_customer_search"
         )
 
@@ -461,7 +461,7 @@ fun RepCustomersDirectoryCard(
                         else -> accents.gold
                     }
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -508,7 +508,7 @@ fun RepCustomersDirectoryCard(
                                         }
                                     }
                                     if (item.locationConfirmed) {
-                                        Icon(Icons.Rounded.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
+                                        Icon(Icons.Default.LocationOn, contentDescription = "Verified location", tint = accents.emerald, modifier = Modifier.size(13.dp))
                                     }
                                 }
                                 Text(
@@ -539,14 +539,14 @@ fun RepCustomersDirectoryCard(
                                     onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.phone}"))) } },
                                     modifier = Modifier.size(48.dp).testTag("rep_call_btn_$idx")
                                 ) {
-                                    Icon(Icons.Rounded.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Call, contentDescription = "Call ${item.name}", tint = accents.emerald, modifier = Modifier.size(18.dp))
                                 }
                             }
                             IconButton(
                                 onClick = { onEditCustomer(item.name) },
                                 modifier = Modifier.size(48.dp).testTag("rep_edit_client_btn_$idx")
                             ) {
-                                Icon(Icons.Rounded.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(17.dp))
+                                Icon(Icons.Default.Edit, contentDescription = "Edit ${item.name}", tint = accents.textMuted, modifier = Modifier.size(17.dp))
                             }
                         }
                     }
@@ -603,7 +603,7 @@ fun RepHistoryRowCard(
     }
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
         border = BorderStroke(1.dp, if (isSelectedDate) accents.cyan.copy(alpha = 0.6f) else accents.borderSubtle),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("rep_hist_row_${r.id}")
@@ -632,7 +632,7 @@ fun RepHistoryRowCard(
                     }
                     EditedBadge(r.isEdited)
                     if (r.gpsLat != null && r.gpsLng != null) {
-                        Icon(Icons.Rounded.LocationOn, contentDescription = "GPS tagged", tint = accents.cyan, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Default.LocationOn, contentDescription = "GPS tagged", tint = accents.cyan, modifier = Modifier.size(13.dp))
                     }
                 }
                 val meta = buildList {
@@ -688,7 +688,7 @@ private fun RepStatBox(
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

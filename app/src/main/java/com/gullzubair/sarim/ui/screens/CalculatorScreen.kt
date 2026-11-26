@@ -19,7 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -399,7 +399,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     )
                     if (editingCalc != null) {
                         IconButton(onClick = { showDiscardDialog = true }, modifier = Modifier.size(40.dp).testTag("calc_cancel_edit_btn")) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Cancel edit")
+                            Icon(Icons.Default.Close, contentDescription = "Cancel edit")
                         }
                     }
                 }
@@ -464,7 +464,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.weight(1f)
@@ -484,7 +484,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     if (returned > 0.0) {
                         Spacer(Modifier.height(10.dp))
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.4f)),
                             modifier = Modifier.fillMaxWidth()
@@ -500,7 +500,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                                 returnTarget = "store"
                                                 selectedStore = st
                                             },
-                                            shape = RoundedCornerShape(16.dp),
+                                            shape = RoundedCornerShape(12.dp),
                                             color = if (isChosen) accents.softPillFill else MaterialTheme.colorScheme.surface,
                                             border = BorderStroke(1.dp, if (isChosen) accents.emerald else accents.borderSubtle),
                                             modifier = Modifier.weight(1f).testTag("ret_store_${st.key.lowercase()}")
@@ -513,7 +513,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                     val isRepTransfer = returnTarget == "rep"
                                     Surface(
                                         onClick = { returnTarget = "rep" },
-                                        shape = RoundedCornerShape(16.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = if (isRepTransfer) accents.softPillFill else MaterialTheme.colorScheme.surface,
                                         border = BorderStroke(1.dp, if (isRepTransfer) accents.emerald else accents.borderSubtle),
                                         modifier = Modifier.weight(1f).testTag("ret_rep_btn")
@@ -540,7 +540,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     if (expired > 0.0) {
                         Spacer(Modifier.height(10.dp))
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                             modifier = Modifier.fillMaxWidth()
@@ -564,7 +564,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         DecimalField("Commission / Unit", commissionPerUnitStr, { commissionPerUnitStr = it }, "calc_comm_per_unit_input", Modifier.weight(1f))
                         Surface(
                             onClick = { showCommissionPopup = true },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.weight(1f).testTag("calc_open_comm_popup")
@@ -588,7 +588,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         DecimalField("Recovered Credit", prevCollStr, { prevCollStr = it }, "calc_prev_coll_input", Modifier.weight(1f))
                         Surface(
                             onClick = { showExpensePopup = true },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.weight(1f).testTag("calc_open_exp_popup")
@@ -609,7 +609,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
 
                     Spacer(Modifier.height(12.dp))
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -705,7 +705,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             val sel = compMode == k
                             Surface(
                                 onClick = { compMode = k },
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.weight(1f).testTag("comp_mode_$k")
@@ -846,7 +846,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             val sel = perfMode == k
                             Surface(
                                 onClick = { perfMode = k },
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.weight(1f).testTag("calc_po_$k")
@@ -953,7 +953,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedCalc = c }
                                     .padding(vertical = 8.dp, horizontal = 4.dp)
                                     .testTag("calc_row_${c.id}"),

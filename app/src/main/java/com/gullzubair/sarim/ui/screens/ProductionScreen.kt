@@ -298,7 +298,7 @@ fun ProductionScreen(
                     Spacer(Modifier.height(10.dp))
                     // #prod-toggle-container (Combined vs Store Entry)
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -313,7 +313,7 @@ fun ProductionScreen(
                                 val selected = effectiveView == key
                                 Surface(
                                     onClick = { prodView = key },
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = if (selected) accents.softPillFill else accents.inputFill,
                                     border = if (selected) BorderStroke(1.dp, accents.emerald) else null,
                                     modifier = Modifier
@@ -430,7 +430,7 @@ fun ProductionScreen(
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = accents.softPillFill
                         ) {
                             Text(

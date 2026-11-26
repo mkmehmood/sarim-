@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.EditNote
-import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -102,7 +102,7 @@ fun EditHistorySection(
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Rounded.History, contentDescription = null, tint = accents.textMuted, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.History, contentDescription = null, tint = accents.textMuted, modifier = Modifier.size(16.dp))
             Text(
                 text = "EDIT HISTORY",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -122,7 +122,7 @@ fun EditHistorySection(
                 @Suppress("UNCHECKED_CAST")
                 val changes = (h["changes"] as? List<Map<String, Any?>>).orEmpty()
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -146,7 +146,7 @@ fun EditHistorySection(
                                     onClick = { pendingDeleteIdx = idx },
                                     modifier = Modifier.size(40.dp).testTag("edit_history_del_$idx")
                                 ) {
-                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete history entry", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete history entry", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -169,7 +169,7 @@ fun EditHistorySection(
             }
             if (createdStr.isNotBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = accents.softPillFill.copy(alpha = 0.5f),
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()

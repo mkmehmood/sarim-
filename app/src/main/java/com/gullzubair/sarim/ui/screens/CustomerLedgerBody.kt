@@ -24,10 +24,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -359,7 +359,7 @@ internal fun CustomerLedgerBody(
             trailingContent = {
                 Box {
                     IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("customer_menu_btn")) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More actions", tint = accents.textMuted)
+                        Icon(Icons.Default.MoreVert, contentDescription = "More actions", tint = accents.textMuted)
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
@@ -468,7 +468,7 @@ internal fun CustomerLedgerBody(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Surface(
                                 onClick = { showQty = !showQty },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.weight(1f).testTag("customer_sale_chip")
@@ -483,7 +483,7 @@ internal fun CustomerLedgerBody(
                                 }
                             }
                             Surface(
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.weight(1f)
@@ -533,7 +533,7 @@ internal fun CustomerLedgerBody(
                             value = search,
                             onValueChange = { search = it },
                             placeholder = "Search history...",
-                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                             modifier = Modifier.weight(1f),
                             testTag = "customer_history_search"
                         )
@@ -543,7 +543,7 @@ internal fun CustomerLedgerBody(
                     if (!isRepClient) {
                         Surface(
                             onClick = onMoneyOut,
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(22.dp),
                             color = accents.gold.copy(alpha = 0.14f),
                             border = BorderStroke(1.dp, accents.gold),
                             modifier = Modifier.testTag("customer_money_out_btn")
@@ -568,7 +568,7 @@ internal fun CustomerLedgerBody(
                             val on = effFilter == k
                             Surface(
                                 onClick = { filter = k },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = if (on) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (on) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.testTag("customer_filter_$k")
@@ -595,7 +595,7 @@ internal fun CustomerLedgerBody(
                                     collapsedMonths = collapsedMonths - m.key
                                     jumpTarget = m.key
                                 },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle)
                             ) {
@@ -635,7 +635,7 @@ internal fun CustomerLedgerBody(
                                 onClick = {
                                     collapsedMonths = if (m.key in collapsedMonths) collapsedMonths - m.key else collapsedMonths + m.key
                                 },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.fillMaxWidth().testTag("customer_month_${m.key}")
@@ -645,7 +645,7 @@ internal fun CustomerLedgerBody(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        if (item.collapsed) Icons.Rounded.KeyboardArrowRight else Icons.Rounded.KeyboardArrowDown,
+                                        if (item.collapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
                                         contentDescription = null,
                                         tint = accents.textMuted,
                                         modifier = Modifier.size(18.dp)

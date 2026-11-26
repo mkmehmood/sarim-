@@ -156,7 +156,7 @@ fun MaterialPurchaseLotsSheet(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     lots.forEach { lot ->
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()

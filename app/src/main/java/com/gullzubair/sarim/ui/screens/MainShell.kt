@@ -36,28 +36,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.Calculate
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.CreditCard
-import androidx.compose.material.icons.rounded.CurrencyExchange
-import androidx.compose.material.icons.rounded.Eco
-import androidx.compose.material.icons.rounded.Factory
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.MenuBook
-import androidx.compose.material.icons.rounded.PersonAdd
-import androidx.compose.material.icons.rounded.ReceiptLong
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.SwapHoriz
-import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.CurrencyExchange
+import androidx.compose.material.icons.outlined.Eco
+import androidx.compose.material.icons.outlined.Factory
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -174,7 +173,7 @@ fun MainFeatureScreen(currentUserId: String) {
                         Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
                             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                     Spacer(Modifier.height(12.dp))
                                     Text("Workspace Locked", style = MaterialTheme.typography.headlineSmall)
                                     Spacer(Modifier.height(8.dp))
@@ -273,27 +272,35 @@ private fun WorkspaceNavContainer(
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = accents.headerFrosted,
-                drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
-                modifier = Modifier.width(300.dp)
+                drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+                modifier = Modifier.width(288.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(accents.glassTop.copy(alpha = 0.85f), accents.headerFrosted, accents.headerFrosted)
+                            )
+                        )
+                ) {
                     // Drawer Brand Header
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(horizontal = 28.dp, vertical = 20.dp)
+                            .padding(horizontal = 20.dp, vertical = 14.dp)
                     ) {
                         Text(
                             text = "GULL AND ZUBAIR",
                             fontFamily = JakartaFont,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
                             letterSpacing = 1.6.sp,
-                            color = MaterialTheme.colorScheme.primary
+                            color = accents.emerald
                         )
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(horizontal = 28.dp))
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
 
                     // Scrollable Menu Sections
                     Column(
@@ -325,7 +332,7 @@ private fun WorkspaceNavContainer(
                             Spacer(Modifier.height(4.dp))
                             DrawerRowItem(
                                 label = "APPROVALS",
-                                icon = Icons.Rounded.CheckCircle,
+                                icon = Icons.Outlined.CheckCircle,
                                 iconTint = accents.emerald,
                                 selected = currentRouteName.contains("Approvals"),
                                 badgeCount = pendingCount,
@@ -334,7 +341,7 @@ private fun WorkspaceNavContainer(
                             )
                             DrawerRowItem(
                                 label = "DAILY LEDGER",
-                                icon = Icons.Rounded.MenuBook,
+                                icon = Icons.Outlined.MenuBook,
                                 iconTint = Color(0xFF0D9488),
                                 selected = currentRouteName.contains("DailyLedger"),
                                 testTag = "drawer_daily_ledger",
@@ -342,7 +349,7 @@ private fun WorkspaceNavContainer(
                             )
                             DrawerRowItem(
                                 label = "STOCK TRANSFER",
-                                icon = Icons.Rounded.SwapHoriz,
+                                icon = Icons.Outlined.SwapHoriz,
                                 iconTint = accents.gold,
                                 selected = currentRouteName.contains("StockTransfer"),
                                 testTag = "drawer_stock_transfer",
@@ -350,7 +357,7 @@ private fun WorkspaceNavContainer(
                             )
                             DrawerRowItem(
                                 label = "PAYMENT TRANSFER",
-                                icon = Icons.Rounded.CurrencyExchange,
+                                icon = Icons.Outlined.CurrencyExchange,
                                 iconTint = Color(0xFF059669),
                                 selected = currentRouteName.contains("PaymentTransfer"),
                                 testTag = "drawer_payment_transfer",
@@ -362,7 +369,7 @@ private fun WorkspaceNavContainer(
                             Spacer(Modifier.height(4.dp))
                             DrawerRowItem(
                                 label = "ADD ENTITY",
-                                icon = Icons.Rounded.PersonAdd,
+                                icon = Icons.Outlined.PersonAdd,
                                 iconTint = accents.cyan,
                                 selected = currentRouteName.contains("AddEntity"),
                                 testTag = "drawer_add_entity",
@@ -370,7 +377,7 @@ private fun WorkspaceNavContainer(
                             )
                             DrawerRowItem(
                                 label = "ADD RAW MATERIALS",
-                                icon = Icons.Rounded.Eco,
+                                icon = Icons.Outlined.Eco,
                                 iconTint = Color(0xFF16A34A),
                                 selected = currentRouteName.contains("RawMaterialPurchase"),
                                 testTag = "drawer_add_raw_materials",
@@ -378,7 +385,7 @@ private fun WorkspaceNavContainer(
                             )
                             DrawerRowItem(
                                 label = "FORMULA STORE",
-                                icon = Icons.Rounded.Science,
+                                icon = Icons.Outlined.Science,
                                 iconTint = accents.gold,
                                 selected = currentRouteName.contains("FormulaStore"),
                                 testTag = "drawer_formula_store",
@@ -398,7 +405,7 @@ private fun WorkspaceNavContainer(
                     ) {
                         DrawerRowItem(
                             label = "Settings",
-                            icon = Icons.Rounded.Settings,
+                            icon = Icons.Outlined.Settings,
                             iconTint = accents.emerald,
                             selected = currentRouteName.contains("Settings"),
                             testTag = "drawer_settings",
@@ -406,7 +413,7 @@ private fun WorkspaceNavContainer(
                         )
                         DrawerRowItem(
                             label = "Logout",
-                            icon = Icons.AutoMirrored.Rounded.Logout,
+                            icon = Icons.AutoMirrored.Outlined.Logout,
                             iconTint = accents.danger,
                             textColor = accents.danger,
                             selected = false,
@@ -426,21 +433,28 @@ private fun WorkspaceNavContainer(
             contentWindowInsets = if (isHome) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0),
             topBar = {
                 if (isHome) {
-                    // Expressive top bar: tonal container, large bottom radius, no hairline or shadow.
-                    val headerShape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+                    val headerShape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(
+                                elevation = if (accents.isDark) 0.dp else 5.dp,
+                                shape = headerShape,
+                                ambientColor = Color(0x14059669),
+                                spotColor = Color(0x14059669)
+                            ),
                         color = accents.headerFrosted,
-                        shape = headerShape
+                        shape = headerShape,
+                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.65f))
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FilledTonalIconButton(
+                            IconButton(
                                 onClick = {
                                     FeedbackHelper.triggerHaptic(context)
                                     scope.launch { drawerState.open() }
@@ -448,8 +462,9 @@ private fun WorkspaceNavContainer(
                                 modifier = Modifier.size(48.dp).testTag("drawer_menu_btn")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.Menu,
-                                    contentDescription = "Open navigation menu"
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = "Open navigation menu",
+                                    tint = accents.emerald
                                 )
                             }
 
@@ -467,10 +482,10 @@ private fun WorkspaceNavContainer(
                                 Text(
                                     text = headerTitle,
                                     fontFamily = JakartaFont,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
                                     letterSpacing = 1.2.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = accents.emerald,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -682,34 +697,33 @@ private fun DrawerRowItem(
     badgeCount: Int = 0,
     textColor: Color? = null
 ) {
-    // Expressive drawer item: a full-pill, 56dp row whose selected state fills with the
-    // secondary container (the standard Material "active indicator" colour pairing).
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(50)
+    val accents = LocalSarimAccents.current
+    val shape = RoundedCornerShape(14.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 56.dp)
+            .defaultMinSize(minHeight = 48.dp)
             .clip(shape)
-            .background(if (selected) colors.secondaryContainer else Color.Transparent)
+            .background(if (selected) accents.softPillFill else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (selected) colors.onSecondaryContainer else iconTint,
-            modifier = Modifier.size(24.dp)
+            tint = if (selected) accents.emerald else iconTint,
+            modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.width(14.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
-            letterSpacing = 0.5.sp,
-            color = textColor ?: if (selected) colors.onSecondaryContainer else colors.onSurface,
+            fontFamily = JakartaFont,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            fontSize = 12.5.sp,
+            letterSpacing = 0.8.sp,
+            color = textColor ?: if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -718,23 +732,23 @@ private fun DrawerRowItem(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(colors.tertiaryContainer)
-                    .padding(horizontal = 9.dp, vertical = 3.dp)
+                    .background(accents.gold.copy(alpha = 0.18f))
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
             ) {
-                Text("$badgeCount", style = MaterialTheme.typography.labelSmall, color = colors.onTertiaryContainer)
+                Text("$badgeCount", style = MaterialTheme.typography.labelSmall, color = accents.gold)
             }
         }
     }
 }
 
 private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
-    MainTab.OVERVIEW -> Icons.Rounded.GridView
-    MainTab.PRODUCTION -> Icons.Rounded.Inventory2
-    MainTab.SALES -> Icons.Rounded.ReceiptLong
-    MainTab.CALCULATOR -> Icons.Rounded.Calculate
-    MainTab.FACTORY -> Icons.Rounded.Factory
-    MainTab.PAYMENTS -> Icons.Rounded.CreditCard
-    MainTab.REP_SALES -> Icons.Rounded.TrendingUp
+    MainTab.OVERVIEW -> Icons.Outlined.GridView
+    MainTab.PRODUCTION -> Icons.Outlined.Inventory2
+    MainTab.SALES -> Icons.Outlined.ReceiptLong
+    MainTab.CALCULATOR -> Icons.Outlined.Calculate
+    MainTab.FACTORY -> Icons.Outlined.Factory
+    MainTab.PAYMENTS -> Icons.Outlined.CreditCard
+    MainTab.REP_SALES -> Icons.Outlined.TrendingUp
 }
 
 private fun tabIconColor(tab: MainTab): Color = when (tab) {

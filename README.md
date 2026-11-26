@@ -4,7 +4,7 @@ Native Android business accounting, production, sales, and inventory management 
 
 ## Architecture
 
-- **UI Layer**: Jetpack Compose (`Material 3`), adaptive `NavigationBar` / `NavigationRail`, type-safe Navigation Compose (`@Serializable AppRoute`), and a **Material 3 Expressive** design system (tonal emerald/teal/gold colour roles in light and dark, an expanded shape scale with 20–28dp corners, Material Rounded icons, and an Android 13 themed launcher icon) with bundled Google Fonts. Theme tokens live in `ui/theme/` (`Color.kt`, `Theme.kt`, `Type.kt`).
+- **UI Layer**: Jetpack Compose (`Material 3`), adaptive `NavigationBar` / `NavigationRail`, type-safe Navigation Compose (`@Serializable AppRoute`), and dark/light Obsidian-Emerald theming with bundled Google Fonts.
 - **State Management**: `SarimViewModel` and `SarimActionDispatcher` exposing `StateFlow` / `collectAsStateWithLifecycle`, backed by pure Kotlin business engines (`FormulaEngine`, `FinanceEngine`, `OverviewEngine`, `InputGuards`, `DateUtils`).
 - **Authentication & Security**: Google Sign-In via Jetpack Credential Manager (`GetSignInWithGoogleOption` / `GetGoogleIdOption`), Firebase Authentication, workspace role gating (`admin` / `member` / feature roles), pending approval queue for non-admin edits, and zero-trust Firestore Security Rules (`firestore.rules`).
 - **Persistence**: Cloud Firestore workspace collections (`stores`, `formulas`, `customers`, `entities`, `inventory`, `production`, `sales`, `rep_records`, `calculator`, `factory`, `transactions`, `ledger_entries`, `pending`, `settings`) and verified-email team invites (`workspace_invites`).

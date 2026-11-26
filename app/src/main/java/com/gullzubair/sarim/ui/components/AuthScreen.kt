@@ -41,12 +41,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountCircle
-import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.VerifiedUser
-import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.VerifiedUser
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -112,12 +112,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val SplashMintHalo = Color(0xFFC6EFDC)
-private val SplashEmerald = Color(0xFF00704F)
-private val SplashSunGold = Color(0xFFF5BD3D)
+private val SplashMintHalo = Color(0xFFD6F3EA)
+private val SplashEmerald = Color(0xFF0A8754)
+private val SplashSunGold = Color(0xFFF59E0B)
 private val SplashTrackGray = Color(0xFF94A3B8)
-private val InkPrimary = Color(0xFF171D1A)
-private val InkSecondary = Color(0xFF3F4943)
+private val InkPrimary = Color(0xFF0F172A)
+private val InkSecondary = Color(0xFF475569)
 
 private val SPLASH_QUOTES = listOf(
     "The details are not the details. They make the design." to "Charles Eames",
@@ -182,14 +182,14 @@ private val SPLASH_QUOTES = listOf(
     "The way to get started is to quit talking and begin doing." to "Walt Disney"
 )
 
-private val LoginMintTop = Color(0xFFF5FBF6)
-private val LoginMintMid = Color(0xFFE3EAE4)
-private val LoginBrandTeal = Color(0xFF00704F)
-private val LoginButtonDark = Color(0xFF00704F)
-private val LoginButtonBright = Color(0xFF00704F)
-private val InputBg = Color(0xFFE3EAE4)
-private val InputBorder = Color(0xFFBFC9C2)
-private val InputIconBg = Color(0xFFC6EFDC)
+private val LoginMintTop = Color(0xFFEAF5F0)
+private val LoginMintMid = Color(0xFFD9EDE4)
+private val LoginBrandTeal = Color(0xFF0F766E)
+private val LoginButtonDark = Color(0xFF065F46)
+private val LoginButtonBright = Color(0xFF107A57)
+private val InputBg = Color(0xFFF4F7F5)
+private val InputBorder = Color(0xFFDFE7E2)
+private val InputIconBg = Color(0xFFE7F3ED)
 private val PlaceholderGray = Color(0xFF94A3B8)
 
 @Composable
@@ -645,12 +645,12 @@ private fun AuthInputField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(InputBg)
                 .border(
                     width = if (focused) 1.5.dp else 1.dp,
                     color = if (focused) SplashEmerald else InputBorder,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 10.dp)
         ) {
@@ -721,7 +721,7 @@ private fun AuthInputField(
                     modifier = Modifier.testTag("toggle_password_visibility")
                 ) {
                     Icon(
-                        imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                         contentDescription = if (passwordVisible) "Hide password" else "Show password",
                         tint = InkSecondary,
                         modifier = Modifier.size(20.dp)
@@ -817,7 +817,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(28.dp),
+                        shape = RoundedCornerShape(26.dp),
                         shadowElevation = 10.dp,
                         color = Color.White,
                         modifier = Modifier
@@ -826,7 +826,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             .border(
                                 width = 1.dp,
                                 color = Color.White.copy(alpha = 0.85f),
-                                shape = RoundedCornerShape(28.dp)
+                                shape = RoundedCornerShape(26.dp)
                             )
                     ) {
                         Image(
@@ -835,7 +835,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(28.dp))
+                                .clip(RoundedCornerShape(26.dp))
                         )
                     }
 
@@ -904,7 +904,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             value = email,
                             onValueChange = { email = it },
                             placeholder = "name@example.com",
-                            leadingIcon = Icons.Rounded.Email,
+                            leadingIcon = Icons.Outlined.Email,
                             imeAction = ImeAction.Next,
                             keyboardType = KeyboardType.Email,
                             onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
@@ -918,7 +918,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             value = password,
                             onValueChange = { password = it },
                             placeholder = "Enter your password",
-                            leadingIcon = Icons.Rounded.Lock,
+                            leadingIcon = Icons.Outlined.Lock,
                             isPassword = true,
                             passwordVisible = passwordVisible,
                             onTogglePasswordVisibility = { passwordVisible = !passwordVisible },
@@ -930,15 +930,20 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
 
                         Spacer(Modifier.height(20.dp))
 
-                        // Expressive primary action: solid tonal fill, 56dp tall, no drop shadow.
                         val buttonGradient = Brush.horizontalGradient(
                             listOf(LoginButtonBright, LoginButtonDark)
                         )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .clip(RoundedCornerShape(28.dp))
+                                .height(54.dp)
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = RoundedCornerShape(999.dp),
+                                    ambientColor = LoginButtonDark.copy(alpha = 0.3f),
+                                    spotColor = LoginButtonDark.copy(alpha = 0.35f)
+                                )
+                                .clip(RoundedCornerShape(999.dp))
                                 .background(
                                     brush = buttonGradient,
                                     alpha = if (isAnyLoading) 0.72f else 1f
@@ -1041,7 +1046,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                     )
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Rounded.AccountCircle,
+                                        imageVector = Icons.Default.AccountCircle,
                                         contentDescription = null,
                                         tint = SplashEmerald,
                                         modifier = Modifier.size(19.dp)
@@ -1061,20 +1066,20 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         if (!errorMessage.isNullOrBlank()) {
                             Spacer(Modifier.height(12.dp))
                             Surface(
-                                color = Color(0xFFFFDAD6),
-                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .border(
                                         1.dp,
-                                        Color(0xFFBA1A1A).copy(alpha = 0.35f),
-                                        RoundedCornerShape(16.dp)
+                                        Color(0xFFFCA5A5),
+                                        RoundedCornerShape(12.dp)
                                     )
                             ) {
                                 Text(
                                     text = errorMessage!!,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF410002),
+                                    color = Color(0xFFB91C1C),
                                     modifier = Modifier.padding(12.dp)
                                 )
                             }
@@ -1105,7 +1110,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.VerifiedUser,
+                                imageVector = Icons.Outlined.VerifiedUser,
                                 contentDescription = "Protected workspace",
                                 tint = SplashEmerald,
                                 modifier = Modifier.size(16.dp)

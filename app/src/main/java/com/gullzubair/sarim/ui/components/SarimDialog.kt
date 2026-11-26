@@ -16,11 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircleOutline
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.HelpOutline
-import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -140,11 +140,11 @@ fun parseDialogMessage(message: String): ParsedDialogMessage {
 }
 
 private fun toneIcon(tone: DialogTone, title: String, confirmText: String): ImageVector = when (tone) {
-    DialogTone.Danger -> if (DELETE_RE.containsMatchIn("$title $confirmText")) Icons.Rounded.DeleteOutline else Icons.Rounded.WarningAmber
-    DialogTone.Warning -> Icons.Rounded.WarningAmber
-    DialogTone.Error -> Icons.Rounded.ErrorOutline
-    DialogTone.Success -> Icons.Rounded.CheckCircleOutline
-    DialogTone.Primary -> Icons.Rounded.HelpOutline
+    DialogTone.Danger -> if (DELETE_RE.containsMatchIn("$title $confirmText")) Icons.Default.DeleteOutline else Icons.Default.WarningAmber
+    DialogTone.Warning -> Icons.Default.WarningAmber
+    DialogTone.Error -> Icons.Default.ErrorOutline
+    DialogTone.Success -> Icons.Default.CheckCircleOutline
+    DialogTone.Primary -> Icons.Default.HelpOutline
 }
 
 /** A tick-box row shown above the buttons (web showGlassConfirm `checkbox`). */
@@ -191,10 +191,10 @@ fun SarimConfirmDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !safeFirst)
     ) {
         Box(Modifier.padding(16.dp).widthIn(max = 400.dp).fillMaxWidth()) {
-            // Expressive dialog: a high tonal container with a 28dp radius and no outline.
             Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.background(Brush.linearGradient(listOf(g1.copy(alpha = 0.10f), Color.Transparent)))) {
@@ -204,7 +204,7 @@ fun SarimConfirmDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Box(
-                            Modifier.size(52.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(18.dp)),
+                            Modifier.size(46.dp).background(Brush.linearGradient(listOf(g1, g2)), RoundedCornerShape(13.dp)),
                             contentAlignment = Alignment.Center
                         ) { Icon(toneIcon(resolved, title, confirmText), null, tint = ink, modifier = Modifier.size(26.dp)) }
                         Surface(shape = RoundedCornerShape(999.dp), color = strong.copy(alpha = 0.12f)) {
@@ -229,7 +229,7 @@ fun SarimConfirmDialog(
                         checkbox?.let { cb ->
                             Surface(
                                 onClick = { onCheckboxChange(!cb.checked) },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = Color.Transparent,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier.fillMaxWidth()
@@ -296,7 +296,7 @@ private fun DialogBlockView(blk: DialogBlock, g1: Color, strong: Color, faint: C
         }
         is DialogBlock.Callout -> {
             val c = if (blk.kind == "danger") accents.danger else accents.gold
-            Surface(shape = RoundedCornerShape(16.dp), color = c.copy(alpha = 0.12f), border = BorderStroke(1.dp, c.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(12.dp), color = c.copy(alpha = 0.12f), border = BorderStroke(1.dp, c.copy(alpha = 0.4f))) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(blk.label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = c)
                     Text(blk.text, fontSize = 13.sp, color = strong)

@@ -24,11 +24,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.PictureAsPdf
-import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -438,7 +438,7 @@ fun PaymentsScreen(
                             color = if (isEditing) accents.cyan else MaterialTheme.colorScheme.onSurface
                         )
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle)
                         ) {
@@ -455,7 +455,7 @@ fun PaymentsScreen(
                         onClick = {
                             if (isEditing) showDiscardEdit = true else resetForm(clearName = true)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.testTag(if (isEditing) "pay_cancel_edit_btn" else "pay_clear_btn")
@@ -496,7 +496,7 @@ fun PaymentsScreen(
                     val entMatches = activeEntities.filter { !it.isExpenseEntity && it.name.lowercase().contains(q) }
                     Spacer(Modifier.height(6.dp))
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth().testTag("pay_search_results")
@@ -584,7 +584,7 @@ fun PaymentsScreen(
                         onClick = {
                             photoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.inputFill,
                         border = BorderStroke(
                             1.dp,
@@ -596,7 +596,7 @@ fun PaymentsScreen(
                     ) {
                         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                             Icon(
-                                Icons.Rounded.CameraAlt,
+                                Icons.Default.CameraAlt,
                                 contentDescription = if (hasAttachedPhoto) "Photo attached — tap to replace" else "Attach photo",
                                 tint = if (hasAttachedPhoto) accents.emerald else accents.gold,
                                 modifier = Modifier.size(20.dp)
@@ -637,7 +637,7 @@ fun PaymentsScreen(
                             },
                             modifier = Modifier.size(48.dp).testTag("pay_photo_clear_btn")
                         ) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Remove attached photo", tint = accents.danger)
+                            Icon(Icons.Default.Close, contentDescription = "Remove attached photo", tint = accents.danger)
                         }
                     }
                 }
@@ -655,7 +655,7 @@ fun PaymentsScreen(
                         val canTap = !isEditing && !locked
                         Surface(
                             onClick = { if (canTap) txKind = key },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier
@@ -807,7 +807,7 @@ fun PaymentsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = accents.softPillFill,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -893,7 +893,7 @@ fun PaymentsScreen(
                             val sel = cashTrackerMode == key
                             Surface(
                                 onClick = { cashTrackerMode = key },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.weight(1f).testTag("cash_tracker_mode_$key")
@@ -912,7 +912,7 @@ fun PaymentsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -940,7 +940,7 @@ fun PaymentsScreen(
 
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -1041,13 +1041,13 @@ fun PaymentsScreen(
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.size(48.dp).testTag("unified_export_pdf_btn")
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.PictureAsPdf, contentDescription = "Download PDF", tint = accents.emerald, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -1078,26 +1078,26 @@ fun PaymentsScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(
                             onClick = onOpenAddEntity,
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald),
                             modifier = Modifier.weight(1f).testTag("pay_add_entity_btn")
                         ) {
                             Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Add, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Add Entity", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
                             }
                         }
                         Surface(
                             onClick = onOpenPaymentTransfer,
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.weight(1f).testTag("pay_transfer_entity_btn")
                         ) {
                             Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Transfer", style = MaterialTheme.typography.labelLarge)
                             }
@@ -1121,7 +1121,7 @@ fun PaymentsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .clickable { onOpenEntityDetail(row.entity.name) }
                                         .padding(vertical = 8.dp, horizontal = 4.dp)
                                         .testTag("entity_card_${row.entity.id}"),
@@ -1175,7 +1175,7 @@ fun PaymentsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .clickable { onOpenExpenseDetail(grp.name) }
                                         .padding(vertical = 8.dp, horizontal = 4.dp)
                                         .testTag("unified_exp_${grp.name}"),
@@ -1253,7 +1253,7 @@ fun PaymentsScreen(
                         val sel = historyFilter == k
                         Surface(
                             onClick = { historyFilter = k },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = if (sel) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                             modifier = Modifier.weight(1f).testTag("pay_hist_filter_$k")
@@ -1287,7 +1287,7 @@ fun PaymentsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedTx = tx }
                                     .padding(vertical = 8.dp, horizontal = 4.dp)
                                     .testTag("pay_row_${tx.id}"),
@@ -1477,7 +1477,7 @@ private fun BreakdownRow(
     }
     if (highlight) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(10.dp),
             color = accents.inputFill,
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
         ) { content() }

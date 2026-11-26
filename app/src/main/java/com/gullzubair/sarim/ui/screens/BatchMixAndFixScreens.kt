@@ -21,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -182,7 +182,7 @@ fun BatchMixScreen(
 
                 item {
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -208,7 +208,7 @@ fun BatchMixScreen(
                         )
                         Spacer(Modifier.height(6.dp))
                         Surface(
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(18.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -308,11 +308,11 @@ fun BatchMixScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(accents.softPillFill),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Rounded.ReceiptLong, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(18.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -348,7 +348,7 @@ fun BatchMixScreen(
                                     },
                                     modifier = Modifier.size(48.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete saved mix", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete saved mix", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -582,7 +582,7 @@ fun BatchFixScreen(
                                     InputGuards.fmtNum(row.add * factor).replace(",", "")
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = accents.inputFill,
                                     border = BorderStroke(1.dp, accents.borderSubtle),
                                     modifier = Modifier.fillMaxWidth()
@@ -731,7 +731,7 @@ fun BatchFixScreen(
                                     },
                                     modifier = Modifier.size(48.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete saved correction", tint = accents.danger, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete saved correction", tint = accents.danger, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -747,7 +747,7 @@ private fun MixPillToggle(label: String, selected: Boolean, onClick: () -> Unit)
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         color = if (selected) accents.softPillFill else accents.inputFill,
         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
         modifier = Modifier.defaultMinSize(minHeight = 40.dp)

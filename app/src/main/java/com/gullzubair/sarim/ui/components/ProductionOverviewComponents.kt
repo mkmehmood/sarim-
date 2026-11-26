@@ -24,8 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,7 +87,7 @@ fun AllStoresOverviewSection(
                     val selected = period == selectedPeriod
                     Surface(
                         onClick = { onSelectPeriod(period) },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -126,7 +126,7 @@ fun AllStoresOverviewSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = storeAccent.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, storeAccent.copy(alpha = 0.4f))
                     ) {
@@ -319,7 +319,7 @@ fun StoreComparisonChartCard(
                 val selected = metric == selectedMetric
                 Surface(
                     onClick = { onSelectMetric(metric) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (selected) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                     modifier = Modifier
@@ -455,7 +455,7 @@ fun MfgAnalyticsSection(
                     val selected = period == selectedPeriod
                     Surface(
                         onClick = { onSelectPeriod(period) },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -544,7 +544,7 @@ fun MfgAnalyticsSection(
                     if (idx in analytics.labels.indices) {
                         Spacer(Modifier.height(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -582,7 +582,7 @@ fun MfgAnalyticsSection(
 private fun SxPeriodBadge(label: String) {
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         color = accents.softPillFill
     ) {
         Text(
@@ -616,7 +616,7 @@ private fun SxHeroBlock(
             )
             if (!chip.isNullOrBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = chipColor.copy(alpha = 0.14f)
                 ) {
                     Text(
@@ -708,7 +708,7 @@ private fun SxKpiTile(
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {
@@ -750,7 +750,7 @@ private fun SxCustomerBreakdown(
     val accents = LocalSarimAccents.current
     var expanded by remember { mutableStateOf(false) }
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = accents.inputFill,
         border = BorderStroke(1.dp, accents.borderSubtle),
         modifier = Modifier
@@ -769,7 +769,7 @@ private fun SxCustomerBreakdown(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(
-                        imageVector = if (expanded) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowRight,
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
                         contentDescription = "Toggle $title",
                         tint = accents.textMuted,
                         modifier = Modifier.size(16.dp)

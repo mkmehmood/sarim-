@@ -443,7 +443,7 @@ fun RepSalesScreen(
             ) {
                 TabHeading("Rep Sales")
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f))
                 ) {

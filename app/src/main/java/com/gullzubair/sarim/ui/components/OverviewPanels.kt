@@ -21,10 +21,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Build
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -284,7 +284,7 @@ fun OverviewStockPanel(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     summary.outOfStockNames.forEach { name ->
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = accents.danger.copy(alpha = 0.12f),
                             border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f))
                         ) {
@@ -380,7 +380,7 @@ fun OverviewChecksPanel(
                             Spacer(Modifier.width(8.dp))
                             Text(InputGuards.formatMoney(w.profit, currency, masked), style = MaterialTheme.typography.labelLarge, color = accents.danger)
                             Spacer(Modifier.width(8.dp))
-                            Surface(shape = RoundedCornerShape(16.dp), color = accents.softPillFill, border = BorderStroke(1.dp, accents.emerald)) {
+                            Surface(shape = RoundedCornerShape(12.dp), color = accents.softPillFill, border = BorderStroke(1.dp, accents.emerald)) {
                                 Text("Open", style = MaterialTheme.typography.labelMedium, color = accents.emerald, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                             }
                         }
@@ -405,13 +405,13 @@ fun OverviewChecksPanel(
                 if (isAdmin) {
                     Surface(
                         onClick = onRepriceZeroCost,
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("overview_reprice_sales_btn")
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.Build, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(5.dp))
                             Text("Reprice Zero-Cost", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
                         }
@@ -423,7 +423,7 @@ fun OverviewChecksPanel(
                 Spacer(Modifier.height(10.dp))
                 Surface(
                     onClick = onStartFixOneByOne,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = accents.emerald.copy(alpha = 0.14f),
                     border = BorderStroke(1.dp, accents.emerald),
                     modifier = Modifier.testTag("overview_fix_one_by_one_btn")
@@ -444,7 +444,7 @@ fun OverviewChecksPanel(
                         val col = if (chk.severity == "error") accents.danger else accents.gold
                         Surface(
                             onClick = { if (isAdmin) onSelectByCode(chk.code) },
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = col.copy(alpha = 0.12f),
                             border = BorderStroke(1.dp, col.copy(alpha = 0.45f)),
                             modifier = Modifier.testTag("ov_check_${chk.code}")
@@ -464,7 +464,7 @@ fun OverviewChecksPanel(
         if (a.findings.isEmpty()) {
             SarimCard(accentBorder = accents.emerald) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = accents.emerald)
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accents.emerald)
                     Spacer(Modifier.width(10.dp))
                     Text("Zero discrepancies detected across stores, inventory, sales, and collections.", style = MaterialTheme.typography.bodyMedium)
                 }
@@ -479,7 +479,7 @@ fun OverviewChecksPanel(
                         .testTag("ov_finding_${finding.id}")
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Warning, contentDescription = null, tint = color)
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = color)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text("${finding.title} (${finding.label}${if (finding.date.isNotBlank()) " • ${finding.date}" else ""})", style = MaterialTheme.typography.titleSmall, color = color)
@@ -488,7 +488,7 @@ fun OverviewChecksPanel(
                         if (isAdmin) {
                             Spacer(Modifier.width(8.dp))
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = accents.softPillFill,
                                 border = BorderStroke(1.dp, accents.emerald)
                             ) {
@@ -575,7 +575,7 @@ private fun OverviewOwedTile(label: String, value: String, sub: String, color: C
     val accents = LocalSarimAccents.current
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = color.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.40f))
     ) {
