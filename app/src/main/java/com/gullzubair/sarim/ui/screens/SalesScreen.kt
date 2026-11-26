@@ -27,6 +27,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.SarimDangerButton
+import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.data.model.SalesRecord
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
@@ -41,7 +48,6 @@ import com.gullzubair.sarim.ui.components.EditDiffConfirmDialog
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.SalesAnalyticsCard
 import com.gullzubair.sarim.ui.components.SalesBlockingAlertDialog
-import com.gullzubair.sarim.ui.components.SalesDetailSheet
 import com.gullzubair.sarim.ui.components.SalesEntryCard
 import com.gullzubair.sarim.ui.components.SalesEntryMode
 import com.gullzubair.sarim.ui.components.SalesHistoryRowCard
@@ -109,7 +115,8 @@ fun SalesScreen(
     var summaryPeriod by remember { mutableStateOf(SalesAnalyticsEngine.SalesSummaryPeriod.DAY) }
 
     // Modals & sheets
-    var selectedSale by remember { mutableStateOf<SalesRecord?>(null) }
+    var expandedSaleId by remember { mutableStateOf<String?>(null) }
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
     var editingSale by remember { mutableStateOf<SalesRecord?>(null) }
     var showEditDiff by remember { mutableStateOf(false) }
     var showDiscardEdit by remember { mutableStateOf(false) }
@@ -172,6 +179,15 @@ fun SalesScreen(
         repReturnedStr = if (isRepRet && s.returnedQty > 0.0) InputGuards.fmtNum(s.returnedQty).replace(",", "") else ""
         repExpiredStr = if (isRepRet && s.expiredQty > 0.0) InputGuards.fmtNum(s.expiredQty).replace(",", "") else ""
         notes = s.notes
+    }
+
+    // Edit requested from the customer ledger screen.
+    val pendingEditId by vm.pendingSaleEditId.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingEditId, snapshot.sales) {
+        val id = pendingEditId ?: return@LaunchedEffect
+        val target = snapshot.sales.firstOrNull { it.id == id && it.deletedAt == null }
+        if (target != null) startEdit(target)
+        vm.consumePendingSaleEdit()
     }
 
     BackHandler(enabled = editingSale != null) {
@@ -703,6 +719,7 @@ fun SalesScreen(
                         // Web: flat list of history cards, filtered only by the typed customer name.
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             filteredHistory.forEach { s ->
+                                val expanded = expandedSaleId == s.id
                                 SalesHistoryRowCard(
                                     s = s,
                                     stores = snapshot.stores,
@@ -710,8 +727,79 @@ fun SalesScreen(
                                     isSelectedDate = s.date.take(10) == dateIso.take(10),
                                     currency = currency,
                                     masked = masked,
-                                    onClick = { selectedSale = s }
+                                    onClick = { expandedSaleId = if (expanded) null else s.id }
                                 )
+                                if (expanded) {
+                                    val isOldDebtRow = s.transactionType == "OLD_DEBT"
+                                    val canEditRow = !s.isMerged && !s.isTransfer && !s.isRepTransfer &&
+                                        !isOldDebtRow && s.paymentType != "MONEY_OUT"
+                                    val typeLabelRow = when {
+                                        isOldDebtRow -> "OLD DEBT"
+                                        s.isRepReturn || s.paymentType == "REP_RETURN" -> "REP RETURN"
+                                        FinanceEngine.isCollectionRow(s) -> "COLLECTION"
+                                        s.paymentType == "MONEY_OUT" -> "MONEY OUT"
+                                        else -> s.paymentType
+                                    }
+                                    val amountRow = when {
+                                        s.isRepReturn || s.paymentType == "REP_RETURN" -> s.returnValue
+                                        FinanceEngine.isCollectionRow(s) -> if (s.collectedAmount > 0.0) s.collectedAmount else s.totalValue
+                                        else -> s.totalValue
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        if (s.notes.isNotBlank()) {
+                                            Text(s.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            if (canEditRow) {
+                                                SarimGradientButton(
+                                                    text = "Edit",
+                                                    onClick = {
+                                                        expandedSaleId = null
+                                                        startEdit(s)
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    testTag = "sales_edit_${s.id}"
+                                                )
+                                            }
+                                            SarimDangerButton(
+                                                text = "Delete",
+                                                onClick = {
+                                                    val reason = SalesAnalyticsEngine.getSaleBlockReason(snapshot, s, forEdit = false)
+                                                    if (reason.isNotBlank()) {
+                                                        blockingAlert = "Action Blocked" to reason
+                                                    } else {
+                                                        confirmReq = ConfirmRequest(
+                                                            title = "Delete $typeLabelRow?",
+                                                            message = deleteConfirmMessage(listOf(
+                                                                "Customer" to s.customerName,
+                                                                "Date" to DateUtils.formatPretty(s.date),
+                                                                "Amount" to InputGuards.formatMoney(amountRow, currency, masked)
+                                                            )),
+                                                            confirmText = "Delete",
+                                                            danger = true,
+                                                            tag = "sales_confirm_delete_btn"
+                                                        ) {
+                                                            vm.softDeleteRecord(
+                                                                collection = "sales",
+                                                                docId = s.id,
+                                                                displayName = s.customerName,
+                                                                displayDetail = "${s.date} • $typeLabelRow",
+                                                                displayAmount = InputGuards.formatMoney(amountRow, currency, masked),
+                                                                snapshotMap = WorkspaceJsonCodec.saleToMap(s)
+                                                            )
+                                                            expandedSaleId = null
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                testTag = "sales_delete_${s.id}"
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -720,23 +808,7 @@ fun SalesScreen(
         }
     }
 
-    // Detail Bottom Sheet
-    selectedSale?.let { s ->
-        SalesDetailSheet(
-            s = s,
-            snapshot = snapshot,
-            runningBalanceAfter = runningBalances[s.id],
-            currency = currency,
-            masked = masked,
-            isSalesRestricted = isSalesRestricted,
-            isAdmin = session.mode == "admin",
-            vm = vm,
-            onEditEntry = { startEdit(it) },
-            onOpenCustomerDetail = onOpenCustomerDetail,
-            onBlockedAction = { msg -> blockingAlert = "Action Blocked" to msg },
-            onDismiss = { selectedSale = null }
-        )
-    }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
 
     // Blocking Alert Dialog
     blockingAlert?.let { (title, msg) ->

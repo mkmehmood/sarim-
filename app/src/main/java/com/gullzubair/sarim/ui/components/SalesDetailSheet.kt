@@ -46,7 +46,8 @@ fun SalesDetailSheet(
     onEditEntry: (SalesRecord) -> Unit,
     onOpenCustomerDetail: (String) -> Unit,
     onBlockedAction: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    showStatement: Boolean = true
 ) {
     val accents = LocalSarimAccents.current
     var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
@@ -226,7 +227,7 @@ fun SalesDetailSheet(
                         }
                     }
                 }
-                if (!isSalesRestricted) {
+                if (!isSalesRestricted && showStatement) {
                     SarimGradientButton(
                         text = "Statement",
                         onClick = {

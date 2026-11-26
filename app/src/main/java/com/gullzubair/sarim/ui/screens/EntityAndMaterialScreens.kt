@@ -399,11 +399,12 @@ fun EditCustomerScreen(
                                 value = name,
                                 onValueChange = { name = it.take(80) },
                                 label = "Customer Name",
+                                placeholder = "Customer name",
                                 testTag = "ec_name_input"
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = if (isRepClient) "Rep customer profile in clients collection." else "Customer profile in customers collection.",
+                                text = if (existing.id.isNotBlank()) "Editing the name will update all records for this customer" else "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = accents.textMuted
                             )
@@ -420,7 +421,7 @@ fun EditCustomerScreen(
                         value = phone,
                         onValueChange = { phone = it.take(32) },
                         label = "Phone number",
-                        placeholder = "0300-0000000",
+                        placeholder = "03XX-XXXXXXX",
                         leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ec_phone_input"
                     )
@@ -455,32 +456,6 @@ fun EditCustomerScreen(
                             }
                         }
                     }
-                    if (isRepClient && isOwnRepOnly) {
-                        Spacer(Modifier.height(10.dp))
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = accents.softPillFill,
-                            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth().testTag("ec_rep_locked")
-                        ) {
-                            Text(
-                                text = "Assigned Sales Rep (Locked): $lockedRepName",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = accents.emerald,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-                            )
-                        }
-                    } else if (snapshot.settings.reps.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        PickerField(
-                            label = "Assigned Sales Rep",
-                            selectedLabel = salesRep.ifBlank { "None" },
-                            items = listOf("") + snapshot.settings.reps,
-                            itemLabel = { it.ifBlank { "None" } },
-                            onSelect = { salesRep = it },
-                            testTag = "ec_rep_picker"
-                        )
-                    }
                 }
             }
 
@@ -496,16 +471,8 @@ fun EditCustomerScreen(
                         value = bookPageStr,
                         onValueChange = { bookPageStr = it.take(40) },
                         label = "Manual ledger book page",
-                        placeholder = "e.g. 176",
+                        placeholder = "e.g. 45",
                         testTag = "ec_page_input"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = notesStr,
-                        onValueChange = { notesStr = it.take(300) },
-                        label = "Notes (optional)",
-                        placeholder = "Extra notes",
-                        testTag = "ec_notes_input"
                     )
                 }
             }

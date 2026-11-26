@@ -156,6 +156,19 @@ class SarimViewModel(
         profileTrigger.value += 1
     }
 
+    // Customer ledger -> Sales tab "edit this sale" hand-off (web: startEdit('sale', id)).
+    private val _pendingSaleEditId = MutableStateFlow<String?>(null)
+    val pendingSaleEditId: StateFlow<String?> = _pendingSaleEditId.asStateFlow()
+
+    fun requestSaleEdit(saleId: String) {
+        _pendingSaleEditId.value = saleId
+        _selectedTab.value = MainTab.SALES
+    }
+
+    fun consumePendingSaleEdit() {
+        _pendingSaleEditId.value = null
+    }
+
     fun selectTab(tab: MainTab) {
         _selectedTab.value = tab
     }

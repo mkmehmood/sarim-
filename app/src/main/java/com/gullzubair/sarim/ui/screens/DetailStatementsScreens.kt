@@ -138,126 +138,26 @@ fun CustomerDetailScreen(
         list
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(
-            title = customerName.uppercase(),
-            subtitle = customer?.phone?.takeIf { it.isNotBlank() },
-            onBack = onBack,
-            trailingContent = {
-                Surface(
-                    onClick = onEditCustomer,
-                    shape = RoundedCornerShape(14.dp),
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.testTag("customer_edit_btn")
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit Customer", tint = accents.emerald, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Edit", style = MaterialTheme.typography.labelLarge, color = accents.emerald)
-                    }
-                }
-            }
-        )
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item { Spacer(Modifier.height(4.dp)) }
-            item {
-                val custPhotoKey = customer?.let { "${if (isRepClient) "client" else "cust"}:${it.id}" }
-                val custPhotoUri = custPhotoKey?.let { snapshot.photos[it]?.takeIf { b -> !b.deleted }?.dataUri }
-                SarimCard {
-                    if (!custPhotoUri.isNullOrBlank()) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            DecodedDataUrlImage(
-                                dataUrl = custPhotoUri,
-                                contentDescription = "$customerName photo",
-                                modifier = Modifier.size(52.dp).clip(CircleShape)
-                            )
-                            Column {
-                                Text(customerName, style = MaterialTheme.typography.titleMedium)
-                                if (!customer.ledgerPage.isBlank()) {
-                                    Text("Ledger Page: ${customer.ledgerPage}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                                }
-                            }
-                        }
-                    }
-                    SarimHalfRingKpiBox(
-                        label = "CUSTOMER BALANCE",
-                        value = InputGuards.formatMoney(balance, currency, masked),
-                        ringColor = if (balance > 0) accents.gold else accents.emerald,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (!customer?.address.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("Address: ${customer?.address}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                    }
-                    if (custPhotoUri.isNullOrBlank() && !customer?.ledgerPage.isNullOrBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text("Ledger Page: ${customer?.ledgerPage}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!isRepClient) {
-                            Surface(
-                                onClick = { showMoneyOut = true },
-                                shape = RoundedCornerShape(22.dp),
-                                color = accents.gold.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, accents.gold),
-                                modifier = Modifier.weight(0.42f).height(50.dp).testTag("customer_money_out_btn")
-                            ) {
-                                Row(
-                                    Modifier.fillMaxSize().padding(horizontal = 10.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Payments, contentDescription = null, tint = accents.gold, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(5.dp))
-                                    Text("Money Out", style = MaterialTheme.typography.labelLarge, color = accents.gold, maxLines = 1)
-                                }
-                            }
-                        }
-                        SarimGradientButton(
-                            text = "Export PDF",
-                            onClick = {
-                                PdfExporter.exportAndShareStatement(
-                                    context = context,
-                                    title = "Customer Statement: $customerName",
-                                    subtitle = "Gull & Zubair Naswar Dealers",
-                                    rows = rows,
-                                    summaryFooter = "Closing Balance: ${InputGuards.formatMoney(balance, currency, masked)}"
-                                )
-                            },
-                            modifier = Modifier.weight(if (isRepClient) 1f else 0.58f),
-                            testTag = "customer_pdf_btn"
-                        )
-                    }
-                }
-            }
-            if (rows.isEmpty()) {
-                item { EmptyStateCard("No transactions", "No recorded activity for $customerName yet.") }
-            } else {
-                items(rows.reversed()) { r ->
-                    SarimCard {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(r.description, style = MaterialTheme.typography.titleSmall)
-                                Text("${r.date} • Debit ${r.debit} • Credit ${r.credit}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                            }
-                            Text(if (masked) "$currency ••••" else "$currency ${r.balance}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.cyan)
-                        }
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
-        }
+    val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
+    val isSalesRestricted = remember(session) {
+        FinanceEngine.isMoneyRestricted(session) && "sales" in session.tabs
     }
+    CustomerLedgerBody(
+        snapshot = snapshot,
+        customerName = customerName,
+        customer = customer,
+        isRepClient = isRepClient,
+        balance = balance,
+        rows = rows,
+        currency = currency,
+        masked = masked,
+        isSalesRestricted = isSalesRestricted,
+        isAdmin = session.mode == "admin",
+        vm = vm,
+        onBack = onBack,
+        onEditCustomer = onEditCustomer,
+        onMoneyOut = { showMoneyOut = true }
+    )
 
     if (showMoneyOut) {
         CustomerMoneyOutDialog(
