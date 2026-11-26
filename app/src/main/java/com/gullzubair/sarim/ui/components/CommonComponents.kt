@@ -1216,3 +1216,22 @@ fun OfflineBanner(
     }
 }
 
+@Composable
+fun PickerField(
+    label: String,
+    selectedLabel: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    PickerField(
+        label = label,
+        selectedLabel = selectedLabel,
+        items = options,
+        itemLabel = { it.second },
+        onSelect = { onSelect(it.first) },
+        testTag = testTag,
+        modifier = modifier
+    )
+}

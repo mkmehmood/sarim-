@@ -466,6 +466,7 @@ object WorkspaceJsonCodec {
         totalSale = asDouble(data["totalSale"], asDouble(data["totalRevenue"], 0.0)),
         profit = asDouble(data["profit"], 0.0),
         formulaUnits = asDouble(data["formulaUnits"], 0.0),
+        unitWeight = asDouble(data["unitWeight"], 0.0),
         formulaId = asStr(data["formulaId"]),
         formulaName = asStr(data["formulaName"]),
         formulaMaterials = asMapList(data["formulaMaterials"]),
@@ -507,6 +508,7 @@ object WorkspaceJsonCodec {
         put("totalSale", p.totalSale)
         put("profit", p.profit)
         if (p.formulaUnits != 0.0) put("formulaUnits", p.formulaUnits)
+        if (p.unitWeight != 0.0) put("unitWeight", p.unitWeight)
         if (p.formulaId.isNotBlank()) put("formulaId", p.formulaId)
         if (p.formulaName.isNotBlank()) put("formulaName", p.formulaName)
         if (p.formulaMaterials.isNotEmpty()) put("formulaMaterials", p.formulaMaterials)
@@ -1005,6 +1007,7 @@ object WorkspaceJsonCodec {
             transferDirection = asStr(data["transferDirection"]),
             peerEntityName = asStr(data["peerEntityName"]),
             isOpeningBalance = asBool(data["isOpeningBalance"], false),
+            isSettled = asBool(data["isSettled"], false),
             isMerged = asBool(data["isMerged"], false),
             timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
             updatedAtEpoch = asLong(data["updatedAt"], 0L),
@@ -1041,6 +1044,7 @@ object WorkspaceJsonCodec {
             if (t.peerEntityName.isNotBlank()) put("peerEntityName", t.peerEntityName)
         }
         if (t.isOpeningBalance) put("isOpeningBalance", true)
+        if (t.isSettled) put("isSettled", true)
         if (t.isMerged) put("isMerged", true)
         put("timestamp", if (t.timestamp > 0L) t.timestamp else System.currentTimeMillis())
         t.deletedAt?.let { put("deletedAt", it) }
