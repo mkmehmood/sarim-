@@ -417,7 +417,7 @@ fun RepCustomerManagementScreen(
                             if (!client?.phone.isNullOrBlank()) {
                                 Surface(
                                     onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}"))) } },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = accents.softPillFill,
                                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.4f)),
                                     modifier = Modifier.weight(1f).testTag("rep_cust_call_btn")
@@ -439,7 +439,7 @@ fun RepCustomerManagementScreen(
                                         val uri = Uri.parse("geo:${bestGps.first},${bestGps.second}?q=${bestGps.first},${bestGps.second}(${Uri.encode(customerName)})")
                                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                                     },
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(20.dp),
                                     color = accents.inputFill,
                                     border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.45f)),
                                     modifier = Modifier.weight(1f).testTag("rep_cust_maps_btn")

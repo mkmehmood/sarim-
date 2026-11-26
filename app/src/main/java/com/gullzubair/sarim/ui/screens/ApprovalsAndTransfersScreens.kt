@@ -172,7 +172,7 @@ fun ApprovalsScreen(
                                 tag = "approvals_confirm_all_btn"
                             ) { pendingList.forEach { vm.reviewPending(it, true) } }
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
                         modifier = Modifier.testTag("approvals_approve_all_btn")
@@ -203,7 +203,7 @@ fun ApprovalsScreen(
                         Box(
                             modifier = Modifier
                                 .size(50.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(if (pendingList.isEmpty()) accents.softPillFill else accents.gold.copy(alpha = 0.16f)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -413,7 +413,7 @@ fun ApprovalsScreen(
                                                 danger = true
                                             ) { dayItems.forEach { vm.reviewPending(it, false) } }
                                         },
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(16.dp),
                                         color = accents.danger.copy(alpha = 0.12f),
                                         border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
                                         modifier = Modifier.defaultMinSize(minHeight = 40.dp)
@@ -431,7 +431,7 @@ fun ApprovalsScreen(
                                                 tone = DialogTone.Primary
                                             ) { dayItems.forEach { vm.reviewPending(it, true) } }
                                         },
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(16.dp),
                                         color = accents.softPillFill,
                                         border = BorderStroke(1.dp, accents.emerald),
                                         modifier = Modifier.defaultMinSize(minHeight = 40.dp)
@@ -592,7 +592,7 @@ fun StockTransferScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedTransfer = rec }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -821,7 +821,7 @@ fun PaymentTransferScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { selectedTransfer = tx }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,

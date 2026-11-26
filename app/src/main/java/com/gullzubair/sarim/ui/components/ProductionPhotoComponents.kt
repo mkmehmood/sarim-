@@ -91,7 +91,7 @@ fun ProductionPhotoPickerStrip(
         Surface(
             onClick = onAddClick,
             enabled = slots.size < maxPhotos,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(20.dp),
             color = accents.softPillFill,
             border = BorderStroke(1.dp, accents.emerald.copy(alpha = if (slots.size < maxPhotos) 0.55f else 0.25f)),
             modifier = Modifier.testTag("prod_attach_photo_btn")
@@ -124,7 +124,7 @@ fun ProductionPhotoPickerStrip(
                             contentDescription = "Scale photo ${idx + 1}",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable { onPreviewAt(idx) }
                                 .testTag("prod_photo_thumb_$idx")
                         )
@@ -220,7 +220,7 @@ fun ProductionPhotoLightboxDialog(
                     .fillMaxWidth()
                     .height(440.dp)
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(16.dp))
             )
 
             Column(
@@ -252,7 +252,7 @@ fun ProductionPhotoLightboxDialog(
                 }
                 if (record != null) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = Color(0xFF0F172A),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
                         modifier = Modifier.fillMaxWidth()
@@ -289,7 +289,7 @@ fun ProductionMultiShareBar(
     if (selectedCount <= 0) return
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(24.dp),
         color = accents.cardElevated,
         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
         shadowElevation = 6.dp,
@@ -311,7 +311,7 @@ fun ProductionMultiShareBar(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     onClick = onClear,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.testTag("prod_multishare_clear")
@@ -320,7 +320,7 @@ fun ProductionMultiShareBar(
                 }
                 Surface(
                     onClick = onShare,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.emerald,
                     modifier = Modifier.testTag("prod_multishare_go")
                 ) {

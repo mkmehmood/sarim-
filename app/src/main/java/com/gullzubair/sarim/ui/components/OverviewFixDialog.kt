@@ -99,7 +99,7 @@ fun OverviewFixDialog(
             ) {
                 finding.reasons.forEach { reason ->
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (finding.severity == "error") accents.danger.copy(alpha = 0.08f) else accents.gold.copy(alpha = 0.09f),
                         border = BorderStroke(1.dp, if (finding.severity == "error") accents.danger.copy(alpha = 0.3f) else accents.gold.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()

@@ -503,7 +503,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = 52.dp)
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(24.dp))
                                 .background(accents.inputFill.copy(alpha = 0.7f))
                                 .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
                                 .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -521,7 +521,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         Spacer(Modifier.height(12.dp))
                         val amberBg = if (accents.isDark) accents.gold.copy(alpha = 0.09f) else Color(0xFFFFF7ED)
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = amberBg,
                             border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.65f)),
                             modifier = Modifier.fillMaxWidth()
@@ -600,7 +600,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     if (expired > 0.0) {
                         Spacer(Modifier.height(10.dp))
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
                             modifier = Modifier.fillMaxWidth()
@@ -639,7 +639,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .defaultMinSize(minHeight = 52.dp)
-                                    .clip(RoundedCornerShape(18.dp))
+                                    .clip(RoundedCornerShape(24.dp))
                                     .background(accents.inputFill.copy(alpha = 0.65f))
                                     .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
                                     .clickable { showCommissionPopup = true }
@@ -684,7 +684,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .defaultMinSize(minHeight = 52.dp)
-                                    .clip(RoundedCornerShape(18.dp))
+                                    .clip(RoundedCornerShape(24.dp))
                                     .background(accents.inputFill.copy(alpha = 0.65f))
                                     .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
                                     .clickable { showExpensePopup = true }
@@ -709,7 +709,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
 
                     Spacer(Modifier.height(14.dp))
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -865,7 +865,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         r to v
                     }
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -949,7 +949,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     )
                     if (marketItems.sumOf { it.second } <= 0.0) {
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -1004,7 +1004,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                             Triple("Commission Paid", { it.commissionPaid }, accents.emerald)
                         )
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = accents.inputFill,
                             border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier.fillMaxWidth()
@@ -1395,7 +1395,7 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                         itemRow = { c ->
                             val storeLabel = FormulaEngine.storeLabelFor(c.returnStore, snapshot.stores)
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = accents.inputFill,
                                 border = BorderStroke(1.dp, accents.borderSubtle),
                                 modifier = Modifier
@@ -1588,7 +1588,7 @@ private fun CalcDashedDecimalField(
             modifier = Modifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 52.dp)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(accents.inputFill.copy(alpha = 0.65f))
                 .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
                 .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -1645,7 +1645,7 @@ private fun CalcTintedDecimalField(
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
         )
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(24.dp),
             color = accents.softPillFill,
             border = BorderStroke(1.2.dp, accents.emerald),
             modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)

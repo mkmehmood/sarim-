@@ -189,7 +189,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                             val sel = isOpeningCredit == creditVal
                             Surface(
                                 onClick = { isOpeningCredit = creditVal },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = if (sel) accents.softPillFill else accents.inputFill,
                                 border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                                 modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
@@ -445,7 +445,7 @@ fun EditCustomerScreen(
                                     gpsLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                                 }
                             },
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(24.dp),
                             color = accents.softPillFill,
                             border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
                             modifier = Modifier.size(54.dp).testTag("ec_gps_btn")

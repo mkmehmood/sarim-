@@ -132,7 +132,7 @@ fun CalculatorPerformanceChartCard(
                 val sel = mode == k
                 Surface(
                     onClick = { mode = k },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (sel) accents.softPillFill else accents.inputFill,
                     border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                     modifier = Modifier.weight(1f).testTag("calc_ind_mode_$k")
@@ -218,7 +218,7 @@ fun CalculatorItemListDialog(
                 )
                 if (suggestions.isNotEmpty() && !suggestions.any { it.equals(nameInput.trim(), true) }) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -441,7 +441,7 @@ private fun CalcAccordion(
     val accents = LocalSarimAccents.current
     Surface(
         onClick = onToggle,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         color = accents.softPillFill.copy(alpha = 0.45f),
         border = BorderStroke(1.dp, accents.borderSubtle)
     ) {

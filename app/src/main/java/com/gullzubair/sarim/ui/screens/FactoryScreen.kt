@@ -254,7 +254,7 @@ fun FactoryScreen(
                         )
                         val pinkBg = if (accents.isDark) accents.danger.copy(alpha = 0.14f) else Color(0xFFFFF1F2)
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(24.dp),
                             color = pinkBg,
                             border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
                             modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
@@ -282,7 +282,7 @@ fun FactoryScreen(
                 }
                 val mintBg = if (accents.isDark) accents.softPillFill else Color(0xFFECFDF7)
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = mintBg,
                     border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
                     modifier = Modifier.fillMaxWidth()
@@ -529,7 +529,7 @@ fun FactoryScreen(
                     HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
                     Spacer(Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
@@ -703,7 +703,7 @@ fun FactoryScreen(
                         if (rawByMaterial.isNotEmpty()) {
                             val breakdownMint = if (accents.isDark) accents.softPillFill else Color(0xFFDCFCE7).copy(alpha = 0.7f)
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(24.dp),
                                 color = breakdownMint,
                                 border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
                                 modifier = Modifier.fillMaxWidth()
@@ -801,7 +801,7 @@ fun FactoryScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(20.dp))
                                         .background(accents.cyan.copy(alpha = 0.08f))
                                         .cyanDotMatrixPattern(accents.cyan, accents.cyan)
                                         .clickable { selectedFactoryRec = rec }
@@ -978,7 +978,7 @@ private fun FactoryHalfRingSubKpiBox(
     modifier: Modifier = Modifier
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(24.dp)
     Box(
         modifier = modifier
             .clip(shape)
@@ -1034,9 +1034,9 @@ private fun FactoryGroupBox(
     val accents = LocalSarimAccents.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(accents.inputFill)
-            .border(1.dp, accents.borderSubtle, RoundedCornerShape(16.dp))
+            .border(1.dp, accents.borderSubtle, RoundedCornerShape(20.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {

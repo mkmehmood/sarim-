@@ -380,7 +380,7 @@ fun RawMaterialScreen(
 private fun StatsStrip(cols: List<Triple<String, String, Color>>) {
     val accents = LocalSarimAccents.current
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(20.dp),
         color = accents.softPillFill,
         border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()

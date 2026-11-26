@@ -40,21 +40,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.outlined.Calculate
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.CreditCard
-import androidx.compose.material.icons.outlined.CurrencyExchange
-import androidx.compose.material.icons.outlined.Eco
-import androidx.compose.material.icons.outlined.Factory
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.PersonAdd
-import androidx.compose.material.icons.outlined.ReceiptLong
-import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CreditCard
@@ -63,8 +48,6 @@ import androidx.compose.material.icons.rounded.Eco
 import androidx.compose.material.icons.rounded.Factory
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.ReceiptLong
@@ -72,6 +55,8 @@ import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -364,7 +349,7 @@ private fun WorkspaceNavContainer(
                             val approvalsSelected = currentRouteName.contains("Approvals")
                             DrawerRowItem(
                                 label = "APPROVALS",
-                                icon = if (approvalsSelected) Icons.Rounded.CheckCircle else Icons.Outlined.CheckCircle,
+                                icon = if (approvalsSelected) Icons.Rounded.CheckCircle else Icons.Rounded.CheckCircle,
                                 iconTint = accents.emerald,
                                 selected = approvalsSelected,
                                 badgeCount = pendingCount,
@@ -374,7 +359,7 @@ private fun WorkspaceNavContainer(
                             val ledgerSelected = currentRouteName.contains("DailyLedger")
                             DrawerRowItem(
                                 label = "DAILY LEDGER",
-                                icon = if (ledgerSelected) Icons.Rounded.MenuBook else Icons.Outlined.MenuBook,
+                                icon = if (ledgerSelected) Icons.Rounded.MenuBook else Icons.Rounded.MenuBook,
                                 iconTint = Color(0xFF0D9488),
                                 selected = ledgerSelected,
                                 testTag = "drawer_daily_ledger",
@@ -383,7 +368,7 @@ private fun WorkspaceNavContainer(
                             val stockTrSelected = currentRouteName.contains("StockTransfer")
                             DrawerRowItem(
                                 label = "STOCK TRANSFER",
-                                icon = if (stockTrSelected) Icons.Rounded.SwapHoriz else Icons.Outlined.SwapHoriz,
+                                icon = if (stockTrSelected) Icons.Rounded.SwapHoriz else Icons.Rounded.SwapHoriz,
                                 iconTint = accents.gold,
                                 selected = stockTrSelected,
                                 testTag = "drawer_stock_transfer",
@@ -392,7 +377,7 @@ private fun WorkspaceNavContainer(
                             val payTrSelected = currentRouteName.contains("PaymentTransfer")
                             DrawerRowItem(
                                 label = "PAYMENT TRANSFER",
-                                icon = if (payTrSelected) Icons.Rounded.CurrencyExchange else Icons.Outlined.CurrencyExchange,
+                                icon = if (payTrSelected) Icons.Rounded.CurrencyExchange else Icons.Rounded.CurrencyExchange,
                                 iconTint = Color(0xFF059669),
                                 selected = payTrSelected,
                                 testTag = "drawer_payment_transfer",
@@ -405,7 +390,7 @@ private fun WorkspaceNavContainer(
                             val addEntitySelected = currentRouteName.contains("AddEntity")
                             DrawerRowItem(
                                 label = "ADD ENTITY",
-                                icon = if (addEntitySelected) Icons.Rounded.PersonAdd else Icons.Outlined.PersonAdd,
+                                icon = if (addEntitySelected) Icons.Rounded.PersonAdd else Icons.Rounded.PersonAdd,
                                 iconTint = accents.cyan,
                                 selected = addEntitySelected,
                                 testTag = "drawer_add_entity",
@@ -414,7 +399,7 @@ private fun WorkspaceNavContainer(
                             val rawMatSelected = currentRouteName.contains("RawMaterialPurchase")
                             DrawerRowItem(
                                 label = "ADD RAW MATERIALS",
-                                icon = if (rawMatSelected) Icons.Rounded.Eco else Icons.Outlined.Eco,
+                                icon = if (rawMatSelected) Icons.Rounded.Eco else Icons.Rounded.Eco,
                                 iconTint = Color(0xFF16A34A),
                                 selected = rawMatSelected,
                                 testTag = "drawer_add_raw_materials",
@@ -423,7 +408,7 @@ private fun WorkspaceNavContainer(
                             val formulaSelected = currentRouteName.contains("FormulaStore")
                             DrawerRowItem(
                                 label = "FORMULA STORE",
-                                icon = if (formulaSelected) Icons.Rounded.Science else Icons.Outlined.Science,
+                                icon = if (formulaSelected) Icons.Rounded.Science else Icons.Rounded.Science,
                                 iconTint = accents.gold,
                                 selected = formulaSelected,
                                 testTag = "drawer_formula_store",
@@ -444,7 +429,7 @@ private fun WorkspaceNavContainer(
                         val settingsSelected = currentRouteName.contains("Settings")
                         DrawerRowItem(
                             label = "SETTINGS",
-                            icon = if (settingsSelected) Icons.Rounded.Settings else Icons.Outlined.Settings,
+                            icon = if (settingsSelected) Icons.Rounded.Settings else Icons.Rounded.Settings,
                             iconTint = accents.emerald,
                             selected = settingsSelected,
                             testTag = "drawer_settings",
@@ -474,17 +459,9 @@ private fun WorkspaceNavContainer(
                 if (isHome) {
                     val headerShape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
                     Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(
-                                elevation = if (accents.isDark) 10.dp else 7.dp,
-                                shape = headerShape,
-                                ambientColor = accents.cyan.copy(alpha = if (accents.isDark) 0.22f else 0.16f),
-                                spotColor = accents.cyan.copy(alpha = if (accents.isDark) 0.24f else 0.16f)
-                            ),
+                        modifier = Modifier.fillMaxWidth(),
                         color = accents.headerFrosted,
-                        shape = headerShape,
-                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.85f))
+                        shape = headerShape
                     ) {
                         Row(
                             modifier = Modifier
@@ -793,18 +770,18 @@ private fun DrawerRowItem(
     val shape = RoundedCornerShape(999.dp)
     val bgColor by animateColorAsState(
         targetValue = if (selected) {
-            if (accents.isDark) Color(0xFF0A2218) else accents.softPillFill
+            MaterialTheme.colorScheme.secondaryContainer
         } else {
             Color.Transparent
         },
         animationSpec = SarimMotion.ColorSpring,
         label = "drawer_row_bg"
     )
-    val resolvedTint = if (selected) accents.emerald else iconTint
+    val resolvedTint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else iconTint
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
+            .defaultMinSize(minHeight = 56.dp)
             .clip(shape)
             .background(bgColor)
             .clickable(onClick = onClick)
@@ -816,16 +793,16 @@ private fun DrawerRowItem(
             imageVector = icon,
             contentDescription = null,
             tint = resolvedTint,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(24.dp)
         )
         Spacer(Modifier.width(14.dp))
         Text(
             text = label,
             fontFamily = JakartaFont,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 12.5.sp,
+            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+            fontSize = 13.sp,
             letterSpacing = 0.6.sp,
-            color = textColor ?: if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface,
+            color = textColor ?: if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -844,13 +821,13 @@ private fun DrawerRowItem(
 }
 
 private fun tabIcon(tab: MainTab, selected: Boolean): ImageVector = when (tab) {
-    MainTab.OVERVIEW -> if (selected) Icons.Rounded.GridView else Icons.Outlined.GridView
-    MainTab.PRODUCTION -> if (selected) Icons.Rounded.Inventory2 else Icons.Outlined.Inventory2
-    MainTab.SALES -> if (selected) Icons.Rounded.ReceiptLong else Icons.Outlined.ReceiptLong
-    MainTab.CALCULATOR -> if (selected) Icons.Rounded.Calculate else Icons.Outlined.Calculate
-    MainTab.FACTORY -> if (selected) Icons.Rounded.Factory else Icons.Outlined.Factory
-    MainTab.PAYMENTS -> if (selected) Icons.Rounded.CreditCard else Icons.Outlined.CreditCard
-    MainTab.REP_SALES -> if (selected) Icons.Rounded.TrendingUp else Icons.Outlined.TrendingUp
+    MainTab.OVERVIEW -> if (selected) Icons.Rounded.GridView else Icons.Rounded.GridView
+    MainTab.PRODUCTION -> if (selected) Icons.Rounded.Inventory2 else Icons.Rounded.Inventory2
+    MainTab.SALES -> if (selected) Icons.Rounded.ReceiptLong else Icons.Rounded.ReceiptLong
+    MainTab.CALCULATOR -> if (selected) Icons.Rounded.Calculate else Icons.Rounded.Calculate
+    MainTab.FACTORY -> if (selected) Icons.Rounded.Factory else Icons.Rounded.Factory
+    MainTab.PAYMENTS -> if (selected) Icons.Rounded.CreditCard else Icons.Rounded.CreditCard
+    MainTab.REP_SALES -> if (selected) Icons.Rounded.TrendingUp else Icons.Rounded.TrendingUp
 }
 
 private fun tabIconColor(tab: MainTab): Color = when (tab) {
