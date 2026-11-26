@@ -82,6 +82,9 @@ import com.gullzubair.sarim.ui.theme.CinzelFont
 import com.gullzubair.sarim.ui.theme.CtaGradientEnd
 import com.gullzubair.sarim.ui.theme.CtaGradientMid
 import com.gullzubair.sarim.ui.theme.CtaGradientStart
+import com.gullzubair.sarim.ui.theme.CtaGradientStartLight
+import com.gullzubair.sarim.ui.theme.DangerGradientStartLight
+import com.gullzubair.sarim.ui.theme.DangerGradientEndLight
 import com.gullzubair.sarim.ui.theme.CtaTextDark
 import com.gullzubair.sarim.ui.theme.DangerGradientEnd
 import com.gullzubair.sarim.ui.theme.DangerGradientStart
@@ -95,11 +98,11 @@ import java.time.ZoneOffset
 fun SarimCard(
     modifier: Modifier = Modifier,
     accentBorder: Color? = null,
-    contentPadding: PaddingValues = PaddingValues(16.dp),
+    contentPadding: PaddingValues = PaddingValues(20.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(22.dp)
     val bgBrush = remember(accents.glassTop, accents.glassBottom) {
         Brush.verticalGradient(listOf(accents.glassTop, accents.glassBottom, accents.glassBottom))
     }
@@ -109,7 +112,7 @@ fun SarimCard(
             .shadow(elevation = if (accents.isDark) 0.dp else 5.dp, shape = shape, ambientColor = Color(0x14059669), spotColor = Color(0x14059669))
             .clip(shape)
             .background(bgBrush)
-            .border(1.dp, accentBorder ?: accents.borderSubtle, shape)
+            .border(accents.cardBorderWidth, accentBorder ?: accents.borderSubtle, shape)
     ) {
         Column(modifier = Modifier.padding(contentPadding), content = content)
     }
@@ -207,17 +210,18 @@ fun SarimGradientButton(
     testTag: String? = null
 ) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(26.dp)
+    val shape = RoundedCornerShape(50)
+    val ctaAccents = LocalSarimAccents.current
     val brush = if (enabled) {
-        Brush.horizontalGradient(listOf(CtaGradientStart, CtaGradientMid, CtaGradientEnd))
+        Brush.horizontalGradient(listOf(if (ctaAccents.isDark) CtaGradientStart else CtaGradientStartLight, CtaGradientEnd))
     } else {
         Brush.horizontalGradient(listOf(Color(0xFFCFE0D9), Color(0xFFD8E6DF)))
     }
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 50.dp)
-            .height(50.dp)
+            .defaultMinSize(minHeight = 42.dp)
+            .height(42.dp)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .shadow(if (enabled) 4.dp else 0.dp, shape, ambientColor = Color(0x3310B981), spotColor = Color(0x3310B981))
             .clip(shape)
@@ -232,8 +236,8 @@ fun SarimGradientButton(
         Text(
             text = text,
             fontFamily = JakartaFont,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.3.sp,
             color = if (enabled) CtaTextDark else Color(0xFF6B8077),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -250,16 +254,20 @@ fun SarimDangerButton(
     testTag: String? = null
 ) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(26.dp)
+    val shape = RoundedCornerShape(50)
+    val dangerDark = LocalSarimAccents.current.isDark
     val brush = if (enabled) {
-        Brush.horizontalGradient(listOf(DangerGradientStart, DangerGradientEnd))
+        Brush.horizontalGradient(listOf(
+            if (dangerDark) DangerGradientStart else DangerGradientStartLight,
+            if (dangerDark) DangerGradientEnd else DangerGradientEndLight
+        ))
     } else {
         Brush.horizontalGradient(listOf(Color(0xFFE7B8B5), Color(0xFFEBC1B4)))
     }
     Box(
         modifier = modifier
-            .defaultMinSize(minHeight = 50.dp)
-            .height(50.dp)
+            .defaultMinSize(minHeight = 42.dp)
+            .height(42.dp)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .shadow(if (enabled) 3.dp else 0.dp, shape, ambientColor = Color(0x33EF4444), spotColor = Color(0x33EF4444))
             .clip(shape)
@@ -275,9 +283,9 @@ fun SarimDangerButton(
         Text(
             text = text,
             fontFamily = JakartaFont,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
-            color = if (enabled) Color(0xFF1F0905) else Color.White.copy(alpha = 0.8f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.3.sp,
+            color = if (enabled) Color(0xFF03170B) else Color.White.copy(alpha = 0.8f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

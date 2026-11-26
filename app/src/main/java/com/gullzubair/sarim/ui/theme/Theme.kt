@@ -33,7 +33,8 @@ data class SarimAccents(
     val inputFill: Color = LightSurfaceVariant,
     val inputBorder: Color = LightOutline,
     val headerFrosted: Color = LightHeaderFrosted,
-    val softPillFill: Color = EmeraldLightContainer
+    val softPillFill: Color = EmeraldLightContainer,
+    val cardBorderWidth: androidx.compose.ui.unit.Dp = 2.dp
 )
 
 val LocalSarimAccents = staticCompositionLocalOf {
@@ -105,8 +106,8 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val SarimShapes = Shapes(
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(22.dp),
     large = RoundedCornerShape(24.dp)
 )
 
@@ -141,12 +142,13 @@ fun SarimTheme(
             borderSubtle = DarkOutline,
             textMuted = DarkTextSecondary,
             isDark = true,
-            glassTop = Color(0xFF0A1410),
+            glassTop = DarkSurface,
             glassBottom = DarkSurface,
             inputFill = DarkSurfaceVariant,
             inputBorder = DarkOutline,
             headerFrosted = DarkSurface,
-            softPillFill = Color(0xFF0D281D)
+            softPillFill = Color(0x244ADE80),
+            cardBorderWidth = 1.dp
         )
     } else {
         SarimAccents(
