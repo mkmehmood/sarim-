@@ -71,6 +71,11 @@ import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun FactoryScreen(
@@ -99,6 +104,8 @@ fun FactoryScreen(
 
     var editingBatch by remember { mutableStateOf<FactoryRecord?>(null) }
     var showEditDiff by remember { mutableStateOf(false) }
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     var showDiscardEdit by remember { mutableStateOf(false) }
     var selectedFactoryRec by remember { mutableStateOf<FactoryRecord?>(null) }
     var selectedMaterialLots by remember { mutableStateOf<InventoryRecord?>(null) }
@@ -293,8 +300,21 @@ fun FactoryScreen(
                             showEditDiff = true
                         } else {
                             selectedFormula?.let { f ->
-                                vm.submitFactoryBatch(date, f, units, notes)
-                                notes = ""
+                                val details = buildList {
+                                    add("Formula" to f.name)
+                                    add("Date" to DateUtils.formatPretty(date))
+                                    add("Units" to InputGuards.fmtNum(units))
+                                    if (notes.isNotBlank()) add("Note" to notes.trim())
+                                }
+                                confirmReq = saveConfirmRequest(
+                                    label = "Production",
+                                    details = details,
+                                    gated = session.mode != "admin",
+                                    tag = "factory_confirm_save_btn"
+                                ) {
+                                    vm.submitFactoryBatch(date, f, units, notes)
+                                    notes = ""
+                                }
                             }
                         }
                     },

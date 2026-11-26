@@ -33,6 +33,10 @@ import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import java.util.Locale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
 @Composable
 fun RepDetailSheet(
@@ -50,6 +54,8 @@ fun RepDetailSheet(
 ) {
     val accents = LocalSarimAccents.current
     val context = LocalContext.current
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val storeLabel = FormulaEngine.storeLabelFor(r.supplyStore, snapshot.stores)
     val isOldDebt = r.transactionType == "OLD_DEBT"
     val isRepRet = r.isRepReturn || r.paymentType == "REP_RETURN"
@@ -195,12 +201,25 @@ fun RepDetailSheet(
                             onDismiss()
                             onBlockedAction(reason)
                         } else {
-                            onDismiss()
-                            vm.deleteRepRecord(
-                                rec = r,
-                                displayAmount = InputGuards.formatMoney(displayAmount, currency, masked),
-                                onBlocked = onBlockedAction
-                            )
+                            confirmReq = ConfirmRequest(
+                                title = "Delete ${r.salesRep.ifBlank { "Rep" }} Record?",
+                                message = deleteConfirmMessage(listOf(
+                                    "Customer" to r.customerName,
+                                    "Rep" to r.salesRep,
+                                    "Date" to DateUtils.formatPretty(r.date),
+                                    "Amount" to InputGuards.formatMoney(displayAmount, currency, masked)
+                                )),
+                                confirmText = "Delete",
+                                danger = true,
+                                tag = "rep_confirm_delete_btn"
+                            ) {
+                                onDismiss()
+                                vm.deleteRepRecord(
+                                    rec = r,
+                                    displayAmount = InputGuards.formatMoney(displayAmount, currency, masked),
+                                    onBlocked = onBlockedAction
+                                )
+                            }
                         }
                     },
                     modifier = Modifier.weight(0.32f),

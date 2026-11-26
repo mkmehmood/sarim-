@@ -28,6 +28,10 @@ import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
 @Composable
 fun SalesDetailSheet(
@@ -45,6 +49,8 @@ fun SalesDetailSheet(
     onDismiss: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val storeLabel = FormulaEngine.storeLabelFor(s.supplyStore, snapshot.stores)
     val isOldDebt = s.transactionType == "OLD_DEBT"
     val isRepRet = s.isRepReturn || s.paymentType == "REP_RETURN"
@@ -172,15 +178,27 @@ fun SalesDetailSheet(
                             onDismiss()
                             onBlockedAction(reason)
                         } else {
-                            vm.softDeleteRecord(
-                                collection = "sales",
-                                docId = s.id,
-                                displayName = s.customerName,
-                                displayDetail = "${s.date} • $typeLabel",
-                                displayAmount = InputGuards.formatMoney(displayVal, currency, masked),
-                                snapshotMap = WorkspaceJsonCodec.saleToMap(s)
-                            )
-                            onDismiss()
+                            confirmReq = ConfirmRequest(
+                                title = "Delete $typeLabel?",
+                                message = deleteConfirmMessage(listOf(
+                                    "Customer" to s.customerName,
+                                    "Date" to DateUtils.formatPretty(s.date),
+                                    "Amount" to InputGuards.formatMoney(displayVal, currency, masked)
+                                )),
+                                confirmText = "Delete",
+                                danger = true,
+                                tag = "sales_confirm_delete_btn"
+                            ) {
+                                vm.softDeleteRecord(
+                                    collection = "sales",
+                                    docId = s.id,
+                                    displayName = s.customerName,
+                                    displayDetail = "${s.date} • $typeLabel",
+                                    displayAmount = InputGuards.formatMoney(displayVal, currency, masked),
+                                    snapshotMap = WorkspaceJsonCodec.saleToMap(s)
+                                )
+                                onDismiss()
+                            }
                         }
                     },
                     modifier = Modifier.weight(0.32f),

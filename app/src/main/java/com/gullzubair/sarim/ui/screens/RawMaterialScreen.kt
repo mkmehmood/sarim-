@@ -56,6 +56,11 @@ import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun RawMaterialScreen(
@@ -68,6 +73,8 @@ fun RawMaterialScreen(
     val currency = snapshot.settings.currencySymbol
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
     val masked = session.restrictMoney || snapshot.settings.hideSensitiveMoney
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
 
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var name by remember { mutableStateOf("") }
@@ -297,15 +304,26 @@ fun RawMaterialScreen(
                     SarimDangerButton(
                         text = "Delete Material",
                         onClick = {
-                            vm.softDeleteRecord(
-                                collection = "inventory",
-                                docId = existingInv.id,
-                                displayName = existingInv.name,
-                                displayDetail = "Raw material",
-                                displayAmount = InputGuards.formatKg(existingInv.quantity),
-                                snapshotMap = WorkspaceJsonCodec.inventoryToMap(existingInv)
-                            )
-                            onBack()
+                            confirmReq = ConfirmRequest(
+                                title = "Delete Material?",
+                                message = deleteConfirmMessage(listOf(
+                                    "Material" to existingInv.name,
+                                    "In Stock" to InputGuards.formatKg(existingInv.quantity)
+                                )),
+                                confirmText = "Delete",
+                                danger = true,
+                                tag = "rm_confirm_delete_btn"
+                            ) {
+                                vm.softDeleteRecord(
+                                    collection = "inventory",
+                                    docId = existingInv.id,
+                                    displayName = existingInv.name,
+                                    displayDetail = "Raw material",
+                                    displayAmount = InputGuards.formatKg(existingInv.quantity),
+                                    snapshotMap = WorkspaceJsonCodec.inventoryToMap(existingInv)
+                                )
+                                onBack()
+                            }
                         },
                         modifier = Modifier.weight(0.85f)
                     )
@@ -313,18 +331,36 @@ fun RawMaterialScreen(
                 SarimGradientButton(
                     text = "Save Purchase",
                     onClick = {
-                        vm.submitRawPurchase(
-                            date = date,
-                            name = name,
-                            unitName = unitName.ifBlank { "kg" },
-                            factor = factor,
-                            qtyUnits = unitsBought,
-                            costPerUnit = costPerUnit,
-                            paidNow = paidStr.toDoubleOrNull() ?: 0.0,
-                            supplier = if (supplierMode == "none") "" else supplier,
-                            notes = notes
-                        )
-                        onBack()
+                        val paidNow = paidStr.toDoubleOrNull() ?: 0.0
+                        val supplierName = if (supplierMode == "none") "" else supplier
+                        val details = buildList {
+                            add("Material" to name.trim())
+                            add("Date" to DateUtils.formatPretty(date))
+                            add("Quantity" to "${InputGuards.fmtNum(unitsBought)} ${unitName.ifBlank { "kg" }}")
+                            add("Added Stock" to InputGuards.formatKg(addedKg))
+                            add("Total Cost" to InputGuards.formatMoney(totalAmount, currency, masked))
+                            if (paidNow > 0.0) add("Paid Now" to InputGuards.formatMoney(paidNow, currency, masked))
+                            if (supplierName.isNotBlank()) add("Supplier" to supplierName)
+                        }
+                        confirmReq = saveConfirmRequest(
+                            label = "Purchase",
+                            details = details,
+                            gated = !snapshot.profile.isAdmin,
+                            tag = "rm_confirm_save_btn"
+                        ) {
+                            vm.submitRawPurchase(
+                                date = date,
+                                name = name,
+                                unitName = unitName.ifBlank { "kg" },
+                                factor = factor,
+                                qtyUnits = unitsBought,
+                                costPerUnit = costPerUnit,
+                                paidNow = paidNow,
+                                supplier = supplierName,
+                                notes = notes
+                            )
+                            onBack()
+                        }
                     },
                     enabled = name.isNotBlank() && unitsBought > 0.0 && factor > 0.0,
                     testTag = "rm_save_btn",

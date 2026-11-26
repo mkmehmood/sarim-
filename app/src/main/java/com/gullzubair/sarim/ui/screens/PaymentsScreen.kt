@@ -68,6 +68,12 @@ import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
+import com.gullzubair.sarim.domain.DateUtils
 
 private sealed interface PaymentHistoryItem {
     val id: String
@@ -124,6 +130,8 @@ fun PaymentsScreen(
     var editingExp by remember { mutableStateOf<ExpenseRecord?>(null) }
     var showEditDiff by remember { mutableStateOf(false) }
     var showDiscardEdit by remember { mutableStateOf(false) }
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
 
     fun resetForm() {
         editingTx = null
@@ -322,18 +330,37 @@ fun PaymentsScreen(
                                     if (isEditing) {
                                         showEditDiff = true
                                     } else {
-                                        vm.submitPaymentOrExpense(
-                                            date = date,
-                                            kind = txKind,
-                                            entity = selectedEntity,
-                                            name = customName,
-                                            category = if (txKind == "EXPENSE") expCategory else (selectedEntity?.type ?: "party"),
-                                            channel = channel,
-                                            amount = amount,
-                                            addToLedger = addToLedger,
-                                            notes = notes
-                                        )
-                                        resetForm()
+                                        val isExp = txKind == "EXPENSE"
+                                        val who = selectedEntity?.name ?: customName.trim()
+                                        val details = buildList {
+                                            add((if (isExp) "Expense" else "Account") to who)
+                                            if (!isExp) add("Direction" to (if (txKind == "IN") "Money In" else "Money Out"))
+                                            add("Amount" to InputGuards.formatMoney(amount, currency, masked))
+                                            add("Date" to DateUtils.formatPretty(date))
+                                            add("Channel" to channel)
+                                            if (isExp) add("Category" to expCategory)
+                                            if (notes.isNotBlank()) add("Note" to notes.trim())
+                                            if (addToLedger) add("Daily Ledger" to "Will be mirrored")
+                                        }
+                                        confirmReq = saveConfirmRequest(
+                                            label = if (isExp) "Expense" else "Payment",
+                                            details = details,
+                                            gated = session.mode != "admin",
+                                            tag = "pay_confirm_save_btn"
+                                        ) {
+                                            vm.submitPaymentOrExpense(
+                                                date = date,
+                                                kind = txKind,
+                                                entity = selectedEntity,
+                                                name = customName,
+                                                category = if (isExp) expCategory else (selectedEntity?.type ?: "party"),
+                                                channel = channel,
+                                                amount = amount,
+                                                addToLedger = addToLedger,
+                                                notes = notes
+                                            )
+                                            resetForm()
+                                        }
                                     }
                                 },
                                 enabled = (customName.isNotBlank() || selectedEntity != null) && amount > 0.0,

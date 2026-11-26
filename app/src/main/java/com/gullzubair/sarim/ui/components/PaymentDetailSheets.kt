@@ -24,6 +24,10 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
 @Composable
 fun PaymentTxDetailSheet(
@@ -37,6 +41,8 @@ fun PaymentTxDetailSheet(
     onDismiss: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val canEdit = !tx.isMerged && !tx.isTransfer && !tx.isPayable
     SarimDetailBottomSheet(
         title = tx.entityName.uppercase(),
@@ -74,19 +80,32 @@ fun PaymentTxDetailSheet(
                 SarimDangerButton(
                     text = "Delete",
                     onClick = {
-                        if (tx.isTransfer && tx.transferPairId.isNotBlank()) {
-                            vm.recyclePair("transactions", tx.transferPairId, tx.id, tx.entityName)
-                        } else {
-                            vm.softDeleteRecord(
-                                collection = "transactions",
-                                docId = tx.id,
-                                displayName = tx.entityName,
-                                displayDetail = "${tx.date} • ${tx.type}",
-                                displayAmount = InputGuards.formatMoney(tx.amount, currency, masked),
-                                snapshotMap = WorkspaceJsonCodec.transactionToMap(tx)
-                            )
+                        val isPair = tx.isTransfer && tx.transferPairId.isNotBlank()
+                        confirmReq = ConfirmRequest(
+                            title = if (isPair) "Delete Transfer Pair?" else "Delete Payment ${tx.type}?",
+                            message = deleteConfirmMessage(listOf(
+                                "Account" to tx.entityName,
+                                "Date" to DateUtils.formatPretty(tx.date),
+                                "Amount" to InputGuards.formatMoney(tx.amount, currency, masked)
+                            ) + (if (isPair) listOf("Note" to "Both sides of the transfer are removed") else emptyList())),
+                            confirmText = "Delete",
+                            danger = true,
+                            tag = "pay_confirm_delete_btn"
+                        ) {
+                            if (isPair) {
+                                vm.recyclePair("transactions", tx.transferPairId, tx.id, tx.entityName)
+                            } else {
+                                vm.softDeleteRecord(
+                                    collection = "transactions",
+                                    docId = tx.id,
+                                    displayName = tx.entityName,
+                                    displayDetail = "${tx.date} • ${tx.type}",
+                                    displayAmount = InputGuards.formatMoney(tx.amount, currency, masked),
+                                    snapshotMap = WorkspaceJsonCodec.transactionToMap(tx)
+                                )
+                            }
+                            onDismiss()
                         }
-                        onDismiss()
                     },
                     modifier = Modifier.weight(0.32f),
                     testTag = "pay_delete_${tx.id}"
@@ -133,6 +152,8 @@ fun ExpenseTxDetailSheet(
     onDismiss: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val canEdit = !exp.isMerged
     SarimDetailBottomSheet(
         title = exp.name.uppercase(),
@@ -184,15 +205,28 @@ fun ExpenseTxDetailSheet(
                 SarimDangerButton(
                     text = "Delete",
                     onClick = {
-                        vm.softDeleteRecord(
-                            collection = "expenses",
-                            docId = exp.id,
-                            displayName = exp.name,
-                            displayDetail = "${exp.date} • ${exp.category}",
-                            displayAmount = InputGuards.formatMoney(exp.amount, currency, masked),
-                            snapshotMap = WorkspaceJsonCodec.expenseToMap(exp)
-                        )
-                        onDismiss()
+                        confirmReq = ConfirmRequest(
+                            title = "Delete Expense?",
+                            message = deleteConfirmMessage(listOf(
+                                "Expense" to exp.name,
+                                "Category" to exp.category,
+                                "Date" to DateUtils.formatPretty(exp.date),
+                                "Amount" to InputGuards.formatMoney(exp.amount, currency, masked)
+                            )),
+                            confirmText = "Delete",
+                            danger = true,
+                            tag = "exp_confirm_delete_btn"
+                        ) {
+                            vm.softDeleteRecord(
+                                collection = "expenses",
+                                docId = exp.id,
+                                displayName = exp.name,
+                                displayDetail = "${exp.date} • ${exp.category}",
+                                displayAmount = InputGuards.formatMoney(exp.amount, currency, masked),
+                                snapshotMap = WorkspaceJsonCodec.expenseToMap(exp)
+                            )
+                            onDismiss()
+                        }
                     },
                     modifier = Modifier.weight(0.32f),
                     testTag = "exp_delete_${exp.id}"

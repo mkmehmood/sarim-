@@ -331,3 +331,64 @@ fun confirmGuardTitle(label: String, isUpdate: Boolean, gated: Boolean, verb: St
 
 fun confirmGuardConfirmWord(isUpdate: Boolean, gated: Boolean, verb: String = "Save"): String =
     if (gated) (if (isUpdate) "Send Update for Approval" else "Send for Approval") else if (isUpdate) "Update" else verb
+
+/**
+ * One pending confirmation for an action. Hold it in `remember { mutableStateOf<ConfirmRequest?>(null) }`,
+ * set it from the button's onClick, and render it once with [ConfirmRequestHost]. This is how every
+ * Save / Delete / Approve / Transfer action asks "are you sure?" the same way the web showGlassConfirm does.
+ */
+data class ConfirmRequest(
+    val title: String,
+    val message: String,
+    val confirmText: String = "Confirm",
+    val cancelText: String = "Cancel",
+    val danger: Boolean = false,
+    val tone: DialogTone? = null,
+    val tag: String = "confirm_dialog_btn",
+    val onConfirm: () -> Unit
+)
+
+@Composable
+fun ConfirmRequestHost(request: ConfirmRequest?, onClear: () -> Unit) {
+    if (request == null) return
+    SarimConfirmDialog(
+        title = request.title,
+        message = request.message,
+        confirmText = request.confirmText,
+        cancelText = request.cancelText,
+        danger = request.danger,
+        tone = request.tone,
+        onConfirm = {
+            onClear()
+            request.onConfirm()
+        },
+        onDismiss = onClear,
+        confirmTag = request.tag
+    )
+}
+
+/** Builds the web-style delete prompt: detail lines, then the permanent / recycle-bin note. */
+fun deleteConfirmMessage(details: List<Pair<String, String>>, recycleBin: Boolean = true): String {
+    val lines = details.filter { it.second.isNotBlank() }.map { (k, v) -> "$k: ${if (v.length > 44) v.take(43) + "\u2026" else v}" }
+    val tail = if (recycleBin) "It will be moved to the Recycle Bin." else "This action cannot be undone."
+    return if (lines.isEmpty()) tail else lines.joinToString("\n") + "\n\n" + tail
+}
+
+/** Builds a "Save X?" prompt for forms that do not have a dedicated confirmation composable. */
+fun saveConfirmRequest(
+    label: String,
+    details: List<Pair<String, String>>,
+    gated: Boolean,
+    isUpdate: Boolean = false,
+    verb: String = "Save",
+    warning: String? = null,
+    tag: String = "confirm_dialog_btn",
+    onConfirm: () -> Unit
+): ConfirmRequest = ConfirmRequest(
+    title = confirmGuardTitle(label, isUpdate, gated, verb),
+    message = confirmGuardMessage(details, isUpdate, gated, warning),
+    confirmText = confirmGuardConfirmWord(isUpdate, gated, verb),
+    tone = if (warning != null) DialogTone.Warning else DialogTone.Primary,
+    tag = tag,
+    onConfirm = onConfirm
+)

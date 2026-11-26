@@ -74,6 +74,12 @@ import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import kotlin.math.abs
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 
 @Composable
 fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimViewModel) {
@@ -95,6 +101,8 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
 
     var subTab by remember { mutableIntStateOf(0) }
     var editingCalc by remember { mutableStateOf<CalculatorRecord?>(null) }
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var dateFrom by remember(todayIso) { mutableStateOf(todayIso) }
     var selectedRep by remember(repList) { mutableStateOf(repList.firstOrNull() ?: "") }
@@ -667,7 +675,23 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                     when {
                                         editingCalc != null -> confirmEditDiffDialog = true
                                         abs(variance) > 1.0 -> confirmVarianceDialog = true
-                                        else -> commitSettlement()
+                                        else -> {
+                                            val details = buildList {
+                                                add("Seller" to selectedRep)
+                                                add("Date" to DateUtils.formatPretty(date))
+                                                add("Total Sold" to InputGuards.formatKg(sold))
+                                                if (returned > 0.0) add("Returned" to InputGuards.formatKg(returned))
+                                                if (expired > 0.0) add("Expired" to InputGuards.formatKg(expired))
+                                                add("Cash Received" to InputGuards.formatMoney(physicalCash, currency, masked))
+                                                add("Expected Cash" to InputGuards.formatMoney(expectedCash, currency, masked))
+                                            }
+                                            confirmReq = saveConfirmRequest(
+                                                label = "Settlement",
+                                                details = details,
+                                                gated = !snapshot.profile.isAdmin,
+                                                tag = "calc_confirm_save_btn"
+                                            ) { commitSettlement() }
+                                        }
                                     }
                                 },
                                 enabled = selectedRep.isNotBlank() && selectedStore != null && sold > 0,
@@ -679,21 +703,21 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                 }
 
                 if (confirmVarianceDialog) {
-                    AlertDialog(
-                        onDismissRequest = { confirmVarianceDialog = false },
-                        title = { Text("Cash Variance Detected") },
-                        text = {
-                            Text("Expected ${InputGuards.formatMoney(expectedCash, currency, masked)}, Physical ${InputGuards.formatMoney(physicalCash, currency, masked)} (Diff ${InputGuards.formatMoney(variance, currency, masked)}). Record anyway?")
+                    val short = variance < 0.0
+                    SarimConfirmDialog(
+                        title = if (short) "Cash is short" else "Cash is over",
+                        message = "Expected: ${InputGuards.formatMoney(expectedCash, currency, masked)}\n" +
+                            "Physical: ${InputGuards.formatMoney(physicalCash, currency, masked)}\n" +
+                            "Difference: ${InputGuards.formatMoney(variance, currency, masked)}\n\n" +
+                            "Warning: the cash handed over does not match what was expected. Record it anyway?",
+                        confirmText = "Save anyway",
+                        tone = DialogTone.Warning,
+                        onConfirm = {
+                            confirmVarianceDialog = false
+                            commitSettlement()
                         },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                confirmVarianceDialog = false
-                                commitSettlement()
-                            }, modifier = Modifier.testTag("calc_confirm_variance_btn")) { Text("Confirm & Save") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { confirmVarianceDialog = false }) { Text("Cancel") }
-                        }
+                        onDismiss = { confirmVarianceDialog = false },
+                        confirmTag = "calc_confirm_variance_btn"
                     )
                 }
 

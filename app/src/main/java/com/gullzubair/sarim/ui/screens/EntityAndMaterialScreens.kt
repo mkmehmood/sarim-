@@ -83,9 +83,16 @@ import com.gullzubair.sarim.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -214,6 +221,20 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                 SarimGradientButton(
                     text = if (saving) "Saving..." else "Save Entity",
                     onClick = {
+                        val entityDetails = buildList {
+                            add("Name" to name.trim())
+                            add("Type" to type.replaceFirstChar { it.uppercase() })
+                            if (phone.isNotBlank()) add("Phone" to phone.trim())
+                            val opening = openingStr.toDoubleOrNull() ?: 0.0
+                            if (opening != 0.0) add("Opening Balance" to InputGuards.fmtNum(opening))
+                        }
+                        confirmReq = saveConfirmRequest(
+                            label = "Entity",
+                            details = entityDetails,
+                            gated = false,
+                            verb = "Add",
+                            tag = "entity_confirm_save_btn"
+                        ) {
                         saving = true
                         scope.launch {
                             val dataUrl = photoUri?.let { uri ->
@@ -238,6 +259,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                             }
                             saving = false
                         }
+                        }
                     },
                     enabled = name.isNotBlank() && !saving,
                     testTag = "ent_save_btn"
@@ -255,6 +277,8 @@ fun EditCustomerScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -516,15 +540,26 @@ fun EditCustomerScreen(
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.softDeleteRecord(
-                                collection = if (isRepClient) "clients" else "customers",
-                                docId = existing.id,
-                                displayName = existing.name,
-                                displayDetail = existing.phone,
-                                displayAmount = "",
-                                snapshotMap = WorkspaceJsonCodec.customerToMap(existing)
-                            )
-                            onBack()
+                            confirmReq = ConfirmRequest(
+                                title = if (isRepClient) "Delete Rep Customer?" else "Delete Customer?",
+                                message = deleteConfirmMessage(listOf(
+                                    "Customer" to existing.name,
+                                    "Phone" to existing.phone
+                                )),
+                                confirmText = "Delete",
+                                danger = true,
+                                tag = "ec_confirm_delete_btn"
+                            ) {
+                                vm.softDeleteRecord(
+                                    collection = if (isRepClient) "clients" else "customers",
+                                    docId = existing.id,
+                                    displayName = existing.name,
+                                    displayDetail = existing.phone,
+                                    displayAmount = "",
+                                    snapshotMap = WorkspaceJsonCodec.customerToMap(existing)
+                                )
+                                onBack()
+                            }
                         },
                         modifier = Modifier.weight(0.55f),
                         testTag = "ec_delete_btn"
@@ -533,6 +568,25 @@ fun EditCustomerScreen(
                 SarimGradientButton(
                     text = if (saving) "Saving..." else if (existing.id.isBlank()) "Add Customer" else "Update Customer",
                     onClick = {
+                        val isUpd = existing.id.isNotBlank()
+                        val noun = if (isRepClient) "Rep Customer" else "Customer"
+                        val custDetails = buildList {
+                            add("Name" to name.trim())
+                            if (phone.isNotBlank()) add("Phone" to phone.trim())
+                            if (address.isNotBlank()) add("Address" to address.trim())
+                            val opening = openingStr.toDoubleOrNull() ?: 0.0
+                            if (opening != 0.0) add("Opening Balance" to InputGuards.formatMoney(opening, currency, masked))
+                            val rate = customRateStr.toDoubleOrNull() ?: 0.0
+                            if (rate > 0.0) add("Custom Rate" to InputGuards.formatMoney(rate, currency, masked))
+                        }
+                        confirmReq = saveConfirmRequest(
+                            label = noun,
+                            details = custDetails,
+                            gated = !isAdmin,
+                            isUpdate = isUpd,
+                            verb = "Add",
+                            tag = "ec_confirm_save_btn"
+                        ) {
                         saving = true
                         scope.launch {
                             val dataUrl = photoUri?.let { uri ->
@@ -560,6 +614,7 @@ fun EditCustomerScreen(
                                 onBack()
                             }
                             saving = false
+                        }
                         }
                     },
                     enabled = name.isNotBlank() && !saving,

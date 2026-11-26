@@ -62,6 +62,11 @@ import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.util.PdfExporter
 import com.gullzubair.sarim.util.StatementRow
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun DailyLedgerScreen(
@@ -75,6 +80,8 @@ fun DailyLedgerScreen(
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
     val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
 
     var showComposer by remember { mutableStateOf(false) }
@@ -253,24 +260,42 @@ fun DailyLedgerScreen(
                         SarimGradientButton(
                             text = if (editingId == null) "Record Cashbook Entry" else "Update Cashbook Entry",
                             onClick = {
-                                vm.submitLedgerEntry(
-                                    existingId = editingId,
-                                    date = date,
-                                    type = entryType,
-                                    scope = if (entryType == "OUT") expenseScope else "",
-                                    mode = channel,
-                                    toMode = if (entryType == "TRANSFER") toChannel else "",
-                                    category = category,
-                                    party = partyName,
-                                    amount = amt,
-                                    ref = refStr,
-                                    note = notes
-                                )
-                                editingId = null
-                                amountStr = ""
-                                notes = ""
-                                refStr = ""
-                                showComposer = false
+                                val isUpd = editingId != null
+                                val details = buildList {
+                                    add("Type" to when (entryType) { "IN" -> "Money In"; "OUT" -> "Money Out"; else -> "Transfer" })
+                                    add("Date" to DateUtils.formatPretty(date))
+                                    add("Amount" to InputGuards.formatMoney(amt, currency, masked))
+                                    add("Channel" to if (entryType == "TRANSFER") "$channel \u2192 $toChannel" else channel)
+                                    if (category.isNotBlank()) add("Category" to category.trim())
+                                    if (partyName.isNotBlank()) add("Party" to partyName.trim())
+                                }
+                                confirmReq = saveConfirmRequest(
+                                    label = "Cashbook Entry",
+                                    details = details,
+                                    gated = false,
+                                    isUpdate = isUpd,
+                                    verb = "Record",
+                                    tag = "ledger_confirm_save_btn"
+                                ) {
+                                    vm.submitLedgerEntry(
+                                        existingId = editingId,
+                                        date = date,
+                                        type = entryType,
+                                        scope = if (entryType == "OUT") expenseScope else "",
+                                        mode = channel,
+                                        toMode = if (entryType == "TRANSFER") toChannel else "",
+                                        category = category,
+                                        party = partyName,
+                                        amount = amt,
+                                        ref = refStr,
+                                        note = notes
+                                    )
+                                    editingId = null
+                                    amountStr = ""
+                                    notes = ""
+                                    refStr = ""
+                                    showComposer = false
+                                }
                             },
                             enabled = amt > 0.0 && (entryType != "TRANSFER" || !channel.equals(toChannel, true)),
                             testTag = "ledger_save_btn"
@@ -449,8 +474,20 @@ fun DailyLedgerScreen(
                         SarimDangerButton(
                             text = "Delete",
                             onClick = {
-                                vm.deleteLedgerEntry(v.id)
-                                selectedVoucher = null
+                                confirmReq = ConfirmRequest(
+                                    title = "Delete Cashbook Entry?",
+                                    message = deleteConfirmMessage(listOf(
+                                        "Date" to DateUtils.formatPretty(v.date),
+                                        "Amount" to InputGuards.formatMoney(v.amount, currency, masked),
+                                        "Party" to v.party
+                                    ), recycleBin = false),
+                                    confirmText = "Delete",
+                                    danger = true,
+                                    tag = "ledger_confirm_delete_btn"
+                                ) {
+                                    vm.deleteLedgerEntry(v.id)
+                                    selectedVoucher = null
+                                }
                             },
                             modifier = Modifier.weight(0.32f),
                             testTag = "ledger_delete_${v.id}"

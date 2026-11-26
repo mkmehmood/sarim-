@@ -173,6 +173,8 @@ fun CalculatorDetailBottomSheet(
     var showQuantities by remember(record.id) { mutableStateOf(false) }
     var showCreditCash by remember(record.id) { mutableStateOf(false) }
     var showCommissions by remember(record.id) { mutableStateOf(false) }
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val variance = InputGuards.round2(record.received - record.totalExpected)
     val profit = InputGuards.round2(record.revenue - record.commissionPaid - record.fieldExpenses)
     val storeLabel = FormulaEngine.storeLabelFor(record.returnStore, snapshot.stores)
@@ -250,15 +252,27 @@ fun CalculatorDetailBottomSheet(
                 SarimDangerButton(
                     text = "Delete",
                     onClick = {
-                        vm.softDeleteRecord(
-                            collection = "calculator",
-                            docId = record.id,
-                            displayName = record.seller,
-                            displayDetail = record.date,
-                            displayAmount = InputGuards.formatMoney(record.received, currency, masked),
-                            snapshotMap = WorkspaceJsonCodec.calculatorToMap(record)
-                        )
-                        onDismiss()
+                        confirmReq = ConfirmRequest(
+                            title = "Delete ${record.seller.ifBlank { "Sales" }} Record?",
+                            message = deleteConfirmMessage(listOf(
+                                "Seller" to record.seller,
+                                "Date" to DateUtils.formatPretty(record.date),
+                                "Cash Received" to InputGuards.formatMoney(record.received, currency, masked)
+                            )),
+                            confirmText = "Delete",
+                            danger = true,
+                            tag = "calc_confirm_delete_btn"
+                        ) {
+                            vm.softDeleteRecord(
+                                collection = "calculator",
+                                docId = record.id,
+                                displayName = record.seller,
+                                displayDetail = record.date,
+                                displayAmount = InputGuards.formatMoney(record.received, currency, masked),
+                                snapshotMap = WorkspaceJsonCodec.calculatorToMap(record)
+                            )
+                            onDismiss()
+                        }
                     },
                     modifier = Modifier.weight(0.38f),
                     testTag = "calc_delete_${record.id}"

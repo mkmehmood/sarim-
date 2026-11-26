@@ -58,6 +58,11 @@ import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun BatchMixScreen(
@@ -66,6 +71,8 @@ fun BatchMixScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     var selectedFormulaId by remember(snapshot.formulas, initialFormulaId) {
         mutableStateOf(
@@ -248,8 +255,19 @@ fun BatchMixScreen(
                                     createdAt = now,
                                     updatedAt = now
                                 )
-                                vm.saveFormulaCalc(f, calc)
-                                mixName = ""
+                                confirmReq = saveConfirmRequest(
+                                    label = "Mix Calculation",
+                                    details = listOf(
+                                        "Formula" to f.name,
+                                        "Name" to calc.name,
+                                        "Total Weight" to InputGuards.formatKg(plan.totalWeight)
+                                    ),
+                                    gated = false,
+                                    tag = "mix_confirm_save_btn"
+                                ) {
+                                    vm.saveFormulaCalc(f, calc)
+                                    mixName = ""
+                                }
                             }
                         },
                         enabled = selectedFormula != null && plan.totalWeight > 0.0,
@@ -314,7 +332,20 @@ fun BatchMixScreen(
                                     color = accents.cyan
                                 )
                                 IconButton(
-                                    onClick = { selectedFormula?.let { f -> vm.deleteFormulaCalc(f, m.id) } },
+                                    onClick = {
+                                        selectedFormula?.let { f ->
+                                            confirmReq = ConfirmRequest(
+                                                title = "Delete Saved Mix?",
+                                                message = deleteConfirmMessage(listOf(
+                                                    "Mix" to m.name.ifBlank { "Saved Mix" },
+                                                    "Formula" to f.name
+                                                ), recycleBin = false),
+                                                confirmText = "Delete",
+                                                danger = true,
+                                                tag = "mix_confirm_delete_btn"
+                                            ) { vm.deleteFormulaCalc(f, m.id) }
+                                        }
+                                    },
                                     modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete saved mix", tint = accents.danger, modifier = Modifier.size(18.dp))
@@ -335,6 +366,8 @@ fun BatchFixScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     var selectedFormulaId by remember(snapshot.formulas, initialFormulaId) {
         mutableStateOf(
@@ -630,8 +663,18 @@ fun BatchFixScreen(
                                     createdAt = now,
                                     updatedAt = now
                                 )
-                                vm.saveFormulaCalc(f, calc)
-                                saveName = ""
+                                confirmReq = saveConfirmRequest(
+                                    label = "Correction",
+                                    details = listOf(
+                                        "Formula" to f.name,
+                                        "Name" to calc.name
+                                    ),
+                                    gated = false,
+                                    tag = "fix_confirm_save_btn"
+                                ) {
+                                    vm.saveFormulaCalc(f, calc)
+                                    saveName = ""
+                                }
                             }
                         },
                         enabled = selectedFormula != null && fixPlan.ok,
@@ -672,7 +715,20 @@ fun BatchFixScreen(
                                     )
                                 }
                                 IconButton(
-                                    onClick = { selectedFormula?.let { f -> vm.deleteFormulaCalc(f, fx.id) } },
+                                    onClick = {
+                                        selectedFormula?.let { f ->
+                                            confirmReq = ConfirmRequest(
+                                                title = "Delete Saved Correction?",
+                                                message = deleteConfirmMessage(listOf(
+                                                    "Correction" to fx.name.ifBlank { "Saved Fix" },
+                                                    "Formula" to f.name
+                                                ), recycleBin = false),
+                                                confirmText = "Delete",
+                                                danger = true,
+                                                tag = "fix_confirm_delete_btn"
+                                            ) { vm.deleteFormulaCalc(f, fx.id) }
+                                        }
+                                    },
                                     modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete saved correction", tint = accents.danger, modifier = Modifier.size(18.dp))

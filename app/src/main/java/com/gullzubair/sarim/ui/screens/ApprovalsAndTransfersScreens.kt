@@ -64,6 +64,11 @@ import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.components.ConfirmRequest
+import com.gullzubair.sarim.ui.components.ConfirmRequestHost
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
+import com.gullzubair.sarim.ui.components.saveConfirmRequest
+import com.gullzubair.sarim.ui.components.DialogTone
 
 @Composable
 fun ApprovalsScreen(
@@ -71,6 +76,8 @@ fun ApprovalsScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val isAdmin = snapshot.profile.isAdmin
     val pendingList = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.filter { it.status == "pending" } }
@@ -82,7 +89,15 @@ fun ApprovalsScreen(
             trailingContent = if (isAdmin && pendingList.isNotEmpty()) {
                 {
                     Surface(
-                        onClick = { pendingList.forEach { vm.reviewPending(it, true) } },
+                        onClick = {
+                            confirmReq = ConfirmRequest(
+                                title = "Approve All?",
+                                message = "Requests: ${pendingList.size}\n\nEvery pending request will be approved and become part of the shared records.",
+                                confirmText = "Approve All",
+                                tone = DialogTone.Warning,
+                                tag = "approvals_confirm_all_btn"
+                            ) { pendingList.forEach { vm.reviewPending(it, true) } }
+                        },
                         shape = RoundedCornerShape(14.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
@@ -124,12 +139,28 @@ fun ApprovalsScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SarimGradientButton(
                                     text = "Approve",
-                                    onClick = { vm.reviewPending(item, true) },
+                                    onClick = {
+                                        confirmReq = ConfirmRequest(
+                                            title = "Approve Request?",
+                                            message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${item.submittedByName.ifBlank { item.submittedByEmail }}\n\nIt will become part of the shared records.",
+                                            confirmText = "Approve",
+                                            tone = DialogTone.Primary,
+                                            tag = "approvals_confirm_approve_btn"
+                                        ) { vm.reviewPending(item, true) }
+                                    },
                                     modifier = Modifier.weight(1f),
                                     testTag = "approve_${item.id}"
                                 )
                                 OutlinedButton(
-                                    onClick = { vm.reviewPending(item, false) },
+                                    onClick = {
+                                        confirmReq = ConfirmRequest(
+                                            title = "Reject Request?",
+                                            message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${item.submittedByName.ifBlank { item.submittedByEmail }}\n\nThe submitter will see it as rejected.",
+                                            confirmText = "Reject",
+                                            danger = true,
+                                            tag = "approvals_confirm_reject_btn"
+                                        ) { vm.reviewPending(item, false) }
+                                    },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = accents.danger),
                                     modifier = Modifier.weight(1f).height(50.dp).testTag("reject_${item.id}")
                                 ) {
@@ -153,6 +184,8 @@ fun StockTransferScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val activeStores = remember(snapshot.stores) { snapshot.stores.filter { it.deletedAt == null && it.active } }
     val stocks = remember(snapshot) { FinanceEngine.computeStoreStockSnapshots(snapshot) }
@@ -231,10 +264,25 @@ fun StockTransferScreen(
                     SarimGradientButton(
                         text = "Transfer Stock",
                         onClick = {
-                            if (fromStore != null && toStore != null) {
-                                vm.submitStockTransfer(date, fromStore!!, toStore!!, qty, notes)
-                                qtyStr = ""
-                                notes = ""
+                            val src = fromStore
+                            val dst = toStore
+                            if (src != null && dst != null) {
+                                confirmReq = saveConfirmRequest(
+                                    label = "Stock Transfer",
+                                    details = listOf(
+                                        "From" to src.name,
+                                        "To" to dst.name,
+                                        "Quantity" to InputGuards.formatKg(qty),
+                                        "Date" to DateUtils.formatPretty(date)
+                                    ) + (if (notes.isNotBlank()) listOf("Note" to notes.trim()) else emptyList()),
+                                    gated = !snapshot.profile.isAdmin,
+                                    verb = "Transfer",
+                                    tag = "st_confirm_save_btn"
+                                ) {
+                                    vm.submitStockTransfer(date, src, dst, qty, notes)
+                                    qtyStr = ""
+                                    notes = ""
+                                }
                             }
                         },
                         enabled = fromStore != null && toStore != null && !fromStore!!.key.equals(toStore!!.key, true) && qty > 0.0,
@@ -316,8 +364,21 @@ fun StockTransferScreen(
                     SarimDangerButton(
                         text = "Delete",
                         onClick = {
-                            vm.recyclePair("production", tr.transferPairId, tr.id, "Transfer $fromLbl -> $toLbl")
-                            selectedTransfer = null
+                            confirmReq = ConfirmRequest(
+                                title = "Delete Transfer?",
+                                message = deleteConfirmMessage(listOf(
+                                    "From" to fromLbl,
+                                    "To" to toLbl,
+                                    "Date" to DateUtils.formatPretty(tr.date),
+                                    "Note" to "Both sides of the transfer are removed"
+                                )),
+                                confirmText = "Delete",
+                                danger = true,
+                                tag = "st_confirm_delete_btn"
+                            ) {
+                                vm.recyclePair("production", tr.transferPairId, tr.id, "Transfer $fromLbl -> $toLbl")
+                                selectedTransfer = null
+                            }
                         },
                         modifier = Modifier.weight(0.38f)
                     )
@@ -346,6 +407,8 @@ fun PaymentTransferScreen(
     vm: SarimViewModel,
     onBack: () -> Unit
 ) {
+    var confirmReq by remember { mutableStateOf<ConfirmRequest?>(null) }
+    ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val currency = snapshot.settings.currencySymbol
     val masked = vm.sessionInfoFor(snapshot.profile).restrictMoney || snapshot.settings.hideSensitiveMoney
@@ -430,11 +493,26 @@ fun PaymentTransferScreen(
                     SarimGradientButton(
                         text = "Transfer Payment",
                         onClick = {
-                            if (fromEntity != null && toEntity != null) {
-                                vm.submitPaymentTransfer(date, fromEntity!!, toEntity!!, amt, notes)
-                                amountStr = ""
-                                notes = ""
-                                attachedUri = null
+                            val src = fromEntity
+                            val dst = toEntity
+                            if (src != null && dst != null) {
+                                confirmReq = saveConfirmRequest(
+                                    label = "Payment Transfer",
+                                    details = listOf(
+                                        "From" to src.name,
+                                        "To" to dst.name,
+                                        "Amount" to InputGuards.formatMoney(amt, currency, masked),
+                                        "Date" to DateUtils.formatPretty(date)
+                                    ) + (if (notes.isNotBlank()) listOf("Note" to notes.trim()) else emptyList()),
+                                    gated = !snapshot.profile.isAdmin,
+                                    verb = "Transfer",
+                                    tag = "pt_confirm_save_btn"
+                                ) {
+                                    vm.submitPaymentTransfer(date, src, dst, amt, notes)
+                                    amountStr = ""
+                                    notes = ""
+                                    attachedUri = null
+                                }
                             }
                         },
                         enabled = fromEntity != null && toEntity != null && fromEntity!!.id != toEntity!!.id && amt > 0.0,
@@ -506,8 +584,22 @@ fun PaymentTransferScreen(
                 SarimDangerButton(
                     text = "Delete Transfer Pair",
                     onClick = {
-                        vm.recyclePair("transactions", tx.transferPairId, tx.id, "Transfer ${tx.entityName} -> ${tx.peerEntityName}")
-                        selectedTransfer = null
+                        confirmReq = ConfirmRequest(
+                            title = "Delete Transfer Pair?",
+                            message = deleteConfirmMessage(listOf(
+                                "From" to tx.entityName,
+                                "To" to tx.peerEntityName,
+                                "Date" to DateUtils.formatPretty(tx.date),
+                                "Amount" to InputGuards.formatMoney(tx.amount, currency, masked),
+                                "Note" to "Both sides of the transfer are removed"
+                            )),
+                            confirmText = "Delete",
+                            danger = true,
+                            tag = "pt_confirm_delete_btn"
+                        ) {
+                            vm.recyclePair("transactions", tx.transferPairId, tx.id, "Transfer ${tx.entityName} -> ${tx.peerEntityName}")
+                            selectedTransfer = null
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 )

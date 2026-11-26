@@ -79,6 +79,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
+import com.gullzubair.sarim.ui.components.deleteConfirmMessage
 
 @Composable
 fun ProductionScreen(
@@ -569,34 +571,35 @@ fun ProductionScreen(
 
     pendingDelete?.let { rec ->
         val label = FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { rec.store }
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text(if (rec.isTransfer) "Recycle transfer?" else "Delete production entry?") },
-            text = {
-                Text(
-                    "$label · ${DateUtils.formatPretty(rec.date)} · ${InputGuards.formatKg(rec.net)}\n" +
-                        if (rec.isTransfer) "Both sides of this transfer move to the Recycle Bin." else "It moves to the Recycle Bin and can be restored."
-                )
+        SarimConfirmDialog(
+            title = if (rec.isTransfer) "Recycle Transfer?" else "Delete Production?",
+            message = deleteConfirmMessage(
+                listOf(
+                    "Store" to label,
+                    "Date" to DateUtils.formatPretty(rec.date),
+                    "Net Weight" to InputGuards.formatKg(rec.net)
+                ) + (if (rec.isTransfer) listOf("Note" to "Both sides of the transfer are removed") else emptyList())
+            ),
+            confirmText = "Delete",
+            danger = true,
+            onConfirm = {
+                if (rec.isTransfer) {
+                    vm.recyclePair("production", rec.transferPairId, rec.id, "$label (${rec.date})")
+                } else {
+                    vm.softDeleteRecord(
+                        collection = "production",
+                        docId = rec.id,
+                        displayName = label,
+                        displayDetail = rec.date,
+                        displayAmount = InputGuards.formatKg(rec.net),
+                        snapshotMap = WorkspaceJsonCodec.productionToMap(rec)
+                    )
+                }
+                if (expandedHistoryId == rec.id) expandedHistoryId = null
+                pendingDelete = null
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (rec.isTransfer) {
-                        vm.recyclePair("production", rec.transferPairId, rec.id, "$label (${rec.date})")
-                    } else {
-                        vm.softDeleteRecord(
-                            collection = "production",
-                            docId = rec.id,
-                            displayName = label,
-                            displayDetail = rec.date,
-                            displayAmount = InputGuards.formatKg(rec.net),
-                            snapshotMap = WorkspaceJsonCodec.productionToMap(rec)
-                        )
-                    }
-                    if (expandedHistoryId == rec.id) expandedHistoryId = null
-                    pendingDelete = null
-                }) { Text("Delete", color = accents.danger) }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
+            onDismiss = { pendingDelete = null },
+            confirmTag = "prod_confirm_delete_btn"
         )
     }
 
