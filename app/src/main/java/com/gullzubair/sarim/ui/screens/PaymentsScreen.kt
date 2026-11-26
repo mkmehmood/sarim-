@@ -60,6 +60,7 @@ import com.gullzubair.sarim.ui.components.ExpenseTxDetailSheet
 import com.gullzubair.sarim.ui.components.PaymentTxDetailSheet
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
@@ -210,6 +211,7 @@ fun PaymentsScreen(
                 val isEditing = editingTx != null || editingExp != null
 
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item { TabHeading("Payments") }
                     if (hidesHistory) item { Spacer(Modifier.height(6.dp)) }
                     item {
                         SarimCard {

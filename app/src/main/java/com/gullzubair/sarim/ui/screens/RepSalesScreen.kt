@@ -58,6 +58,7 @@ import com.gullzubair.sarim.ui.components.RepHistoryRowCard
 import com.gullzubair.sarim.ui.components.RepSaveConfirmDialog
 import com.gullzubair.sarim.ui.components.RepSaveConfirmModel
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.CinzelFont
@@ -449,13 +450,7 @@ fun RepSalesScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Rep Sales",
-                    fontFamily = CinzelFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                TabHeading("Rep Sales")
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = accents.softPillFill,

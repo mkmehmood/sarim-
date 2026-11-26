@@ -94,6 +94,21 @@ import com.gullzubair.sarim.util.FeedbackHelper
 import java.time.Instant
 import java.time.ZoneOffset
 
+/** Web parity: `h1.u-heading-bold` - Playfair Display, weight 800, 1.75rem (~21sp on phone), -0.02em tracking. */
+@Composable
+fun TabHeading(title: String, modifier: Modifier = Modifier) {
+    Text(
+        text = title,
+        fontFamily = com.gullzubair.sarim.ui.theme.PlayfairFont,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 21.sp,
+        lineHeight = 24.sp,
+        letterSpacing = (-0.42).sp,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+    )
+}
+
 @Composable
 fun SarimCard(
     modifier: Modifier = Modifier,

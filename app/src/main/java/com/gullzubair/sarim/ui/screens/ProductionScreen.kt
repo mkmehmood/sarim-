@@ -67,6 +67,7 @@ import com.gullzubair.sarim.ui.components.ProductionMultiShareBar
 import com.gullzubair.sarim.ui.components.ProductionPhotoLightboxDialog
 import com.gullzubair.sarim.ui.components.ProductionSaveConfirmDialog
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.components.StoreComparisonChartCard
@@ -298,14 +299,7 @@ fun ProductionScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Manufacturing",
-                        fontFamily = CinzelFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        letterSpacing = 0.6.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    TabHeading("Manufacturing")
                     if (!isMoneyRestrictedMode) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

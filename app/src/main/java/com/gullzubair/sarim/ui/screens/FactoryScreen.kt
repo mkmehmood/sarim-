@@ -51,6 +51,7 @@ import com.gullzubair.sarim.ui.components.FactoryBatchDetailSheet
 import com.gullzubair.sarim.ui.components.MaterialPurchaseLotsSheet
 import com.gullzubair.sarim.ui.components.PickerField
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimGradientButton
 import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimPillInput
@@ -164,6 +165,7 @@ fun FactoryScreen(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    item { TabHeading("Factory") }
                     if (isEntryOnlyFactory) item { Spacer(Modifier.height(6.dp)) }
                     item {
                         SarimCard {

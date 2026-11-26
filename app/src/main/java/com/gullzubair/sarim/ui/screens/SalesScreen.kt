@@ -51,6 +51,7 @@ import com.gullzubair.sarim.ui.components.SalesSaveConfirmDialog
 import com.gullzubair.sarim.ui.components.SalesSaveConfirmModel
 import com.gullzubair.sarim.ui.components.SalesSummaryCard
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.theme.CinzelFont
@@ -551,13 +552,7 @@ fun SalesScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Sales",
-                    fontFamily = CinzelFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                TabHeading("Sales")
             }
         }
 
