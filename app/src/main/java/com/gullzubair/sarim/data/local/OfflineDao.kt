@@ -52,6 +52,16 @@ interface OfflineDao {
     @Query("DELETE FROM kv_store")
     suspend fun clearKv()
 
+    @Query("DELETE FROM kv_store WHERE `key` IN (:keys)")
+    suspend fun deleteKvKeys(keys: List<String>)
+
+    /** Atomically applies photo row upserts and deletions (chunked to stay under SQLite's variable limit). */
+    @Transaction
+    suspend fun applyKvChanges(upserts: List<KvStoreEntity>, deleteKeys: List<String>) {
+        deleteKeys.chunked(500).forEach { deleteKvKeys(it) }
+        upserts.chunked(20).forEach { putKvBatch(it) }
+    }
+
     @Query("SELECT COUNT(*) FROM ndapp_outbox WHERE ownerUid = :ownerUid")
     fun observeOutboxCount(ownerUid: String): Flow<Int>
 

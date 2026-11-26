@@ -50,6 +50,8 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
             "inventory", "factory", "entities", "transactions", "expenses", "returns"
         )
         const val KV_OWNER_UID = "_workspace_owner_uid"
+        const val PHOTO_KEY_PREFIX = "photo:"
+        const val LEGACY_PHOTOS_KEY = "photos"
     }
 
     fun observeProfile(uid: String): Flow<UserProfile?> =
@@ -196,8 +198,9 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
             .mapNotNull { runCatching { WorkspaceJsonCodec.mapToUserProfile(it["uid"]?.toString().orEmpty(), it) }.getOrNull() }
             .ifEmpty { listOf(profile) }
 
+        // Legacy format: one "photos" row holding every image (can exceed the CursorWindow limit).
         val photosMapRaw = WorkspaceJsonCodec.jsonToMap(kv["photos"])
-        val photos = photosMapRaw.entries.mapNotNull { (k, v) ->
+        val legacyPhotos = photosMapRaw.entries.mapNotNull { (k, v) ->
             when (v) {
                 is String -> k to PhotoBlob(key = k, dataUri = v, deleted = false)
                 is Map<*, *> -> {
@@ -208,6 +211,14 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
                 else -> null
             }
         }.toMap()
+        // Current format: one "photo:<key>" row per image (raw data URI). These win over legacy.
+        val rowPhotos = kv.entries
+            .filter { it.key.startsWith(PHOTO_KEY_PREFIX) && it.value.isNotBlank() }
+            .associate { (rowKey, value) ->
+                val k = rowKey.removePrefix(PHOTO_KEY_PREFIX)
+                k to PhotoBlob(key = k, dataUri = value, deleted = false)
+            }
+        val photos = legacyPhotos + rowPhotos
 
         val settingsMap = WorkspaceJsonCodec.jsonToMap(kv["settings"])
         val formulasConfigMap = mapOf(
@@ -328,10 +339,7 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
                 "lastYearCloseAt" to snapshot.settings.lastYearCloseAt
             )
         )
-        batch["photos"] = WorkspaceJsonCodec.mapToJson(
-            snapshot.photos.filterValues { !it.deleted && it.dataUri.isNotBlank() }
-                .mapValues { (_, blob) -> blob.dataUri }
-        )
+        batch["lastSync_photos"] = now.toString()
         batch["workspace_invites"] = WorkspaceJsonCodec.mapListToJson(
             snapshot.invites.map { inv ->
                 buildMap {
@@ -364,6 +372,36 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
 
         dao.upsertProfile(WorkspaceJsonCodec.toEntity(snapshot.profile))
         setKvBatch(batch)
+        syncPhotoRows(snapshot.photos)
+    }
+
+    /** Mirrors [photos] into per-photo kv rows, rewriting only new/changed ones and dropping stale ones. */
+    private suspend fun syncPhotoRows(photos: Map<String, PhotoBlob>) {
+        val wanted = photos.filterValues { !it.deleted && it.dataUri.isNotBlank() }
+            .mapKeys { (k, _) -> PHOTO_KEY_PREFIX + k }
+        val existing = dao.getKvMeta()
+            .filter { it.key.startsWith(PHOTO_KEY_PREFIX) }
+            .associate { it.key to it.valueLength }
+        val now = System.currentTimeMillis()
+        val upserts = wanted.filter { (rowKey, blob) -> existing[rowKey] != blob.dataUri.length.toLong() }
+            .map { (rowKey, blob) -> KvStoreEntity(rowKey, blob.dataUri, now) }
+        val stale = existing.keys.filter { it !in wanted } + LEGACY_PHOTOS_KEY
+        dao.applyKvChanges(upserts, stale)
+    }
+
+    /** Splits the legacy single "photos" row into per-photo rows (no-op once migrated). */
+    private suspend fun migrateLegacyPhotos() {
+        val legacy = dao.getKv(LEGACY_PHOTOS_KEY)?.valueJson ?: return
+        val now = System.currentTimeMillis()
+        val rows = WorkspaceJsonCodec.jsonToMap(legacy).mapNotNull { (k, v) ->
+            val data = when (v) {
+                is String -> v
+                is Map<*, *> -> if (v["deleted"] as? Boolean == true) "" else v["data"]?.toString().orEmpty()
+                else -> ""
+            }
+            if (data.isBlank()) null else KvStoreEntity(PHOTO_KEY_PREFIX + k, data, now)
+        }
+        dao.applyKvChanges(rows, listOf(LEGACY_PHOTOS_KEY))
     }
 
     // --- Local Mutation Helpers (kv_store + ndapp_outbox) ---
@@ -440,10 +478,13 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
     suspend fun upsertLocalPhoto(ownerUid: String, photoKey: String, dataUri: String?, deleted: Boolean) =
         withContext(Dispatchers.IO) {
             ensureWorkspaceScopedKv(ownerUid)
-            val now = System.currentTimeMillis()
-            val map = WorkspaceJsonCodec.jsonToMap(dao.getKv("photos")?.valueJson).toMutableMap()
-            if (deleted || dataUri.isNullOrBlank()) map.remove(photoKey) else map[photoKey] = dataUri
-            dao.putKv(KvStoreEntity("photos", WorkspaceJsonCodec.mapToJson(map), now))
+            migrateLegacyPhotos()
+            val rowKey = PHOTO_KEY_PREFIX + photoKey
+            if (deleted || dataUri.isNullOrBlank()) {
+                dao.deleteKv(rowKey)
+            } else {
+                dao.putKv(KvStoreEntity(rowKey, dataUri, System.currentTimeMillis()))
+            }
         }
 
     suspend fun enqueueOutbox(
