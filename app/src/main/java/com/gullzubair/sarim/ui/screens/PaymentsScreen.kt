@@ -827,9 +827,9 @@ fun PaymentsScreen(
 
                     Spacer(Modifier.height(12.dp))
                     SectionSubHeader("CASH IN HAND DETAILS")
-                    BreakdownRow("Net Sales Cash (Direct Customers):", health.directSales, currency, masked)
+                    BreakdownRow("Net Sales Cash (Direct Customers):", health.directSalesCash, currency, masked)
                     BreakdownRow("Net Production Cash:", health.productionCash, currency, masked)
-                    BreakdownRow("Representative Collections:", health.repCollections, currency, masked)
+                    BreakdownRow("Representative Collections:", health.repCollectionsCash, currency, masked)
                     BreakdownRow("External Payments Received:", health.paymentsIn, currency, masked)
                     BreakdownRow("External Payments Made:", health.paymentsOut, currency, masked, accents.danger)
                     BreakdownRow("Operating Expenses:", health.operatingExpenses, currency, masked, accents.danger)
@@ -838,8 +838,8 @@ fun PaymentsScreen(
                     Spacer(Modifier.height(12.dp))
                     SectionSubHeader("CURRENT ASSETS")
                     BreakdownRow("Cash in Hand (Above):", health.cashInHand, currency, masked)
-                    BreakdownRow("Raw Materials Inventory:", health.rawMaterials, currency, masked)
-                    BreakdownRow("Formula Units Inventory:", health.formulaUnits, currency, masked)
+                    BreakdownRow("Raw Materials Inventory:", health.rawMaterialValue, currency, masked)
+                    BreakdownRow("Formula Units Inventory:", health.formulaUnitsValue, currency, masked)
 
                     Spacer(Modifier.height(10.dp))
                     SectionSubHeader("ACCOUNTS RECEIVABLE")
@@ -1058,8 +1058,9 @@ fun PaymentsScreen(
                             PickerField(
                                 label = "View",
                                 selectedLabel = viewLabel,
-                                options = viewOptions,
-                                onSelect = { unifiedViewMode = it },
+                                items = viewOptions,
+                                itemLabel = { it.second },
+                                onSelect = { unifiedViewMode = it.first },
                                 testTag = "unified_view_picker"
                             )
                         }
@@ -1067,8 +1068,9 @@ fun PaymentsScreen(
                             PickerField(
                                 label = "Period",
                                 selectedLabel = periodLabel,
-                                options = periodOptions,
-                                onSelect = { unifiedPeriod = it },
+                                items = periodOptions,
+                                itemLabel = { it.second },
+                                onSelect = { unifiedPeriod = it.first },
                                 testTag = "unified_period_picker"
                             )
                         }
@@ -1388,10 +1390,10 @@ fun PaymentsScreen(
                         original = orig,
                         date = date,
                         entity = selectedEntity,
-                        name = customName,
-                        channel = orig.paymentMethod.ifBlank { defaultChannel },
+                        customName = customName,
+                        paymentMethod = orig.paymentMethod.ifBlank { defaultChannel },
                         amount = amt,
-                        notes = notes,
+                        description = notes,
                         photoDataUri = if (!clearExistingPhoto) pendingPhotoUri else null,
                         clearPhoto = clearExistingPhoto
                     ) { resetForm(clearName = true) }
@@ -1402,7 +1404,7 @@ fun PaymentsScreen(
                         date = date,
                         name = customName,
                         category = expCategory,
-                        channel = orig.paymentMethod.ifBlank { defaultChannel },
+                        paymentMethod = orig.paymentMethod.ifBlank { defaultChannel },
                         amount = amt,
                         notes = notes,
                         photoDataUri = if (!clearExistingPhoto) pendingPhotoUri else null,

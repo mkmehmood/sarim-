@@ -966,6 +966,28 @@ class SarimViewModel(
         }
     }
 
+    fun emptyRecycleBin(items: List<DeletionTombstone>) {
+        if (items.isEmpty()) return
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val erased = mutableSetOf<String>()
+            var lastRes: Result<Unit> = Result.success(Unit)
+            items.forEach { t ->
+                val res = ops.purgeDeletedForever(snap.profile, t)
+                if (res.isSuccess) {
+                    erased += t.recordId.ifBlank { t.id }
+                }
+                lastRes = res
+            }
+            if (erased.isNotEmpty()) {
+                dispatcher.syncLedgerMirrorToStorage(
+                    snap.copy(erasedIds = snap.erasedIds + erased)
+                )
+            }
+            handleResult(lastRes, "Emptied ${erased.size} item(s) permanently")
+        }
+    }
+
     fun reviewPending(item: PendingApproval, approve: Boolean) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {

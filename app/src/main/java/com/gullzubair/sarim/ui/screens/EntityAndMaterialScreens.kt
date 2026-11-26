@@ -98,12 +98,11 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var name by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("party") }
     var phone by remember { mutableStateOf("") }
     var walletDetails by remember { mutableStateOf("") }
     var bookPage by remember { mutableStateOf("") }
+    var isOpeningCredit by remember { mutableStateOf(true) }
     var openingStr by remember { mutableStateOf("") }
-    var notesStr by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     var saving by remember { mutableStateOf(false) }
 
@@ -112,7 +111,7 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(title = "ADD ENTITY", onBack = onBack)
+        SarimSubpageHeader(title = "Add Entity", onBack = onBack)
 
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -134,29 +133,9 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                                 value = name,
                                 onValueChange = { name = it.take(80) },
                                 label = "Entity Name",
-                                placeholder = "Enter name...",
+                                placeholder = "Name",
                                 testTag = "ent_name_input"
                             )
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                listOf("party", "supplier", "staff", "expense", "bank").forEach { t ->
-                                    val sel = type == t
-                                    Surface(
-                                        onClick = { type = t },
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = if (sel) accents.softPillFill else accents.inputFill,
-                                        border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                            Text(t.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else MaterialTheme.colorScheme.onSurface)
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -164,13 +143,13 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
 
             item {
                 SarimCard {
-                    Text("Contact", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text("Contact and payment details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.height(10.dp))
                     SarimPillInput(
                         value = phone,
                         onValueChange = { phone = it.take(32) },
                         label = "Phone number",
-                        placeholder = "0300-0000000",
+                        placeholder = "03XX-XXXXXXX",
                         leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ent_phone_input"
                     )
@@ -179,10 +158,20 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                         value = walletDetails,
                         onValueChange = { walletDetails = it.take(120) },
                         label = "Wallet / account details",
-                        placeholder = "Bank IBAN, JazzCash, EasyPaisa...",
+                        placeholder = "JazzCash, Easypaisa or bank account",
                         leadingIcon = { Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         testTag = "ent_wallet_input"
                     )
+                    Spacer(Modifier.height(10.dp))
+                    SarimPillInput(
+                        value = bookPage,
+                        onValueChange = { raw -> bookPage = raw.filter(Char::isDigit).take(12) },
+                        label = "Manual ledger book page",
+                        placeholder = "e.g. 45",
+                        testTag = "ent_page_input"
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("Shown as a small badge on the entity's photo.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             }
 
@@ -190,23 +179,31 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                 SarimCard {
                     Text("Account", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.height(10.dp))
-                    DecimalField("Old balance (payable / receivable)", openingStr, { openingStr = it }, "ent_opening_input")
+                    Text("Old balance (already credit or debit)", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            true to "Credit — we owe them (payable)",
+                            false to "Debit — they owe us (receivable)"
+                        ).forEach { (creditVal, label) ->
+                            val sel = isOpeningCredit == creditVal
+                            Surface(
+                                onClick = { isOpeningCredit = creditVal },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (sel) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    Text(label, style = MaterialTheme.typography.labelSmall, color = if (sel) accents.emerald else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = bookPage,
-                        onValueChange = { bookPage = it.take(40) },
-                        label = "Manual ledger book page",
-                        placeholder = "Page # / reference",
-                        testTag = "ent_page_input"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SarimPillInput(
-                        value = notesStr,
-                        onValueChange = { notesStr = it.take(300) },
-                        label = "Notes (optional)",
-                        placeholder = "Additional details...",
-                        testTag = "ent_notes_input"
-                    )
+                    DecimalField("Old balance amount", openingStr, { openingStr = it }, "ent_opening_input")
+                    Spacer(Modifier.height(4.dp))
+                    Text("Balance carried over from before this app. Leave 0 for none.", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 }
             }
         }
@@ -221,12 +218,14 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                 SarimGradientButton(
                     text = if (saving) "Saving..." else "Save Entity",
                     onClick = {
+                        val absOpening = openingStr.toDoubleOrNull() ?: 0.0
+                        val signedOpening = if (absOpening == 0.0) 0.0 else if (isOpeningCredit) absOpening else -absOpening
                         val entityDetails = buildList {
                             add("Name" to name.trim())
-                            add("Type" to type.replaceFirstChar { it.uppercase() })
                             if (phone.isNotBlank()) add("Phone" to phone.trim())
-                            val opening = openingStr.toDoubleOrNull() ?: 0.0
-                            if (opening != 0.0) add("Opening Balance" to InputGuards.fmtNum(opening))
+                            if (absOpening != 0.0) {
+                                add("Old Balance" to "${InputGuards.fmtNum(absOpening)} (${if (isOpeningCredit) "Credit" else "Debit"})")
+                            }
                         }
                         confirmReq = saveConfirmRequest(
                             label = "Entity",
@@ -235,30 +234,30 @@ fun AddEntityScreen(vm: SarimViewModel, onBack: () -> Unit) {
                             verb = "Add",
                             tag = "entity_confirm_save_btn"
                         ) {
-                        saving = true
-                        scope.launch {
-                            val dataUrl = photoUri?.let { uri ->
-                                withContext(Dispatchers.IO) {
-                                    CaptionedPhotoSharer.compressUriToDataUrl(context, uri, maxDim = 900, quality = 80)
+                            saving = true
+                            scope.launch {
+                                val dataUrl = photoUri?.let { uri ->
+                                    withContext(Dispatchers.IO) {
+                                        CaptionedPhotoSharer.compressUriToDataUrl(context, uri, maxDim = 900, quality = 80)
+                                    }
                                 }
-                            }
-                            vm.saveEntityExtended(
-                                existingId = null,
-                                name = name,
-                                type = type,
-                                phone = phone,
-                                wallet = walletDetails,
-                                ledgerPage = bookPage,
-                                openingBalance = openingStr.toDoubleOrNull() ?: 0.0,
-                                notes = notesStr,
-                                photoDataUri = dataUrl,
-                                clearPhoto = false
-                            ) {
+                                vm.saveEntityExtended(
+                                    existingId = null,
+                                    name = name,
+                                    type = "party",
+                                    phone = phone,
+                                    wallet = walletDetails,
+                                    ledgerPage = bookPage,
+                                    openingBalance = signedOpening,
+                                    notes = "",
+                                    photoDataUri = dataUrl,
+                                    clearPhoto = false
+                                ) {
+                                    saving = false
+                                    onBack()
+                                }
                                 saving = false
-                                onBack()
                             }
-                            saving = false
-                        }
                         }
                     },
                     enabled = name.isNotBlank() && !saving,

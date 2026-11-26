@@ -85,8 +85,8 @@ fun BatchMixScreen(
     }
 
     var useGrams by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf("units") } // "total" | "units" | "ingredient"
-    var targetStr by remember { mutableStateOf("5") }
+    var mode by remember { mutableStateOf("total") } // "total" | "units" | "ingredient"
+    var targetStr by remember { mutableStateOf("") }
     var anchorId by remember { mutableStateOf("") }
     var mixName by remember { mutableStateOf("") }
 
@@ -173,9 +173,9 @@ fun BatchMixScreen(
                         Spacer(Modifier.height(10.dp))
                     }
                     val targetLabel = when (mode) {
-                        "units" -> "NUMBER OF UNITS"
-                        "ingredient" -> "ANCHOR QTY (${if (useGrams) "G" else "KG"})"
-                        else -> "TARGET WEIGHT (${if (useGrams) "G" else "KG"})"
+                        "units" -> "Number of Units"
+                        "ingredient" -> "Ingredient on Hand (${if (useGrams) "g" else "kg"})"
+                        else -> "Total Batch Weight (${if (useGrams) "g" else "kg"})"
                     }
                     DecimalField(targetLabel, targetStr, { targetStr = it }, "mix_target_input")
                 }
@@ -388,6 +388,7 @@ fun BatchFixScreen(
     val actualInputs = remember(selectedFormulaId) { mutableStateMapOf<String, String>() }
     var manualId by remember(selectedFormulaId) { mutableStateOf<String?>(null) }
     var manualAddStr by remember(selectedFormulaId) { mutableStateOf<String?>(null) }
+    var manualTotalStr by remember(selectedFormulaId) { mutableStateOf<String?>(null) }
 
     val unitTag = if (useGrams) "g" else "kg"
     val factor = if (useGrams) 1000.0 else 1.0
@@ -396,6 +397,7 @@ fun BatchFixScreen(
     val usedKg = (usedLostStr.toDoubleOrNull() ?: 0.0) / factor
     val actualKgMap = actualInputs.mapValues { (_, raw) -> (raw.toDoubleOrNull() ?: 0.0) / factor }
     val manualAddKg = manualAddStr?.toDoubleOrNull()?.let { it / factor }
+    val manualTotalKg = manualTotalStr?.toDoubleOrNull()?.let { it / factor }
 
     val fixPlan = remember(
         selectedFormula,
@@ -404,7 +406,8 @@ fun BatchFixScreen(
         usedKg,
         actualKgMap.toMap(),
         manualId,
-        manualAddKg
+        manualAddKg,
+        manualTotalKg
     ) {
         selectedFormula?.let {
             FormulaEngine.planCorrection(
@@ -414,13 +417,15 @@ fun BatchFixScreen(
                 used = usedKg,
                 actual = actualKgMap,
                 manualId = manualId,
-                manualAdd = manualAddKg
+                manualAdd = manualAddKg,
+                manualTotal = manualTotalKg
             )
         } ?: FormulaEngine.BatchFixPlan(ok = false, error = "empty")
     }
 
     val remainingDisplay = fixPlan.remaining * factor
     val newTotalDisplay = fixPlan.requiredTotal * factor
+    val addTotalDisplay = fixPlan.addTotal * factor
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "BATCH CORRECTION", onBack = onBack)
@@ -445,6 +450,7 @@ fun BatchFixScreen(
                             selectedFormulaId = it.id
                             manualId = null
                             manualAddStr = null
+                            manualTotalStr = null
                         },
                         testTag = "fix_formula_picker"
                     )
@@ -456,6 +462,7 @@ fun BatchFixScreen(
                                 originalStr = InputGuards.fmtNum((originalStr.toDoubleOrNull() ?: 0.0) * 1000.0).replace(",", "")
                                 usedLostStr = InputGuards.fmtNum((usedLostStr.toDoubleOrNull() ?: 0.0) * 1000.0).replace(",", "")
                                 manualAddStr = null
+                                manualTotalStr = null
                             }
                         }
                         MixPillToggle("kg", selected = !useGrams) {
@@ -464,6 +471,7 @@ fun BatchFixScreen(
                                 originalStr = InputGuards.fmtNum((originalStr.toDoubleOrNull() ?: 0.0) / 1000.0).replace(",", "")
                                 usedLostStr = InputGuards.fmtNum((usedLostStr.toDoubleOrNull() ?: 0.0) / 1000.0).replace(",", "")
                                 manualAddStr = null
+                                manualTotalStr = null
                             }
                         }
                     }
@@ -610,6 +618,7 @@ fun BatchFixScreen(
                                                             if (raw.isEmpty() || raw.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
                                                                 manualId = row.id
                                                                 manualAddStr = raw
+                                                                manualTotalStr = null
                                                             }
                                                         },
                                                         placeholder = "0"
@@ -633,6 +642,25 @@ fun BatchFixScreen(
                                     }
                                 }
                             }
+                        }
+
+                        if (fixPlan.ok) {
+                            Spacer(Modifier.height(12.dp))
+                            MixSummaryRow("Total in Remaining", "${InputGuards.fmtNum(remainingDisplay)} $unitTag", MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.height(6.dp))
+                            MixSummaryRow("Total Required", "${InputGuards.fmtNum(newTotalDisplay)} $unitTag", MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.height(10.dp))
+                            val totalAddValue = manualTotalStr ?: InputGuards.fmtNum(addTotalDisplay).replace(",", "")
+                            DecimalField(
+                                label = "Total to Add ($unitTag)",
+                                value = totalAddValue,
+                                onValueChange = { raw ->
+                                    manualId = null
+                                    manualAddStr = null
+                                    manualTotalStr = raw
+                                },
+                                testTag = "fix_total_add_input"
+                            )
                         }
                     }
                 }
@@ -660,6 +688,7 @@ fun BatchFixScreen(
                                     actual = actualKgMap.filterValues { it > 0.0 },
                                     manualId = manualId,
                                     manualAdd = manualAddKg,
+                                    manualTotal = manualTotalKg,
                                     createdAt = now,
                                     updatedAt = now
                                 )
@@ -702,6 +731,7 @@ fun BatchFixScreen(
                                 }
                                 manualId = fx.manualId
                                 manualAddStr = fx.manualAdd?.let { InputGuards.fmtNum(it * factor).replace(",", "") }
+                                manualTotalStr = fx.manualTotal?.let { InputGuards.fmtNum(it * factor).replace(",", "") }
                             },
                             contentPadding = PaddingValues(14.dp)
                         ) {

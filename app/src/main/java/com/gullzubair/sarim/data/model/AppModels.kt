@@ -384,6 +384,7 @@ data class PaymentTransaction(
     val peerEntityName: String = "",
     val isOpeningBalance: Boolean = false,
     val isMerged: Boolean = false,
+    val isSettled: Boolean = false,
     val timestamp: Long = 0L,
     val updatedAtEpoch: Long = 0L,
     val deletedAt: Long? = null,

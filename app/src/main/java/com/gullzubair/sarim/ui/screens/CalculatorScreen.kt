@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -407,8 +408,9 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                 PickerField(
                     label = "Sales Representative",
                     selectedLabel = selectedSellerOptionLabel,
-                    options = sellerOptions,
-                    onSelect = { selectedSeller = it },
+                    items = sellerOptions,
+                    itemLabel = { it.second },
+                    onSelect = { selectedSeller = it.first },
                     testTag = "calc_seller_picker"
                 )
                 Spacer(Modifier.height(10.dp))
@@ -725,8 +727,9 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     PickerField(
                         label = "View Chart For:",
                         selectedLabel = metricOpts.firstOrNull { it.first == compMetric }?.second ?: "Net Profit (Value)",
-                        options = metricOpts,
-                        onSelect = { compMetric = it },
+                        items = metricOpts,
+                        itemLabel = { it.second },
+                        onSelect = { compMetric = it.first },
                         testTag = "comp_metric_picker"
                     )
                     Spacer(Modifier.height(10.dp))

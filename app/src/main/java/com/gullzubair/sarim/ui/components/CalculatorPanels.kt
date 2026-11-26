@@ -147,8 +147,9 @@ fun CalculatorPerformanceChartCard(
         PickerField(
             label = "Select Metric:",
             selectedLabel = selectedMetricLabel,
-            options = metricOptions,
-            onSelect = { metric = it },
+            items = metricOptions,
+            itemLabel = { it.second },
+            onSelect = { metric = it.first },
             testTag = "calc_ind_metric_picker"
         )
         Spacer(Modifier.height(10.dp))

@@ -5,12 +5,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,12 +22,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -70,6 +78,37 @@ import com.gullzubair.sarim.ui.components.deleteConfirmMessage
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.components.DialogTone
 
+private fun approvalSubmitterName(item: com.gullzubair.sarim.data.model.PendingApproval): String =
+    item.submittedByName.ifBlank { item.submittedByEmail }.ifBlank { "A team member" }
+
+private fun approvalTypeLabel(collection: String): String = when (collection.lowercase()) {
+    "sales" -> "Sale"
+    "rep" -> "Rep sale"
+    "calculator" -> "Calculator"
+    "production" -> "Production"
+    "factory" -> "Factory"
+    "transactions" -> "Payment"
+    "customers" -> "Customer"
+    "clients" -> "Rep customer"
+    "entities" -> "Entity"
+    "expenses" -> "Expense"
+    "inventory" -> "Material"
+    "returns" -> "Return"
+    "stores" -> "Store"
+    "formulas" -> "Formula"
+    else -> collection.replaceFirstChar { it.uppercase() }
+}
+
+private fun approvalDateKey(item: com.gullzubair.sarim.data.model.PendingApproval): String {
+    val rawDate = item.dataMap["date"]?.toString()?.take(10).orEmpty()
+    if (rawDate.length == 10 && rawDate[4] == '-') return rawDate
+    if (item.submittedAt > 0L) {
+        return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(java.util.Date(item.submittedAt))
+    }
+    return DateUtils.todayIso()
+}
+
 @Composable
 fun ApprovalsScreen(
     snapshot: WorkspaceSnapshot,
@@ -80,11 +119,47 @@ fun ApprovalsScreen(
     ConfirmRequestHost(confirmReq) { confirmReq = null }
     val accents = LocalSarimAccents.current
     val isAdmin = snapshot.profile.isAdmin
-    val pendingList = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.filter { it.status == "pending" } }
+    val pendingList = remember(snapshot.pendingApprovals) {
+        snapshot.pendingApprovals.filter { it.status == "pending" }
+            .sortedByDescending { it.submittedAt }
+    }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var typeFilter by remember { mutableStateOf("all") }
+    var personFilter by remember { mutableStateOf("all") }
+
+    val typeCounts = remember(pendingList) {
+        pendingList.groupBy { it.collection.lowercase() }.mapValues { it.value.size }
+    }
+    val personCounts = remember(pendingList) {
+        pendingList.groupBy { approvalSubmitterName(it) }.mapValues { it.value.size }
+    }
+
+    val filtered = remember(pendingList, searchQuery, typeFilter, personFilter) {
+        val q = searchQuery.trim().lowercase()
+        pendingList.filter { p ->
+            val matchType = typeFilter == "all" || p.collection.equals(typeFilter, ignoreCase = true)
+            val matchPerson = personFilter == "all" || approvalSubmitterName(p) == personFilter
+            val matchQ = q.isBlank() ||
+                p.summaryTitle.lowercase().contains(q) ||
+                p.summaryBody.lowercase().contains(q) ||
+                approvalSubmitterName(p).lowercase().contains(q) ||
+                p.collection.lowercase().contains(q) ||
+                p.dataMap.values.joinToString(" ").lowercase().contains(q)
+            matchType && matchPerson && matchQ
+        }
+    }
+
+    val dayGroups = remember(filtered) {
+        filtered.groupBy { approvalDateKey(it) }
+            .entries
+            .sortedByDescending { it.key }
+            .map { it.key to it.value }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
-            title = "APPROVALS",
+            title = "Approvals",
             onBack = onBack,
             trailingContent = if (isAdmin && pendingList.isNotEmpty()) {
                 {
@@ -110,69 +185,237 @@ fun ApprovalsScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (pendingList.isEmpty()) {
+            item { Spacer(Modifier.height(4.dp)) }
+
+            // Web Hero Card (apv-hero)
+            item {
+                val people = remember(pendingList) { pendingList.map { approvalSubmitterName(it) }.distinct() }
+                val heroSubtitle = if (pendingList.isEmpty()) {
+                    "Nothing needs your approval right now."
+                } else {
+                    val who = if (people.size <= 2) people.joinToString(" and ") else "${people.take(2).joinToString(", ")} and ${people.size - 2} more"
+                    "From $who"
+                }
+                SarimCard(accentBorder = if (pendingList.isEmpty()) accents.emerald else accents.gold) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(if (pendingList.isEmpty()) accents.softPillFill else accents.gold.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (pendingList.isEmpty()) {
+                                Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(26.dp))
+                            } else {
+                                Text(
+                                    text = "${pendingList.size}",
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = accents.gold
+                                )
+                            }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = if (pendingList.isEmpty()) "All caught up" else "waiting for approval",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(heroSubtitle, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        }
+                    }
+                }
+            }
+
+            // Search bar when > 1 pending item (matches web)
+            if (pendingList.size > 1) {
                 item {
-                    EmptyStateCard(
-                        title = "All caught up",
-                        detail = "Nothing needs your approval right now.",
-                        icon = Icons.Default.CheckCircleOutline
+                    SarimPillInput(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = "Search by name, item or amount",
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = accents.textMuted) },
+                        testTag = "approvals_search_input"
                     )
                 }
-            } else {
-                items(pendingList, key = { it.id }) { item ->
-                    SarimCard(accentBorder = accents.gold) {
-                        Text(item.summaryTitle.ifBlank { "${item.collection.uppercase()} ${item.action.uppercase()}" }, style = MaterialTheme.typography.titleMedium)
-                        if (item.summaryBody.isNotBlank()) {
-                            Text(item.summaryBody, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Submitted by ${item.submittedByName.ifBlank { item.submittedByEmail }} • ${item.collection.uppercase()} • ${item.action.uppercase()}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = accents.cyan
+            }
+
+            // Type Filter Chips
+            if (typeCounts.size > 1) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = typeFilter == "all",
+                            onClick = { typeFilter = "all" },
+                            label = { Text("All ${pendingList.size}") }
                         )
-                        if (isAdmin) {
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                SarimGradientButton(
-                                    text = "Approve",
-                                    onClick = {
-                                        confirmReq = ConfirmRequest(
-                                            title = "Approve Request?",
-                                            message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${item.submittedByName.ifBlank { item.submittedByEmail }}\n\nIt will become part of the shared records.",
-                                            confirmText = "Approve",
-                                            tone = DialogTone.Primary,
-                                            tag = "approvals_confirm_approve_btn"
-                                        ) { vm.reviewPending(item, true) }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    testTag = "approve_${item.id}"
+                        typeCounts.forEach { (col, cnt) ->
+                            FilterChip(
+                                selected = typeFilter == col,
+                                onClick = { typeFilter = col },
+                                label = { Text("${approvalTypeLabel(col)} $cnt") }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Person Filter Chips
+            if (personCounts.size > 1) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        personCounts.forEach { (person, cnt) ->
+                            val selected = personFilter == person
+                            FilterChip(
+                                selected = selected,
+                                onClick = { personFilter = if (selected) "all" else person },
+                                label = { Text("$person $cnt") }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (dayGroups.isEmpty()) {
+                item {
+                    if (pendingList.isNotEmpty()) {
+                        EmptyStateCard(
+                            title = "No matching approvals",
+                            detail = "Try clearing the search or filter chips."
+                        )
+                    }
+                }
+            } else {
+                items(dayGroups, key = { it.first }) { (dayKey, dayItems) ->
+                    val peopleNames = dayItems.map { approvalSubmitterName(it) }.distinct().joinToString(", ")
+                    SarimCard(accentBorder = accents.gold.copy(alpha = 0.65f)) {
+                        Text(
+                            text = DateUtils.formatPretty(dayKey).uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                            color = accents.textMuted
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        dayItems.forEachIndexed { idx, item ->
+                            if (idx > 0) {
+                                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f), modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            Column {
+                                Text(item.summaryTitle.ifBlank { "${item.collection.uppercase()} ${item.action.uppercase()}" }, style = MaterialTheme.typography.titleMedium)
+                                if (item.summaryBody.isNotBlank()) {
+                                    Text(item.summaryBody, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Submitted by ${approvalSubmitterName(item)} • ${approvalTypeLabel(item.collection)} • ${item.action.uppercase()}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accents.cyan
                                 )
-                                OutlinedButton(
-                                    onClick = {
-                                        confirmReq = ConfirmRequest(
-                                            title = "Reject Request?",
-                                            message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${item.submittedByName.ifBlank { item.submittedByEmail }}\n\nThe submitter will see it as rejected.",
-                                            confirmText = "Reject",
-                                            danger = true,
-                                            tag = "approvals_confirm_reject_btn"
-                                        ) { vm.reviewPending(item, false) }
-                                    },
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accents.danger),
-                                    modifier = Modifier.weight(1f).height(50.dp).testTag("reject_${item.id}")
-                                ) {
-                                    Icon(Icons.Default.Close, contentDescription = null)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Reject")
+                                if (isAdmin) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        SarimGradientButton(
+                                            text = "Approve",
+                                            onClick = {
+                                                confirmReq = ConfirmRequest(
+                                                    title = "Approve Request?",
+                                                    message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${approvalSubmitterName(item)}\n\nIt will become part of the shared records.",
+                                                    confirmText = "Approve",
+                                                    tone = DialogTone.Primary,
+                                                    tag = "approvals_confirm_approve_btn"
+                                                ) { vm.reviewPending(item, true) }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            testTag = "approve_${item.id}"
+                                        )
+                                        OutlinedButton(
+                                            onClick = {
+                                                confirmReq = ConfirmRequest(
+                                                    title = "Discard Request?",
+                                                    message = "Request: ${item.summaryTitle.ifBlank { item.collection.uppercase() }}\nSubmitted by: ${approvalSubmitterName(item)}\n\nThe submitter will see it as discarded.",
+                                                    confirmText = "Discard",
+                                                    danger = true,
+                                                    tag = "approvals_confirm_reject_btn"
+                                                ) { vm.reviewPending(item, false) }
+                                            },
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accents.danger),
+                                            modifier = Modifier.weight(1f).height(50.dp).testTag("reject_${item.id}")
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = null)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Discard")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isAdmin && dayItems.size > 1) {
+                            Spacer(Modifier.height(10.dp))
+                            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${dayItems.size} waiting • $peopleNames",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accents.textMuted,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Surface(
+                                        onClick = {
+                                            confirmReq = ConfirmRequest(
+                                                title = "Discard ${dayItems.size} requests?",
+                                                message = "Discard all requests for ${DateUtils.formatPretty(dayKey)}?",
+                                                confirmText = "Discard",
+                                                danger = true
+                                            ) { dayItems.forEach { vm.reviewPending(it, false) } }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = accents.danger.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                            Text("Discard", style = MaterialTheme.typography.labelMedium, color = accents.danger)
+                                        }
+                                    }
+                                    Surface(
+                                        onClick = {
+                                            confirmReq = ConfirmRequest(
+                                                title = "Approve ${dayItems.size} requests?",
+                                                message = "Approve all requests for ${DateUtils.formatPretty(dayKey)}?",
+                                                confirmText = "Approve",
+                                                tone = DialogTone.Primary
+                                            ) { dayItems.forEach { vm.reviewPending(it, true) } }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = accents.softPillFill,
+                                        border = BorderStroke(1.dp, accents.emerald),
+                                        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                            Text("Approve", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }

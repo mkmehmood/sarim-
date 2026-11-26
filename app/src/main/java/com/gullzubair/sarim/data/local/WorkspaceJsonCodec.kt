@@ -1006,6 +1006,7 @@ object WorkspaceJsonCodec {
             peerEntityName = asStr(data["peerEntityName"]),
             isOpeningBalance = asBool(data["isOpeningBalance"], false),
             isMerged = asBool(data["isMerged"], false),
+            isSettled = asBool(data["isSettled"], false),
             timestamp = asLong(data["timestamp"], asLong(data["createdAt"], 0L)),
             updatedAtEpoch = asLong(data["updatedAt"], 0L),
             deletedAt = asNullableLong(data["deletedAt"]),
@@ -1042,6 +1043,7 @@ object WorkspaceJsonCodec {
         }
         if (t.isOpeningBalance) put("isOpeningBalance", true)
         if (t.isMerged) put("isMerged", true)
+        if (t.isSettled) put("isSettled", true)
         put("timestamp", if (t.timestamp > 0L) t.timestamp else System.currentTimeMillis())
         t.deletedAt?.let { put("deletedAt", it) }
         if (t.isEdited) put("isEdited", true)

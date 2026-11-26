@@ -1,24 +1,23 @@
 package com.gullzubair.sarim.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.HorizontalDivider
@@ -84,15 +83,13 @@ fun DailyLedgerScreen(
     ConfirmRequestHost(confirmReq) { confirmReq = null }
     val channels = snapshot.settings.paymentModes.ifEmpty { listOf("Cash", "Bank", "Easypaisa", "JazzCash") }
 
-    var showComposer by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var date by remember(todayIso) { mutableStateOf(todayIso) }
     var entryType by remember { mutableStateOf("IN") } // IN | OUT | TRANSFER
-    var expenseScope by remember { mutableStateOf("BUSINESS") } // BUSINESS | HOME | ""
     var channel by remember(channels) { mutableStateOf(channels.first()) }
     var toChannel by remember(channels) { mutableStateOf(channels.getOrElse(1) { channels.first() }) }
-    var category by remember { mutableStateOf("General") }
+    var category by remember { mutableStateOf("") }
     var partyName by remember { mutableStateOf("") }
     var refStr by remember { mutableStateOf("") }
     var amountStr by remember { mutableStateOf("") }
@@ -125,66 +122,23 @@ fun DailyLedgerScreen(
     val totalIn = remember(filteredEntries) { filteredEntries.filter { it.type.equals("IN", true) }.sumOf { it.amount } }
     val totalOut = remember(filteredEntries) { filteredEntries.filter { it.type.equals("OUT", true) }.sumOf { it.amount } }
 
-    BackHandler(enabled = showComposer && editingId != null) {
+    fun resetForm() {
         editingId = null
-        showComposer = false
+        category = ""
+        partyName = ""
+        refStr = ""
+        amountStr = ""
+        notes = ""
+    }
+
+    BackHandler(enabled = editingId != null) {
+        resetForm()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
-            title = "DAILY LEDGER",
-            onBack = onBack,
-            trailingContent = {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Surface(
-                        onClick = {
-                            if (showComposer) editingId = null
-                            showComposer = !showComposer
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.softPillFill,
-                        border = BorderStroke(1.dp, accents.emerald),
-                        modifier = Modifier.testTag("ledger_toggle_composer")
-                    ) {
-                        Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Add, contentDescription = "New entry", tint = accents.emerald, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Entry", style = MaterialTheme.typography.labelMedium, color = accents.emerald)
-                        }
-                    }
-                    Surface(
-                        onClick = {
-                            val rows = filteredEntries.reversed().map { e ->
-                                val afterBal = summary.statement[e.id]?.second ?: 0.0
-                                val isOut = e.type.equals("OUT", true)
-                                val isIn = e.type.equals("IN", true)
-                                StatementRow(
-                                    date = e.date,
-                                    description = "${e.type} ${e.category} ${e.party}".trim(),
-                                    debit = if (isOut) InputGuards.fmtNum(e.amount) else "-",
-                                    credit = if (isIn) InputGuards.fmtNum(e.amount) else "-",
-                                    balance = InputGuards.fmtNum(afterBal)
-                                )
-                            }
-                            PdfExporter.exportAndShareStatement(
-                                context = context,
-                                title = "Daily Cashbook Statement",
-                                subtitle = "Gull & Zubair Naswar Dealers",
-                                rows = rows,
-                                summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
-                            )
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.inputFill,
-                        border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.testTag("ledger_export_pdf_btn")
-                    ) {
-                        Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                }
-            }
+            title = "Daily Ledger",
+            onBack = onBack
         )
 
         LazyColumn(
@@ -193,72 +147,221 @@ fun DailyLedgerScreen(
         ) {
             item { Spacer(Modifier.height(4.dp)) }
 
+            // Hero Card: Cash In Hand + PDF Export + Cash / Bank / Others strip
             item {
-                AnimatedVisibility(visible = showComposer) {
-                    SarimCard {
-                        Text(if (editingId == null) "New Cashbook Entry" else "Edit Cashbook Entry", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("IN", "OUT", "TRANSFER").forEach { type ->
-                                val sel = entryType == type
-                                Surface(
-                                    onClick = { entryType = type },
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (sel) accents.softPillFill else accents.inputFill,
-                                    border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                    modifier = Modifier.weight(1f).testTag("ledger_type_${type.lowercase()}")
-                                ) {
-                                    Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                        Text(type, style = MaterialTheme.typography.labelLarge, color = if (sel) accents.emerald else accents.textMuted)
-                                    }
+                SarimCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "CASH IN HAND",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                            color = accents.textMuted
+                        )
+                        Surface(
+                            onClick = {
+                                val rows = filteredEntries.reversed().map { e ->
+                                    val afterBal = summary.statement[e.id]?.second ?: 0.0
+                                    val isOut = e.type.equals("OUT", true)
+                                    val isIn = e.type.equals("IN", true)
+                                    StatementRow(
+                                        date = e.date,
+                                        description = "${e.type} ${e.category} ${e.party}".trim(),
+                                        debit = if (isOut) InputGuards.fmtNum(e.amount) else "-",
+                                        credit = if (isIn) InputGuards.fmtNum(e.amount) else "-",
+                                        balance = InputGuards.fmtNum(afterBal)
+                                    )
+                                }
+                                PdfExporter.exportAndShareStatement(
+                                    context = context,
+                                    title = "Daily Cashbook Statement",
+                                    subtitle = "Gull & Zubair Naswar Dealers",
+                                    rows = rows,
+                                    summaryFooter = "IN: ${InputGuards.formatMoney(totalIn, currency, masked)}  |  OUT: ${InputGuards.formatMoney(totalOut, currency, masked)}"
+                                )
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = accents.softPillFill,
+                            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.45f)),
+                            modifier = Modifier.size(40.dp).testTag("ledger_export_pdf_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PictureAsPdf, contentDescription = "Export Daily Ledger to PDF", tint = accents.emerald, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = InputGuards.formatMoney(summary.inHand, currency, masked),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = if (summary.inHand >= 0) accents.emerald else accents.danger
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(accents.inputFill)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Cash", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Text(InputGuards.formatMoney(summary.cash, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Bank", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Text(InputGuards.formatMoney(summary.bank, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Others", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            Text(InputGuards.formatMoney(summary.others, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                }
+            }
+
+            // 3-col Summary Strip: Total Cash In | Total Cash Out | Net Balance
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
+                        Text("Total Cash In", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(summary.totalIn, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                        Text("${summary.inCount} ${if (summary.inCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    }
+                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
+                        Text("Total Cash Out", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        Text(InputGuards.formatMoney(summary.totalOut, currency, masked), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.danger)
+                        Text("${summary.outCount} ${if (summary.outCount == 1) "entry" else "entries"}", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    }
+                    SarimCard(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
+                        Text("Net Balance", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                        Text(
+                            InputGuards.formatMoney(summary.inHand, currency, masked),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (summary.inHand >= 0) accents.emerald else accents.danger
+                        )
+                        Text(if (summary.inHand >= 0) "Surplus" else "Deficit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    }
+                }
+            }
+
+            // Inline Form Card (always visible, matches web #dl-form-card)
+            item {
+                SarimCard {
+                    val formTitle = when {
+                        editingId != null -> "Edit Record"
+                        entryType == "TRANSFER" -> "Transfer Between Channels"
+                        else -> "Add Entry"
+                    }
+                    Text(
+                        formTitle.uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                        color = accents.textMuted
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("IN" to "+ In", "OUT" to "- Out", "TRANSFER" to "Transfer").forEach { (type, lbl) ->
+                            val sel = entryType == type
+                            Surface(
+                                onClick = { entryType = type },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (sel) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).testTag("ledger_type_${type.lowercase()}")
+                            ) {
+                                Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(lbl, style = MaterialTheme.typography.labelLarge, color = if (sel) accents.emerald else accents.textMuted)
                                 }
                             }
                         }
-                        if (entryType == "OUT") {
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("BUSINESS" to "Business", "HOME" to "Home", "" to "General").forEach { (k, lbl) ->
-                                    val sel = expenseScope == k
-                                    Surface(
-                                        onClick = { expenseScope = k },
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = if (sel) accents.softPillFill else accents.inputFill,
-                                        border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Box(Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
-                                            Text(lbl, style = MaterialTheme.typography.labelMedium, color = if (sel) accents.emerald else accents.textMuted)
-                                        }
-                                    }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        DatePickerField("Date", date, { date = it }, "ledger_date", Modifier.weight(1f))
+                        DecimalField("Amount", amountStr, { amountStr = it }, "ledger_amount_input", Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    PickerField(
+                        label = if (entryType == "TRANSFER") "From Channel (Source)" else "Payment Channel / Mode",
+                        selectedLabel = channel,
+                        items = channels,
+                        itemLabel = { it },
+                        onSelect = { channel = it },
+                        testTag = "ledger_channel_picker"
+                    )
+                    if (entryType == "TRANSFER") {
+                        Spacer(Modifier.height(8.dp))
+                        PickerField(
+                            label = "To Channel (Destination)",
+                            selectedLabel = toChannel,
+                            items = channels,
+                            itemLabel = { it },
+                            onSelect = { toChannel = it },
+                            testTag = "ledger_to_channel_picker"
+                        )
+                    } else {
+                        Spacer(Modifier.height(8.dp))
+                        SarimPillInput(
+                            value = partyName,
+                            onValueChange = { partyName = it.take(80) },
+                            label = "Party / Customer / Vendor (optional)",
+                            placeholder = "e.g. Ali Store",
+                            testTag = "ledger_party_input"
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SarimPillInput(
+                            value = refStr,
+                            onValueChange = { refStr = it.take(40) },
+                            label = "Bill / Ref #",
+                            placeholder = "Optional",
+                            modifier = Modifier.weight(1f),
+                            testTag = "ledger_ref_input"
+                        )
+                        SarimPillInput(
+                            value = notes,
+                            onValueChange = { notes = it.take(120) },
+                            label = "Remarks / Note",
+                            placeholder = "Optional",
+                            modifier = Modifier.weight(1f),
+                            testTag = "ledger_notes_input"
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    val amt = amountStr.toDoubleOrNull() ?: 0.0
+                    val resolvedCategory = category.ifBlank {
+                        when (entryType) {
+                            "OUT" -> "Expense"
+                            "TRANSFER" -> "Transfer"
+                            else -> "Sales"
+                        }
+                    }
+                    val saveBtnLabel = when {
+                        editingId != null -> "Update Entry"
+                        entryType == "OUT" -> "Add Cash Out"
+                        entryType == "TRANSFER" -> "Record Transfer"
+                        else -> "Add Cash In"
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (editingId != null) {
+                            Surface(
+                                onClick = { resetForm() },
+                                shape = RoundedCornerShape(24.dp),
+                                color = accents.inputFill,
+                                border = BorderStroke(1.dp, accents.borderSubtle),
+                                modifier = Modifier.weight(0.55f).height(50.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("Cancel Edit", style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                         }
-                        Spacer(Modifier.height(10.dp))
-                        DatePickerField("Entry Date", date, { date = it }, "ledger_date")
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PickerField(if (entryType == "TRANSFER") "From" else "Mode", channel, channels, { it }, { channel = it }, "ledger_channel_picker", Modifier.weight(1f))
-                            if (entryType == "TRANSFER") {
-                                PickerField("To Mode", toChannel, channels, { it }, { toChannel = it }, "ledger_to_channel_picker", Modifier.weight(1f))
-                            } else {
-                                DecimalField("Amount", amountStr, { amountStr = it }, "ledger_amount_input", Modifier.weight(1f))
-                            }
-                        }
-                        if (entryType == "TRANSFER") {
-                            Spacer(Modifier.height(8.dp))
-                            DecimalField("Transfer Amount", amountStr, { amountStr = it }, "ledger_amount_input")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SarimPillInput(category, { category = it.take(60) }, label = "CATEGORY", modifier = Modifier.weight(1f), testTag = "ledger_category_input")
-                            SarimPillInput(partyName, { partyName = it.take(80) }, label = "PARTY / LABEL", modifier = Modifier.weight(1f), testTag = "ledger_party_input")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        SarimPillInput(notes, { notes = it.take(500) }, label = "NOTES", testTag = "ledger_notes_input")
-                        Spacer(Modifier.height(12.dp))
-                        val amt = amountStr.toDoubleOrNull() ?: 0.0
                         SarimGradientButton(
-                            text = if (editingId == null) "Record Cashbook Entry" else "Update Cashbook Entry",
+                            text = saveBtnLabel,
                             onClick = {
                                 val isUpd = editingId != null
                                 val details = buildList {
@@ -266,8 +369,7 @@ fun DailyLedgerScreen(
                                     add("Date" to DateUtils.formatPretty(date))
                                     add("Amount" to InputGuards.formatMoney(amt, currency, masked))
                                     add("Channel" to if (entryType == "TRANSFER") "$channel \u2192 $toChannel" else channel)
-                                    if (category.isNotBlank()) add("Category" to category.trim())
-                                    if (partyName.isNotBlank()) add("Party" to partyName.trim())
+                                    if (partyName.isNotBlank() && entryType != "TRANSFER") add("Party" to partyName.trim())
                                 }
                                 confirmReq = saveConfirmRequest(
                                     label = "Cashbook Entry",
@@ -281,24 +383,21 @@ fun DailyLedgerScreen(
                                         existingId = editingId,
                                         date = date,
                                         type = entryType,
-                                        scope = if (entryType == "OUT") expenseScope else "",
+                                        scope = "",
                                         mode = channel,
                                         toMode = if (entryType == "TRANSFER") toChannel else "",
-                                        category = category,
-                                        party = partyName,
+                                        category = resolvedCategory,
+                                        party = if (entryType == "TRANSFER") "" else partyName,
                                         amount = amt,
                                         ref = refStr,
                                         note = notes
                                     )
-                                    editingId = null
-                                    amountStr = ""
-                                    notes = ""
-                                    refStr = ""
-                                    showComposer = false
+                                    resetForm()
                                 }
                             },
                             enabled = amt > 0.0 && (entryType != "TRANSFER" || !channel.equals(toChannel, true)),
-                            testTag = "ledger_save_btn"
+                            testTag = "ledger_save_btn",
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -368,7 +467,7 @@ fun DailyLedgerScreen(
             }
 
             if (filteredEntries.isEmpty()) {
-                item { EmptyStateCard("No ledger entries", "Tap + Entry at the top right to record a transaction.") }
+                item { EmptyStateCard("No ledger entries", "Add your first transaction above.") }
             } else {
                 item {
                     SarimYearMonthDayTree(
@@ -497,7 +596,6 @@ fun DailyLedgerScreen(
                                 editingId = v.id
                                 date = v.date
                                 entryType = v.type.uppercase()
-                                expenseScope = v.scope
                                 channel = v.mode.ifBlank { channels.first() }
                                 toChannel = v.toMode.ifBlank { channels.getOrElse(1) { channels.first() } }
                                 category = v.category
@@ -506,7 +604,6 @@ fun DailyLedgerScreen(
                                 amountStr = v.amount.toString()
                                 notes = v.note
                                 selectedVoucher = null
-                                showComposer = true
                             },
                             shape = RoundedCornerShape(22.dp),
                             color = accents.softPillFill,

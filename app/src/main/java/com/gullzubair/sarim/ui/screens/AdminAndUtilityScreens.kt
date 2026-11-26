@@ -6,11 +6,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,23 +26,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.EventBusy
 import androidx.compose.material.icons.outlined.Factory
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Lock
@@ -51,14 +52,15 @@ import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Store
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -81,22 +83,25 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.AppRoute
 import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.WorkspaceSnapshot
 import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.FinanceEngine
-import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.MetricKpiCard
 import com.gullzubair.sarim.ui.components.SarimCard
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 import com.gullzubair.sarim.ui.components.SarimDangerButton
 import com.gullzubair.sarim.ui.components.SarimGradientButton
+import com.gullzubair.sarim.ui.components.SarimNoteBanner
 import com.gullzubair.sarim.ui.components.SarimPillInput
 import com.gullzubair.sarim.ui.components.SarimSubpageHeader
-import com.gullzubair.sarim.ui.components.SarimConfirmDialog
+import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import com.gullzubair.sarim.ui.viewmodel.ToastKind
 import com.gullzubair.sarim.util.FeedbackHelper
 import com.gullzubair.sarim.util.HapticLevel
 import com.gullzubair.sarim.util.SoundLevel
@@ -111,308 +116,239 @@ fun SettingsScreen(
     vm: SarimViewModel,
     onBack: () -> Unit,
     onNavigateRoute: (AppRoute) -> Unit,
-    onSignOut: () -> Unit
+    @Suppress("UNUSED_PARAMETER") onSignOut: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
     val session = remember(snapshot.profile) { vm.sessionInfoFor(snapshot.profile) }
     val isAdminSession = session.mode == "admin"
-    val canSeeRecycleBin = isAdminSession || (FinanceEngine.recycleCollections(session)?.isNotEmpty() == true)
     val allowedBinCount = remember(snapshot.deletions, session) {
         snapshot.deletions.count { FinanceEngine.isRecycleRecordAllowed(it.collection, session) }
     }
-    var currency by remember(snapshot.settings) { mutableStateOf(snapshot.settings.currencySymbol) }
-    var fyMonth by remember(snapshot.settings) { mutableStateOf(snapshot.settings.financialYearStartMonth.toString()) }
-    var repProfile by remember(snapshot.settings) { mutableStateOf(snapshot.settings.repProfile) }
-    var theme by remember(snapshot.settings) { mutableStateOf(snapshot.settings.themeMode) }
-    var bio by remember(snapshot.settings) { mutableStateOf(snapshot.settings.biometricLockEnabled) }
-    var hideMoney by remember(snapshot.settings) { mutableStateOf(snapshot.settings.hideSensitiveMoney) }
-
-    val reps = remember(snapshot.settings.reps) { mutableStateListOf<String>().apply { addAll(snapshot.settings.reps) } }
-    val paymentModes = remember(snapshot.settings.paymentModes) { mutableStateListOf<String>().apply { addAll(snapshot.settings.paymentModes) } }
-    val expCats = remember(snapshot.settings.expenseCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.expenseCategories) } }
-    val fieldExpCats = remember(snapshot.settings.fieldExpenseCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.fieldExpenseCategories) } }
-    val commCats = remember(snapshot.settings.commissionCategories) { mutableStateListOf<String>().apply { addAll(snapshot.settings.commissionCategories) } }
-
-    var listsExpanded by remember { mutableStateOf(false) }
+    val themeMode = snapshot.settings.themeMode.lowercase(Locale.ROOT)
+    val themeLabel = when (themeMode) {
+        "light" -> "Light"
+        "dark" -> "Dark"
+        else -> "Auto"
+    }
+    val bioEnabled = snapshot.settings.biometricLockEnabled
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(title = "SETTINGS", onBack = onBack)
+        SarimSubpageHeader(title = "Settings", onBack = onBack)
 
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Card 1: Data & Sync (Sync Data & Recycle Bin always visible; Backup & DB Structure admin only)
             item {
-                Text("WORKSPACE TOOLS", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
-                Spacer(Modifier.height(6.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsGroupCard(title = "Data & Sync") {
+                    SettingsRowButton(
+                        title = "Sync Data",
+                        subtitle = if (snapshot.pendingSyncCount > 0) "${snapshot.pendingSyncCount} change(s) pending upload" else null,
+                        icon = Icons.Outlined.Sync,
+                        tint = accents.emerald,
+                        testTag = "settings_sync_btn"
+                    ) { vm.syncNow() }
+
                     if (isAdminSession) {
-                        SettingsNavTile("Store Manager", "Stores, linked formulas and sale prices", Icons.Outlined.Store, accents.emerald) {
-                            onNavigateRoute(AppRoute.StoreManager)
-                        }
-                        SettingsNavTile("App Accounts", "Manage staff accounts and role access", Icons.Outlined.Group, accents.cyan) {
-                            onNavigateRoute(AppRoute.AppAccounts)
-                        }
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                        SettingsRowButton(
+                            title = "Backup & Restore",
+                            icon = Icons.Outlined.Backup,
+                            tint = accents.gold,
+                            testTag = "settings_backup_btn"
+                        ) { onNavigateRoute(AppRoute.BackupRestore) }
                     }
-                    SettingsNavTile("Sound & Haptics", "Customize tactile pulse & audio click intensity", Icons.Outlined.VolumeUp, accents.emerald) {
-                        onNavigateRoute(AppRoute.SoundHaptics)
-                    }
+
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                    SettingsRowButton(
+                        title = "Recycle Bin",
+                        subtitle = if (allowedBinCount > 0) "$allowedBinCount item(s)" else null,
+                        icon = Icons.Outlined.DeleteOutline,
+                        tint = accents.danger,
+                        testTag = "settings_recycle_btn"
+                    ) { onNavigateRoute(AppRoute.RecycleBin) }
+
                     if (isAdminSession) {
-                        SettingsNavTile("Backup & Restore", "Save or restore JSON & encrypted .gznd backups", Icons.Outlined.Backup, accents.gold) {
-                            onNavigateRoute(AppRoute.BackupRestore)
-                        }
-                    }
-                    if (canSeeRecycleBin) {
-                        SettingsNavTile(
-                            title = "Recycle Bin",
-                            subtitle = if (allowedBinCount == 0) "Restore deleted records or empty permanently" else "$allowedBinCount deleted item(s)",
-                            icon = Icons.Outlined.DeleteOutline,
-                            tint = accents.danger
-                        ) { onNavigateRoute(AppRoute.RecycleBin) }
-                    }
-                    if (isAdminSession) {
-                        SettingsNavTile("DB Structure", "Inspect synced workspace & Room DB stats", Icons.Outlined.Storage, accents.purple) {
-                            onNavigateRoute(AppRoute.DbStructure)
-                        }
-                        SettingsNavTile("Close Financial Year", "Compact historical entries into opening balances", Icons.Outlined.EventBusy, accents.danger) {
-                            onNavigateRoute(AppRoute.CloseFinancialYear)
-                        }
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                        SettingsRowButton(
+                            title = "Database Structure",
+                            icon = Icons.Outlined.Storage,
+                            tint = accents.purple,
+                            testTag = "settings_db_btn"
+                        ) { onNavigateRoute(AppRoute.DbStructure) }
                     }
                 }
             }
 
+            // Card 2: Appearance & Device (Theme always visible; Sound & Haptics admin only matching web settings-screen.js)
+            item {
+                SettingsGroupCard(title = "Appearance & Device") {
+                    SettingsRowButton(
+                        title = "Theme: $themeLabel",
+                        icon = Icons.Outlined.Brightness6,
+                        tint = accents.cyan,
+                        testTag = "settings_theme_btn"
+                    ) {
+                        val next = when (themeMode) {
+                            "light" -> "dark"
+                            "dark" -> "auto"
+                            else -> "light"
+                        }
+                        val nextLbl = when (next) {
+                            "light" -> "Light"
+                            "dark" -> "Dark"
+                            else -> "Auto"
+                        }
+                        vm.updateSettings(snapshot.settings.copy(themeMode = next))
+                        vm.showToast("Theme: $nextLbl", ToastKind.INFO)
+                    }
+
+                    if (isAdminSession) {
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                        SettingsRowButton(
+                            title = "Sound & Haptics",
+                            icon = Icons.Outlined.VolumeUp,
+                            tint = accents.emerald,
+                            testTag = "settings_sound_haptics_btn"
+                        ) { onNavigateRoute(AppRoute.SoundHaptics) }
+                    }
+                }
+            }
+
+            // Card 3: Security (Admin only)
             if (isAdminSession) {
                 item {
-                    SarimCard {
-                        Text("Workspace Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Spacer(Modifier.height(10.dp))
-                        SarimPillInput(
-                            value = currency,
-                            onValueChange = { currency = it.take(12) },
-                            label = "Currency Symbol",
-                            testTag = "settings_currency_input"
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        SarimPillInput(
-                            value = fyMonth,
-                            onValueChange = { fyMonth = it.filter(Char::isDigit).take(2) },
-                            label = "Financial Year Start Month (1-12)"
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        SarimPillInput(
-                            value = repProfile,
-                            onValueChange = { repProfile = it.take(60) },
-                            label = "Default Rep Profile",
-                            placeholder = "Optional active rep name"
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("light", "dark", "system").forEach { m ->
-                                FilterChip(
-                                    selected = theme == m,
-                                    onClick = { theme = m },
-                                    label = { Text(m.replaceFirstChar { it.uppercase() }) }
-                                )
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Biometric App Lock", style = MaterialTheme.typography.bodyMedium)
-                            Switch(checked = bio, onCheckedChange = { bio = it }, modifier = Modifier.testTag("settings_bio_switch"))
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Privacy Mask Monetary Totals", style = MaterialTheme.typography.bodyMedium)
-                            Switch(checked = hideMoney, onCheckedChange = { hideMoney = it }, modifier = Modifier.testTag("settings_privacy_switch"))
-                        }
-
-                        Spacer(Modifier.height(8.dp))
+                    SettingsGroupCard(title = "Security") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .defaultMinSize(minHeight = 48.dp)
-                                .clickable { listsExpanded = !listsExpanded }
-                                .padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .defaultMinSize(minHeight = 52.dp)
+                                .clickable {
+                                    val next = !bioEnabled
+                                    vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = next))
+                                    vm.showToast(if (next) "Fingerprint lock enabled" else "Fingerprint lock disabled", ToastKind.INFO)
+                                }
+                                .padding(horizontal = 4.dp, vertical = 10.dp)
+                                .testTag("settings_bio_switch"),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "Reps, Payment Modes & Categories",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = accents.emerald
-                            )
-                            Icon(
-                                if (listsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Toggle category lists",
-                                tint = accents.emerald
-                            )
-                        }
-
-                        AnimatedVisibility(visible = listsExpanded) {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
-                                EditableTagList("Sales Reps", reps, "Add rep name")
-                                EditableTagList("Payment Modes", paymentModes, "Add payment mode")
-                                EditableTagList("Expense Categories", expCats, "Add expense category")
-                                EditableTagList("Field Expense Categories", fieldExpCats, "Add field expense category")
-                                EditableTagList("Commission Categories", commCats, "Add commission category")
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(onClick = { vm.auditRepriceZeroCostSales() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Audit & Reprice Zero-Cost Sales")
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        SarimGradientButton(
-                            text = "Save Settings",
-                            onClick = {
-                                vm.updateSettings(
-                                    snapshot.settings.copy(
-                                        currencySymbol = currency.ifBlank { "Rs" },
-                                        financialYearStartMonth = (fyMonth.toIntOrNull() ?: 7).coerceIn(1, 12),
-                                        repProfile = repProfile.trim(),
-                                        themeMode = theme,
-                                        biometricLockEnabled = bio,
-                                        hideSensitiveMoney = hideMoney,
-                                        reps = reps.toList(),
-                                        paymentModes = paymentModes.toList().ifEmpty { listOf("Cash", "Bank") },
-                                        expenseCategories = expCats.toList().ifEmpty { listOf("Other") },
-                                        fieldExpenseCategories = fieldExpCats.toList().ifEmpty { listOf("Other") },
-                                        commissionCategories = commCats.toList().ifEmpty { listOf("Sales Commission") }
-                                    )
-                                )
-                            },
-                            testTag = "settings_save_btn"
-                        )
-                    }
-                }
-            } else {
-                item {
-                    SarimCard {
-                        Text("Device Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Spacer(Modifier.height(10.dp))
-                        Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("light", "dark", "system").forEach { m ->
-                                FilterChip(
-                                    selected = theme == m,
-                                    onClick = {
-                                        theme = m
-                                        vm.updateSettings(snapshot.settings.copy(themeMode = m))
-                                    },
-                                    label = { Text(m.replaceFirstChar { it.uppercase() }) }
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Biometric App Lock", style = MaterialTheme.typography.bodyMedium)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(accents.emerald.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Outlined.Fingerprint, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(20.dp)) }
+                            Spacer(Modifier.width(12.dp))
+                            Text("Fingerprint Lock", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1f))
                             Switch(
-                                checked = bio,
-                                onCheckedChange = {
-                                    bio = it
-                                    vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = it))
-                                },
-                                modifier = Modifier.testTag("settings_bio_switch")
+                                checked = bioEnabled,
+                                onCheckedChange = { next ->
+                                    vm.updateSettings(snapshot.settings.copy(biometricLockEnabled = next))
+                                    vm.showToast(if (next) "Fingerprint lock enabled" else "Fingerprint lock disabled", ToastKind.INFO)
+                                }
                             )
                         }
+
+                        HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.45f))
+                        SettingsRowButton(
+                            title = "App Accounts",
+                            icon = Icons.Outlined.Group,
+                            tint = accents.cyan,
+                            testTag = "settings_accounts_btn"
+                        ) { onNavigateRoute(AppRoute.AppAccounts) }
                     }
                 }
-            }
 
-            item {
-                SarimCard {
-                    Text(
-                        text = "${snapshot.profile.displayName} • ${snapshot.profile.email}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accents.textMuted
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SarimDangerButton(
-                        text = "Sign Out",
-                        onClick = onSignOut,
-                        modifier = Modifier.fillMaxWidth(),
-                        testTag = "settings_sign_out_btn"
-                    )
+                // Card 4: Business (Admin only)
+                item {
+                    SettingsGroupCard(title = "Business") {
+                        SettingsRowButton(
+                            title = "Store Manager",
+                            icon = Icons.Outlined.Store,
+                            tint = accents.emerald,
+                            testTag = "settings_stores_btn"
+                        ) { onNavigateRoute(AppRoute.StoreManager) }
+                    }
+                }
+
+                // Card 5: Danger Zone (Admin only)
+                item {
+                    SettingsGroupCard(title = "Danger Zone") {
+                        SettingsRowButton(
+                            title = "Close Financial Year",
+                            icon = Icons.Outlined.EventBusy,
+                            tint = accents.danger,
+                            titleColor = accents.danger,
+                            testTag = "settings_close_fy_btn"
+                        ) { onNavigateRoute(AppRoute.CloseFinancialYear) }
+                    }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EditableTagList(
+private fun SettingsGroupCard(
     title: String,
-    items: MutableList<String>,
-    placeholder: String
+    content: @Composable () -> Unit
 ) {
     val accents = LocalSarimAccents.current
-    var draft by remember { mutableStateOf("") }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items.forEach { tag ->
-                InputChip(
-                    selected = false,
-                    onClick = { items.remove(tag) },
-                    label = { Text(tag) },
-                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove $tag", modifier = Modifier.size(16.dp)) }
-                )
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SarimPillInput(
-                value = draft,
-                onValueChange = { draft = it.take(40) },
-                placeholder = placeholder,
-                modifier = Modifier.weight(1f)
-            )
-            Surface(
-                onClick = {
-                    val clean = draft.trim()
-                    if (clean.isNotBlank() && items.none { it.equals(clean, ignoreCase = true) }) {
-                        items.add(clean)
-                        draft = ""
-                    }
-                },
-                shape = CircleShape,
-                color = accents.softPillFill,
-                border = BorderStroke(1.dp, accents.emerald),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Add, contentDescription = "Add $title", tint = accents.emerald)
-                }
-            }
-        }
+    SarimCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+            color = accents.textMuted,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+        )
+        Spacer(Modifier.height(4.dp))
+        content()
     }
 }
 
 @Composable
-private fun SettingsNavTile(title: String, subtitle: String, icon: ImageVector, tint: Color, onClick: () -> Unit) {
+private fun SettingsRowButton(
+    title: String,
+    icon: ImageVector,
+    tint: Color,
+    subtitle: String? = null,
+    titleColor: Color? = null,
+    testTag: String? = null,
+    onClick: () -> Unit
+) {
     val accents = LocalSarimAccents.current
-    SarimCard(modifier = Modifier.clickable(onClick = onClick), contentPadding = PaddingValues(14.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(tint.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center
-            ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .let { if (testTag != null) it.testTag(testTag) else it }
+            .padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(tint.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = titleColor ?: MaterialTheme.colorScheme.onSurface
+            )
+            if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
         }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = accents.textMuted)
     }
 }
 
@@ -1176,6 +1112,24 @@ private fun CloseFySkippedCard(title: String) {
     }
 }
 
+private data class RecycleTabFilter(
+    val key: String,
+    val label: String,
+    val collections: Set<String>
+)
+
+private val RECYCLE_TAB_FILTERS = listOf(
+    RecycleTabFilter("all", "All Tabs", emptySet()),
+    RecycleTabFilter("tab_sales", "Sales Tab", setOf("sales", "customers")),
+    RecycleTabFilter("tab_rep", "Rep Tab", setOf("rep", "clients")),
+    RecycleTabFilter("tab_production", "Manufacturing Tab", setOf("production", "returns")),
+    RecycleTabFilter("tab_calculator", "Calculator Tab", setOf("calculator")),
+    RecycleTabFilter("tab_factory", "Factory Tab", setOf("factory", "inventory")),
+    RecycleTabFilter("tab_payments", "Payments Tab", setOf("transactions", "entities", "expenses")),
+    RecycleTabFilter("tab_ledger", "Daily Ledger", setOf("daily_ledger")),
+    RecycleTabFilter("tab_formulas", "Formula Store", setOf("formulas", "stores"))
+)
+
 @Composable
 fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
@@ -1185,45 +1139,80 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
 
     var colFilter by remember { mutableStateOf("all") }
     var confirmPurgeItem by remember { mutableStateOf<DeletionTombstone?>(null) }
+    var confirmEmptyBin by remember { mutableStateOf(false) }
 
     val sortedDeletions = remember(snapshot.deletions, session) {
         snapshot.deletions
             .filter { FinanceEngine.isRecycleRecordAllowed(it.collection, session) }
             .sortedByDescending { it.deletedAt }
     }
-    val collections = remember(sortedDeletions) {
-        listOf("all") + sortedDeletions.map { it.collection.lowercase(Locale.ROOT) }.filter { it.isNotBlank() }.distinct()
+    val availableFilters = remember(sortedDeletions, session) {
+        RECYCLE_TAB_FILTERS.filter { tab ->
+            tab.key == "all" ||
+                tab.collections.any { c -> FinanceEngine.isRecycleRecordAllowed(c, session) } ||
+                sortedDeletions.any { it.collection.lowercase(Locale.ROOT) in tab.collections }
+        }
     }
-    val visible = remember(sortedDeletions, colFilter) {
-        if (colFilter == "all") sortedDeletions
-        else sortedDeletions.filter { it.collection.equals(colFilter, ignoreCase = true) }
+    val activeFilterObj = availableFilters.firstOrNull { it.key == colFilter } ?: availableFilters.first()
+    val visible = remember(sortedDeletions, activeFilterObj) {
+        if (activeFilterObj.key == "all") sortedDeletions
+        else sortedDeletions.filter { it.collection.lowercase(Locale.ROOT) in activeFilterObj.collections }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(
-            title = "RECYCLE BIN",
-            subtitle = "${sortedDeletions.size} tombstone(s)",
-            onBack = onBack
+            title = "Recycle Bin",
+            subtitle = "${sortedDeletions.size} item(s)",
+            onBack = onBack,
+            trailingContent = if (session.mode == "admin" && visible.isNotEmpty()) {
+                {
+                    Surface(
+                        onClick = { confirmEmptyBin = true },
+                        shape = RoundedCornerShape(14.dp),
+                        color = accents.danger.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
+                        modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("bin_empty_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Outlined.DeleteSweep, contentDescription = "Empty Bin", tint = accents.danger, modifier = Modifier.size(16.dp))
+                            Text("Empty Bin", style = MaterialTheme.typography.labelMedium, color = accents.danger)
+                        }
+                    }
+                }
+            } else null
         )
 
         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (collections.size > 1) {
+            if (availableFilters.size > 1) {
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        collections.take(5).forEach { col ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        availableFilters.forEach { tab ->
                             FilterChip(
-                                selected = colFilter == col,
-                                onClick = { colFilter = col },
-                                label = { Text(col.uppercase(Locale.ROOT)) }
+                                selected = colFilter == tab.key,
+                                onClick = { colFilter = tab.key },
+                                label = { Text(tab.label) }
                             )
                         }
                     }
                 }
             }
 
+            item {
+                SarimNoteBanner("Restore puts the record back to its original collection. Records expire after 90 days. Use Delete Forever to erase a record immediately and permanently.")
+            }
+
             if (visible.isEmpty()) {
                 item {
-                    EmptyStateCard("Recycle Bin is Empty", "Deleted items remain recoverable here for 30 days.")
+                    EmptyStateCard("Recycle Bin is Empty", "Deleted items remain recoverable here for 90 days.")
                 }
             } else {
                 items(visible, key = { it.id.ifBlank { "${it.collection}_${it.recordId}" } }) { t ->
@@ -1231,7 +1220,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                         if (t.deletedAt > 0L) SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(t.deletedAt)) else ""
                     }
                     val daysLeft = remember(t.expiresAt) {
-                        if (t.expiresAt > 0L) max(0L, (t.expiresAt - System.currentTimeMillis()) / (24L * 60L * 60L * 1000L)) else 30L
+                        if (t.expiresAt > 0L) max(0L, (t.expiresAt - System.currentTimeMillis()) / (24L * 60L * 60L * 1000L)) else 90L
                     }
                     val safeAmount = remember(t.displayAmount, session, moneyRestricted, hideAllMoney) {
                         if (hideAllMoney) null
@@ -1286,13 +1275,28 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
         SarimConfirmDialog(
             title = "Delete Permanently?",
             message = "Item: ${itemToPurge.displayName.ifBlank { itemToPurge.recordId }}\nCollection: ${itemToPurge.collection}\n\nThis action cannot be undone.",
-            confirmText = "Erase Forever",
+            confirmText = "Delete Forever",
             danger = true,
             onConfirm = {
                 vm.purgeTombstone(itemToPurge)
                 confirmPurgeItem = null
             },
             onDismiss = { confirmPurgeItem = null }
+        )
+    }
+
+    if (confirmEmptyBin) {
+        SarimConfirmDialog(
+            title = "Empty Recycle Bin?",
+            message = "Permanently erase ${visible.size} deleted item(s)? This action cannot be undone.",
+            confirmText = "Empty Bin",
+            danger = true,
+            onConfirm = {
+                val list = visible
+                confirmEmptyBin = false
+                vm.emptyRecycleBin(list)
+            },
+            onDismiss = { confirmEmptyBin = false }
         )
     }
 }

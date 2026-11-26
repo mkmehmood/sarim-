@@ -72,8 +72,10 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -106,6 +108,7 @@ import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.ui.components.EmptyStateCard
 import com.gullzubair.sarim.ui.components.LiquidToastOverlay
 import com.gullzubair.sarim.ui.components.OfflineBanner
+import com.gullzubair.sarim.ui.components.SarimConfirmDialog
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.theme.SarimTheme
@@ -137,7 +140,7 @@ fun MainFeatureScreen(currentUserId: String) {
         vm.refreshTodayDate()
     }
 
-    val themeMode = (workspaceState as? UiState.Success)?.data?.settings?.themeMode ?: "light"
+    val themeMode = (workspaceState as? UiState.Success)?.data?.settings?.themeMode ?: "auto"
 
     SarimTheme(themeMode = themeMode) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -231,6 +234,7 @@ private fun WorkspaceNavContainer(
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var showSignOutConfirm by remember { mutableStateOf(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRouteName = backStackEntry?.destination?.route ?: ""
     val isHome = currentRouteName.contains("WorkspaceHome") || currentRouteName.isEmpty()
@@ -420,7 +424,7 @@ private fun WorkspaceNavContainer(
                             testTag = "drawer_logout",
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                onSignOut()
+                                showSignOutConfirm = true
                             }
                         )
                     }
@@ -670,6 +674,21 @@ private fun WorkspaceNavContainer(
                 }
             }
         }
+    }
+
+    if (showSignOutConfirm) {
+        SarimConfirmDialog(
+            title = "Sign Out?",
+            message = "You will be signed out and the local data on this device will be erased.\nYour data stays safe in the cloud and returns when you sign in again.",
+            confirmText = "Sign Out",
+            cancelText = "Cancel",
+            danger = true,
+            onConfirm = {
+                showSignOutConfirm = false
+                onSignOut()
+            },
+            onDismiss = { showSignOutConfirm = false }
+        )
     }
 }
 

@@ -125,40 +125,29 @@ fun StoreManagerScreen(
                     Spacer(Modifier.height(12.dp))
                     SarimPillInput(
                         value = name,
-                        onValueChange = { name = it.take(80) },
-                        label = "STORE NAME",
-                        placeholder = "e.g. Chashma",
+                        onValueChange = { name = it.uppercase(Locale.ROOT).take(32) },
+                        label = "Store Name",
+                        placeholder = "e.g. KARACHI",
                         testTag = "sm_name_input"
                     )
                     Spacer(Modifier.height(10.dp))
-                    val formulaLabel = snapshot.formulas.firstOrNull { it.id == selectedFormulaId }?.name ?: "None (No Formula)"
+                    val formulaLabel = snapshot.formulas.firstOrNull { it.id == selectedFormulaId }?.name ?: "No formula"
                     PickerField(
-                        label = "FORMULA",
+                        label = "Formula",
                         selectedLabel = formulaLabel,
                         items = listOf(null) + snapshot.formulas,
-                        itemLabel = { it?.name ?: "None (No Formula)" },
+                        itemLabel = { it?.name ?: "No formula" },
                         onSelect = { selectedFormulaId = it?.id ?: "" },
                         testTag = "sm_formula_picker"
                     )
                     Spacer(Modifier.height(10.dp))
                     DecimalField(
-                        label = "SALE PRICE (PER KG)",
+                        label = "Sale Price (per kg)",
                         value = rateStr,
                         onValueChange = { rateStr = it },
                         testTag = "sm_rate_input",
                         suffix = "$currency /kg"
                     )
-                    if (editKey != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Active Store", style = MaterialTheme.typography.bodyMedium)
-                            Switch(checked = active, onCheckedChange = { active = it })
-                        }
-                    }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (editKey != null) {
@@ -179,7 +168,7 @@ fun StoreManagerScreen(
                             }
                         }
                         SarimGradientButton(
-                            text = if (editKey == null) "Add Store" else "Update Store",
+                            text = if (editKey == null) "Add Store" else "Save Changes",
                             onClick = {
                                 vm.saveStore(
                                     existingKey = editKey,
@@ -223,7 +212,7 @@ fun StoreManagerScreen(
                 item { EmptyStateCard("No stores configured", "Add your first store above to start tracking production and sales.") }
             } else {
                 items(activeStores, key = { it.key }) { s ->
-                    val linkedFormulaName = snapshot.formulas.firstOrNull { it.id == s.formulaId }?.name ?: "DIRECT"
+                    val linkedFormulaName = snapshot.formulas.firstOrNull { it.id == s.formulaId }?.name ?: "No formula"
                     val hasRecords = remember(snapshot.production, snapshot.sales, s.key, s.name) {
                         snapshot.production.any {
                             it.deletedAt == null && (it.store.equals(s.key, true) || it.store.equals(s.name, true))
@@ -295,7 +284,7 @@ fun StoreManagerScreen(
             }
 
             item {
-                SarimNoteBanner("Note: Changing a store's sale price updates future defaults and keeps historical entries intact.")
+                SarimNoteBanner("Note: A store's key is generated from its name when the store is created (ZUBAIR becomes zubair). It is permanent and links to all historical records, so renaming a store later is safe. Renaming a store updates its display name everywhere. Deleting is only allowed if the store has no production records. Changes sync to all connected devices automatically.")
             }
         }
     }
@@ -502,7 +491,7 @@ fun FormulaStoreScreen(
                             FormulaMetricRow("Unit Weight", InputGuards.formatKg(breakdown.weight))
                             FormulaMetricRow("Raw Material Cost per Unit", InputGuards.formatMoney(breakdown.raw, currency, masked))
                             FormulaMetricRow("Total Cost per Unit", InputGuards.formatMoney(breakdown.perUnit, currency, masked), bold = true)
-                            FormulaMetricRow("Cost per kg (Adjusted)", InputGuards.formatMoney(breakdown.perKg, currency, masked))
+                            FormulaMetricRow("Cost per kg (Sales/Calc)", InputGuards.formatMoney(breakdown.perKg, currency, masked))
 
                             Spacer(Modifier.height(6.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -716,15 +705,15 @@ fun FormulaEditScreen(
                 SarimCard {
                     SarimPillInput(
                         value = name,
-                        onValueChange = { name = it.take(80) },
-                        label = "FORMULA NAME",
-                        placeholder = "e.g. Standard Blend",
+                        onValueChange = { name = it.take(60) },
+                        label = "Formula Name",
+                        placeholder = "e.g. Premium Blend",
                         testTag = "fe_name_input"
                     )
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DecimalField("ADDITIONAL COST", addCostStr, { addCostStr = it }, "fe_addcost_input", Modifier.weight(1f))
-                        DecimalField("COST ADJUST FACTOR", adjFactorStr, { adjFactorStr = it }, "fe_adj_input", Modifier.weight(1f))
+                        DecimalField("Additional Cost (Per Unit)", addCostStr, { addCostStr = it }, "fe_addcost_input", Modifier.weight(1f))
+                        DecimalField("Cost Adjustment for Sales & Calc (X)", adjFactorStr, { adjFactorStr = it }, "fe_adj_input", Modifier.weight(1f))
                     }
                 }
             }
@@ -871,7 +860,7 @@ fun FormulaEditScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Leave Cost / kg blank to auto-price from live inventory or linked sub-formula cost.",
+                    text = "Tip: search a material, or link a Formula so its materials follow any later changes to it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = accents.textMuted
                 )
@@ -888,7 +877,7 @@ fun FormulaEditScreen(
                         FormulaMetricRow("Unit Weight", InputGuards.formatKg(previewBreakdown.weight))
                         FormulaMetricRow("Raw Material Cost per Unit", InputGuards.formatMoney(previewBreakdown.raw, currency, masked))
                         FormulaMetricRow("Total Cost per Unit", InputGuards.formatMoney(previewBreakdown.perUnit, currency, masked), bold = true)
-                        FormulaMetricRow("Cost per kg (Adjusted)", InputGuards.formatMoney(previewBreakdown.perKg, currency, masked))
+                        FormulaMetricRow("Cost per kg (Sales/Calc)", InputGuards.formatMoney(previewBreakdown.perKg, currency, masked))
                     }
                 }
             }

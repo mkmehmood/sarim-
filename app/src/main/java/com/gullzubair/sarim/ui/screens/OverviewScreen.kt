@@ -264,7 +264,7 @@ fun OverviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Right now:", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
+                Text("Right now", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                 OverviewRightNowPill("Production", InputGuards.formatKg(summary.todayProdKg), accents.cyan)
                 OverviewRightNowPill("Sales", InputGuards.formatMoney(summary.todaySalesValue, currency, masked), accents.emerald)
                 OverviewRightNowPill("In", InputGuards.formatMoney(summary.todayIn, currency, masked), accents.emerald)

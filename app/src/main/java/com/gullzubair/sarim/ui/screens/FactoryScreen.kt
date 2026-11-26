@@ -322,8 +322,12 @@ fun FactoryScreen(
                             } ?: 0.0
                             val outputQuantity = prodForPool.sumOf { it.net }
                             val rawMaterialsUsed = prodForPool.sumOf { p ->
-                                val w = p.unitWeight.takeIf { it > 0.0 } ?: weightPerUnit
-                                w * p.formulaUnits
+                                val matTotal = p.formulaMaterials.sumOf { fm ->
+                                    (fm["qty"] as? Number)?.toDouble()
+                                        ?: ((fm["quantity"] as? Number)?.toDouble()?.let { it * p.formulaUnits })
+                                        ?: 0.0
+                                }
+                                if (matTotal > 0.0) matTotal else weightPerUnit * p.formulaUnits
                             }
                             val costPerUnit = selectedPool.avgUnitCost
                             val totalCostValue = costPerUnit * selectedPool.availableUnits
@@ -431,11 +435,18 @@ fun FactoryScreen(
                 val avgProfitPerKg = if (sumOutput > 0.0) sumTotalProfit / sumOutput else 0.0
 
                 val sumRawUsed = periodProduction.sumOf { entry ->
-                    val f = snapshot.formulas.firstOrNull { it.id == entry.formulaId }
-                    val wpu = entry.unitWeight.takeIf { it > 0.0 }
-                        ?: f?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight }
-                        ?: 0.0
-                    wpu * entry.formulaUnits
+                    val matTotal = entry.formulaMaterials.sumOf { fm ->
+                        (fm["qty"] as? Number)?.toDouble()
+                            ?: ((fm["quantity"] as? Number)?.toDouble()?.let { it * entry.formulaUnits })
+                            ?: 0.0
+                    }
+                    if (matTotal > 0.0) {
+                        matTotal
+                    } else {
+                        val f = snapshot.formulas.firstOrNull { it.id == entry.formulaId }
+                        val wpu = f?.let { FormulaEngine.describeFormula(it, snapshot.formulas, snapshot.inventory).weight } ?: 0.0
+                        wpu * entry.formulaUnits
+                    }
                 }
                 val frozenUnitCostTotal = periodProduction.sumOf { entry ->
                     val unitsUsed = entry.formulaUnits
