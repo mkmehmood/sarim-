@@ -431,10 +431,24 @@ class SarimActionDispatcher(
         notes: String,
         customerPhone: String = ""
     ): Result<String> {
-        val cleanCust = InputGuards.sanitizeName(customerName)
+        // Web `canonicalName`: reuse the stored spelling so "ali" / "Ali " never split one debtor into two.
+        val cleanCust = InputGuards.sanitizeName(
+            InputGuards.canonicalName(customerName, snapshot.customers.filter { it.deletedAt == null }.map { it.name })
+        )
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
-        val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val normType = paymentType.trim().uppercase(Locale.ROOT)
+        // Web `dateIssue` / `phoneIssue` / `nameIssue` / `quantityIssue` (same wording as the web app).
+        val guardIssue = InputGuards.dateIssue(date, DateUtils.todayIso()).ifEmpty {
+            InputGuards.phoneIssue(customerPhone)
+        }.ifEmpty {
+            if (normType == "REP_RETURN") "" else InputGuards.nameIssue(cleanCust, "Customer name")
+        }.ifEmpty {
+            if ((normType == "CASH" || normType == "CREDIT") && quantityKg > 0.0) {
+                InputGuards.rangeIssue(quantityKg, "Quantity", InputGuards.QTY_MIN, InputGuards.QTY_MAX)
+            } else ""
+        }
+        if (guardIssue.isNotEmpty()) return Result.failure(IllegalArgumentException(guardIssue))
+        val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val now = System.currentTimeMillis()
         val storeKey = store?.let(::resolvedStoreKey).orEmpty()
         val existingCust = snapshot.customers.firstOrNull {
@@ -813,9 +827,15 @@ class SarimActionDispatcher(
         customerPhone: String = "",
         expiredUnitPrice: Double = 0.0
     ): Result<String> {
-        val cleanCust = InputGuards.sanitizeName(customerName)
+        val cleanCust = InputGuards.sanitizeName(
+            InputGuards.canonicalName(customerName, snapshot.customers.filter { it.deletedAt == null }.map { it.name })
+        )
         val cleanRep = InputGuards.sanitizeName(repName).ifBlank { snapshot.profile.displayName.ifBlank { "Rep" } }
         if (cleanCust.isBlank()) return Result.failure(IllegalArgumentException("Customer name is required"))
+        val repGuardIssue = InputGuards.dateIssue(date, DateUtils.todayIso()).ifEmpty {
+            InputGuards.phoneIssue(customerPhone)
+        }.ifEmpty { InputGuards.nameIssue(cleanCust, "Customer name") }
+        if (repGuardIssue.isNotEmpty()) return Result.failure(IllegalArgumentException(repGuardIssue))
         val cleanPhone = InputGuards.sanitizePhone(customerPhone)
         val normType = paymentType.trim().uppercase(Locale.ROOT)
         val now = System.currentTimeMillis()

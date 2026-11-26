@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import kotlin.math.max
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -190,42 +191,47 @@ fun ProductionScreen(
         )
     }
 
+    // Mirrors web `_recordEntryImpl`: same checks, same order, same wording.
     fun validateBeforeSubmit(): Boolean {
-        if (!DateUtils.isValidPastOrTodayDate(date, todayIso)) {
-            Toast.makeText(context, "Production date cannot be in the future.", Toast.LENGTH_SHORT).show()
+        fun warn(message: String, long: Boolean = false): Boolean {
+            Toast.makeText(context, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
             return false
         }
-        val st = selectedStore ?: run {
-            Toast.makeText(context, "Select an active store first.", Toast.LENGTH_SHORT).show()
-            return false
+        val dateProblem = InputGuards.dateIssue(date, todayIso)
+        if (dateProblem.isNotEmpty()) return warn(dateProblem)
+        val weightProblem = InputGuards.numberIssue(
+            grossStr, label = "Gross weight", min = InputGuards.QTY_MIN, max = InputGuards.QTY_MAX
+        ).ifEmpty {
+            InputGuards.numberIssue(
+                containerStr, label = "Container weight", min = 0.0, max = InputGuards.QTY_MAX, allowBlank = true
+            )
+        }.ifEmpty {
+            InputGuards.numberIssue(
+                unitsStr, label = "Formula units", min = 0.0, max = InputGuards.QTY_MAX,
+                minExclusive = true, allowBlank = true
+            )
         }
-        if (net <= 0.0) {
-            Toast.makeText(context, "Net production must be greater than zero. Check weights.", Toast.LENGTH_SHORT).show()
-            return false
-        }
-        if (units <= 0.0) {
-            Toast.makeText(context, "Please enter formula units used.", Toast.LENGTH_SHORT).show()
-            return false
-        }
+        if (weightProblem.isNotEmpty()) return warn(weightProblem)
+        val st = selectedStore ?: return warn("Select an active store first.")
         if (units > dynamicCost.effectiveAvailable + 1e-9) {
-            Toast.makeText(
-                context,
-                "Not enough formula units at ${st.name}. Available: ${InputGuards.fmtNum(dynamicCost.effectiveAvailable)}",
-                Toast.LENGTH_LONG
-            ).show()
-            return false
+            return warn(
+                "Not enough formula units at ${st.name}\n" +
+                    "Available: ${InputGuards.fmtNum(dynamicCost.effectiveAvailable)} units\n" +
+                    "Requested: ${InputGuards.fmtNum(units)} units\n" +
+                    "Shortage: ${InputGuards.fmtNum(max(0.0, units - dynamicCost.effectiveAvailable))} units",
+                long = true
+            )
         }
-        if (dynamicCost.salePrice <= 0.0) {
-            Toast.makeText(context, "Please set a sale price in Factory Formulas first.", Toast.LENGTH_LONG).show()
-            return false
-        }
-        if (dynamicCost.dynamicCostPerKg <= 0.0) {
-            Toast.makeText(
-                context,
-                "This formula has no cost. Set the formula and ingredient costs first.",
-                Toast.LENGTH_LONG
-            ).show()
-            return false
+        if (net <= 0.0) return warn("Net production must be greater than zero. Please check weights.")
+        if (date.isBlank()) return warn("Please select a date.")
+        if (dynamicCost.salePrice <= 0.0) return warn("Please set a sale price in Factory Formulas first.", long = true)
+        if (units <= 0.0) return warn("Please enter formula units used.")
+        if (!(dynamicCost.dynamicCostPerKg > 0.0)) {
+            return warn(
+                "This formula has no cost (no ingredients or ingredient costs are zero). " +
+                    "Set the formula and ingredient costs first, otherwise sales from this production get a wrong cost.",
+                long = true
+            )
         }
         return true
     }

@@ -378,8 +378,17 @@ fun SalesScreen(
     }
 
     fun validateAndSave() {
-        if (DateUtils.parseIso(dateIso) == null || dateIso > todayIso) {
-            blockingAlert = "Invalid Date" to "Please pick a valid date up to today (${DateUtils.formatPretty(todayIso)})."
+        // Same checks, order and wording as web `_saveCustomerSaleImpl` / `saveCustomerCollection`.
+        val webIssue = (if (dateIso.isBlank()) "Please select a date." else InputGuards.dateIssue(dateIso, todayIso))
+            .ifEmpty { if (showNewCustomerPhoneField) InputGuards.phoneIssue(customerPhone) else "" }
+            .ifEmpty { if (isRepReturnMode) "" else InputGuards.nameIssue(customerName, "Customer name") }
+            .ifEmpty {
+                if (!isRepReturnMode && entryMode == SalesEntryMode.SALE && qtyStr.isNotBlank()) {
+                    InputGuards.quantityIssue(qtyStr, "Quantity")
+                } else ""
+            }
+        if (webIssue.isNotEmpty()) {
+            blockingAlert = "Warning" to webIssue
             return
         }
         when {
