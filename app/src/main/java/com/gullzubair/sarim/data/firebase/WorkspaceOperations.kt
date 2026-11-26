@@ -1,7 +1,10 @@
 package com.gullzubair.sarim.data.firebase
 
 import android.util.Base64
+import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -11,6 +14,10 @@ import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
 import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.PendingApproval
 import com.gullzubair.sarim.data.model.UserProfile
+import com.gullzubair.sarim.data.model.WorkspaceAccountRecord
+import com.gullzubair.sarim.data.model.WorkspaceInvite
+import com.gullzubair.sarim.data.model.WorkspaceSettings
+import com.gullzubair.sarim.domain.FinanceEngine
 import com.gullzubair.sarim.domain.InputGuards
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
@@ -465,5 +472,165 @@ class WorkspaceOperations(private val repo: AppRepository) {
     } catch (e: Exception) {
         handleFirestoreError(e, OperationType.UPDATE, "users/$memberUid")
         Result.failure(e)
+    }
+
+    suspend fun createAccountWithPassword(
+        profile: UserProfile,
+        email: String,
+        password: String,
+        displayName: String,
+        roles: List<String>,
+        existingSettings: WorkspaceSettings,
+        existingAccounts: List<WorkspaceAccountRecord>
+    ): Result<Unit> {
+        if (!profile.isAdmin) {
+            return Result.failure(IllegalArgumentException("Only Admin can add accounts"))
+        }
+        val cleanEmail = email.trim().lowercase().take(160)
+        if (!cleanEmail.contains("@") || cleanEmail.substringAfter("@").isBlank()) {
+            return Result.failure(IllegalArgumentException("Enter a valid email address"))
+        }
+        if (password.length < 8) {
+            return Result.failure(IllegalArgumentException("Password must be at least 8 characters"))
+        }
+        val cleanRoles = FinanceEngine.cleanRoles(roles).ifEmpty { listOf("rep") }
+        val cleanName = InputGuards.sanitizeName(
+            displayName.ifBlank { cleanEmail.substringBefore("@") }
+        ).ifBlank { cleanEmail.substringBefore("@") }.take(80)
+        val ownerUid = profile.effectiveOwnerUid
+        val now = System.currentTimeMillis()
+
+        return try {
+            repo.requireUserId()
+            val remoteDb = db
+            val createdUid = if (remoteDb != null) {
+                val ctx = repo.appContext
+                    ?: return Result.failure(IllegalStateException("Application context unavailable"))
+                val secondaryApp = runCatching { FirebaseApp.getInstance("_adminCreate") }.getOrElse {
+                    FirebaseApp.initializeApp(ctx, FirebaseApp.getInstance().options, "_adminCreate")
+                }
+                val secondaryAuth = FirebaseAuth.getInstance(secondaryApp)
+                val authResult = try {
+                    secondaryAuth.createUserWithEmailAndPassword(cleanEmail, password).await()
+                } finally {
+                    runCatching { secondaryAuth.signOut() }
+                }
+                val uid = authResult.user?.uid
+                    ?: return Result.failure(IllegalStateException("Failed to create account user"))
+                val userDoc = mapOf(
+                    "uid" to uid,
+                    "email" to cleanEmail,
+                    "displayName" to cleanName,
+                    "ownerUid" to ownerUid,
+                    "role" to if ("admin" in cleanRoles) "admin" else "user",
+                    "roles" to cleanRoles,
+                    "approved" to true,
+                    "createdBy" to profile.email,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                remoteDb.collection("users").document(uid).set(userDoc, SetOptions.merge()).await()
+                uid
+            } else {
+                newId("acc")
+            }
+
+            val record = WorkspaceAccountRecord(
+                uid = createdUid,
+                email = cleanEmail,
+                displayName = cleanName,
+                roles = cleanRoles,
+                approved = true,
+                ownerUid = ownerUid,
+                createdBy = profile.email
+            )
+            val nextAccounts = existingAccounts
+                .filterNot { it.uid == createdUid || it.email.equals(cleanEmail, ignoreCase = true) } + record
+            val rawAccounts = nextAccounts.map(WorkspaceJsonCodec::accountRecordToMap)
+            repo.saveSingleton(
+                ownerUid = ownerUid,
+                collection = "settings",
+                docId = "accounts",
+                payload = mapOf("accounts" to rawAccounts, "accounts_timestamp" to now),
+                kvUpdates = mapOf("accounts" to WorkspaceJsonCodec.mapListToJson(rawAccounts))
+            )
+
+            if ("rep" in cleanRoles && cleanName.isNotBlank() &&
+                existingSettings.reps.none { it.equals(cleanName, ignoreCase = true) }
+            ) {
+                val nextReps = existingSettings.reps + cleanName
+                repo.saveSingleton(
+                    ownerUid = ownerUid,
+                    collection = "settings",
+                    docId = "team",
+                    payload = mapOf("reps" to nextReps, "reps_timestamp" to now)
+                )
+                repo.saveSingleton(
+                    ownerUid = ownerUid,
+                    collection = "settings",
+                    docId = "config",
+                    payload = mapOf("reps" to nextReps, "reps_timestamp" to now),
+                    kvUpdates = mapOf("reps" to WorkspaceJsonCodec.stringListToJson(nextReps))
+                )
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FirebaseAuthUserCollisionException) {
+            Result.failure(IllegalArgumentException("An account with this email already exists"))
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, "users/create")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeMember(
+        profile: UserProfile,
+        targetUid: String,
+        targetEmail: String,
+        existingAccounts: List<WorkspaceAccountRecord>,
+        invites: List<WorkspaceInvite>
+    ): Result<Unit> {
+        if (!profile.isAdmin) {
+            return Result.failure(IllegalArgumentException("Only Admin can remove accounts"))
+        }
+        if (targetUid == profile.uid || targetUid == profile.effectiveOwnerUid) {
+            return Result.failure(IllegalArgumentException("Cannot remove workspace owner"))
+        }
+        val ownerUid = profile.effectiveOwnerUid
+        val now = System.currentTimeMillis()
+        return try {
+            repo.requireUserId()
+            val remoteDb = db
+            if (remoteDb != null) {
+                if (targetUid.isNotBlank() && !targetUid.startsWith("local_") && !targetUid.startsWith("acc_")) {
+                    remoteDb.collection("users").document(targetUid).delete().await()
+                }
+                if (targetEmail.isNotBlank()) {
+                    invites.filter { it.memberEmail.equals(targetEmail, ignoreCase = true) }
+                        .forEach { inv ->
+                            runCatching { remoteDb.collection("workspace_invites").document(inv.id).delete().await() }
+                        }
+                }
+            }
+            val nextAccounts = existingAccounts.filterNot {
+                (targetUid.isNotBlank() && it.uid == targetUid) ||
+                    (targetEmail.isNotBlank() && it.email.equals(targetEmail, ignoreCase = true))
+            }
+            val rawAccounts = nextAccounts.map(WorkspaceJsonCodec::accountRecordToMap)
+            repo.saveSingleton(
+                ownerUid = ownerUid,
+                collection = "settings",
+                docId = "accounts",
+                payload = mapOf("accounts" to rawAccounts, "accounts_timestamp" to now),
+                kvUpdates = mapOf("accounts" to WorkspaceJsonCodec.mapListToJson(rawAccounts))
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, "users/$targetUid")
+            Result.failure(e)
+        }
     }
 }

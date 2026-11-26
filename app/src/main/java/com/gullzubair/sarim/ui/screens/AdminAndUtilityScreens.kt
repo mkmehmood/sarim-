@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Backup
@@ -58,6 +59,8 @@ import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -81,8 +84,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.AppRoute
@@ -354,14 +362,63 @@ private fun SettingsRowButton(
     }
 }
 
+private data class MergedAccountRow(
+    val uid: String,
+    val email: String,
+    val displayName: String,
+    val roles: List<String>,
+    val approved: Boolean,
+    val isLiveUserDoc: Boolean
+)
+
 @Composable
 fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
     val isOwner = snapshot.profile.isAdmin || snapshot.profile.uid == snapshot.profile.effectiveOwnerUid
-    var inviteEmail by remember { mutableStateOf("") }
-    var inviteName by remember { mutableStateOf("") }
+    var accountEmail by remember { mutableStateOf("") }
+    var accountPassword by remember { mutableStateOf("") }
+    var accountName by remember { mutableStateOf("") }
     val allRoles = FinanceEngine.ROLE_KEYS
-    val selectedRoles = remember { mutableStateListOf("rep", "sales") }
+    val selectedRoles = remember { mutableStateListOf<String>() }
+    var confirmRemoveTarget by remember { mutableStateOf<MergedAccountRow?>(null) }
+
+    val mergedMembers = remember(snapshot.teamMembers, snapshot.accounts) {
+        val seenEmails = HashSet<String>()
+        val seenUids = HashSet<String>()
+        val list = ArrayList<MergedAccountRow>()
+        snapshot.teamMembers.forEach { m ->
+            if (m.uid.isNotBlank()) seenUids.add(m.uid)
+            if (m.email.isNotBlank()) seenEmails.add(m.email.lowercase(Locale.ROOT))
+            list.add(
+                MergedAccountRow(
+                    uid = m.uid,
+                    email = m.email,
+                    displayName = m.displayName.ifBlank { m.email },
+                    roles = FinanceEngine.cleanRoles(m.roles).ifEmpty { listOf(if (m.isAdmin) "admin" else "rep") },
+                    approved = m.approved,
+                    isLiveUserDoc = true
+                )
+            )
+        }
+        snapshot.accounts.forEach { acc ->
+            val lowerEmail = acc.email.lowercase(Locale.ROOT)
+            if (acc.uid !in seenUids && (lowerEmail.isBlank() || lowerEmail !in seenEmails)) {
+                if (acc.uid.isNotBlank()) seenUids.add(acc.uid)
+                if (lowerEmail.isNotBlank()) seenEmails.add(lowerEmail)
+                list.add(
+                    MergedAccountRow(
+                        uid = acc.uid,
+                        email = acc.email,
+                        displayName = acc.displayName.ifBlank { acc.email },
+                        roles = FinanceEngine.cleanRoles(acc.roles).ifEmpty { listOf("rep") },
+                        approved = acc.approved,
+                        isLiveUserDoc = false
+                    )
+                )
+            }
+        }
+        list
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SarimSubpageHeader(title = "APP ACCOUNTS", onBack = onBack)
@@ -373,102 +430,225 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
         ) {
             if (isOwner) {
                 item {
-                    SarimCard {
-                        Text("ADD ACCOUNT / INVITE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
-                        Spacer(Modifier.height(10.dp))
-                        SarimPillInput(
-                            value = inviteEmail,
-                            onValueChange = { inviteEmail = it.take(160) },
-                            label = "EMAIL",
-                            placeholder = "user@example.com",
-                            testTag = "acc_email_input"
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "ADD ACCOUNT",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontFamily = JakartaFont,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            SarimPillInput(
+                                value = accountEmail,
+                                onValueChange = { accountEmail = it.take(160) },
+                                label = "EMAIL",
+                                placeholder = "user@example.com",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                modifier = Modifier.weight(1f),
+                                testTag = "acc_email_input"
+                            )
+                            SarimPillInput(
+                                value = accountPassword,
+                                onValueChange = { accountPassword = it.take(128) },
+                                label = "PASSWORD",
+                                placeholder = "min 8 characters",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.weight(1f),
+                                testTag = "acc_password_input"
+                            )
+                        }
                         SarimPillInput(
-                            value = inviteName,
-                            onValueChange = { inviteName = it.take(80) },
+                            value = accountName,
+                            onValueChange = { accountName = it.take(80) },
                             label = "NAME",
-                            placeholder = "Full name",
+                            placeholder = "full name",
+                            modifier = Modifier.fillMaxWidth(0.49f),
                             testTag = "acc_name_input"
                         )
-                        Spacer(Modifier.height(10.dp))
-                        Text("ROLES", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
-                        Spacer(Modifier.height(6.dp))
-                        RoleGridSelector(allRoles = allRoles, activeRoles = selectedRoles) { r ->
-                            if (r in selectedRoles) selectedRoles.remove(r) else selectedRoles.add(r)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "ROLES",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = JakartaFont,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = accents.textMuted
+                            )
+                            RoleGridSelector(allRoles = allRoles, activeRoles = selectedRoles) { r ->
+                                if (r in selectedRoles) selectedRoles.remove(r) else selectedRoles.add(r)
+                            }
                         }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(2.dp))
                         SarimGradientButton(
                             text = "Add Account",
                             onClick = {
-                                vm.inviteMember(inviteEmail, inviteName.ifBlank { inviteEmail.substringBefore("@") }, selectedRoles.toList())
-                                inviteEmail = ""; inviteName = ""
+                                val resolvedRoles = selectedRoles.toList().ifEmpty { listOf("rep") }
+                                vm.createAccount(
+                                    email = accountEmail,
+                                    password = accountPassword,
+                                    displayName = accountName.ifBlank { accountEmail.substringBefore("@") },
+                                    roles = resolvedRoles
+                                )
+                                accountEmail = ""
+                                accountPassword = ""
+                                accountName = ""
+                                selectedRoles.clear()
                             },
-                            enabled = inviteEmail.contains("@"),
+                            enabled = accountEmail.contains("@") && accountPassword.length >= 8,
                             testTag = "acc_invite_btn"
                         )
                     }
                 }
+                item {
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                }
             }
 
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("REGISTERED ACCOUNTS", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "REGISTERED ACCOUNTS",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = JakartaFont,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                     Surface(
                         onClick = { vm.retrySync() },
-                        shape = RoundedCornerShape(999.dp),
-                        color = accents.headerFrosted,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                         border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 40.dp)
+                            .testTag("acc_refresh_btn")
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = null, tint = accents.emerald, modifier = Modifier.size(15.dp))
-                            Text("Refresh", style = MaterialTheme.typography.labelMedium)
+                            Icon(
+                                Icons.Rounded.Refresh,
+                                contentDescription = "Refresh accounts",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                "Refresh",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
                         }
                     }
                 }
             }
 
-            items(snapshot.teamMembers, key = { it.uid }) { m ->
+            items(mergedMembers, key = { it.uid.ifBlank { it.email } }) { m ->
                 val isSelf = m.uid == snapshot.profile.uid
-                SarimCard(contentPadding = PaddingValues(14.dp)) {
+                SarimCard(contentPadding = PaddingValues(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(if (m.approved) accents.emerald else accents.gold))
-                        Spacer(Modifier.width(10.dp))
+                        Box(
+                            Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(if (m.approved) accents.emerald else accents.gold)
+                        )
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 text = m.displayName.ifBlank { m.email } + if (isSelf) " (you)" else "",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = JakartaFont,
+                                    fontWeight = FontWeight.Bold
+                                )
                             )
-                            Text(m.email, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                            Text(
+                                text = m.email,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = accents.textMuted
+                            )
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                     RoleGridSelector(allRoles = allRoles, activeRoles = m.roles) { role ->
                         if (isOwner && !isSelf) {
                             val next = if (role in m.roles) m.roles - role else m.roles + role
-                            vm.updateMemberRoles(m.uid, next.ifEmpty { listOf("sales") }, m.approved)
+                            val cleaned = next.ifEmpty { listOf("rep") }
+                            if (m.isLiveUserDoc && m.uid.isNotBlank()) {
+                                vm.updateMemberRoles(m.uid, cleaned, m.approved)
+                            } else {
+                                vm.saveAccountsDirectory(
+                                    snapshot.accounts.map { acc ->
+                                        if (acc.uid == m.uid || acc.email.equals(m.email, ignoreCase = true)) {
+                                            acc.copy(roles = cleaned)
+                                        } else acc
+                                    }
+                                )
+                            }
                         }
                     }
                     if (isOwner && !isSelf) {
-                        Spacer(Modifier.height(10.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Surface(
-                                onClick = { vm.updateMemberRoles(m.uid, m.roles, !m.approved) },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.gold.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.4f))
+                                onClick = {
+                                    if (m.isLiveUserDoc && m.uid.isNotBlank()) {
+                                        vm.updateMemberRoles(m.uid, m.roles, !m.approved)
+                                    } else {
+                                        vm.saveAccountsDirectory(
+                                            snapshot.accounts.map { acc ->
+                                                if (acc.uid == m.uid || acc.email.equals(m.email, ignoreCase = true)) {
+                                                    acc.copy(approved = !m.approved)
+                                                } else acc
+                                            }
+                                        )
+                                    }
+                                },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 40.dp)
+                                    .testTag("acc_toggle_${m.uid}")
                             ) {
-                                Text(
-                                    if (m.approved) "Suspend" else "Activate",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = accents.gold,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = if (m.approved) "Suspend" else "Activate",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = accents.gold
+                                    )
+                                }
+                            }
+                            Surface(
+                                onClick = { confirmRemoveTarget = m },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 40.dp)
+                                    .testTag("acc_remove_${m.uid}")
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = "Remove",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = accents.danger
+                                    )
+                                }
                             }
                         }
                     }
@@ -485,33 +665,13 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                         if (isOwner) {
                             Surface(
                                 onClick = { vm.revokeInvite(inv.id) },
-                                shape = RoundedCornerShape(14.dp),
-                                color = accents.danger.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f))
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
+                                modifier = Modifier.defaultMinSize(minHeight = 40.dp)
                             ) {
-                                Text("Remove", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (snapshot.accounts.isNotEmpty()) {
-                item {
-                    Text("SYNCED WORKSPACE DIRECTORY", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
-                }
-                items(snapshot.accounts, key = { "${it.uid}_${it.email}" }) { acc ->
-                    SarimCard(contentPadding = PaddingValues(12.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(acc.displayName.ifBlank { acc.email }, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Text("${acc.email} • ${acc.roles.joinToString()}", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                            }
-                            if (isOwner && acc.uid != snapshot.profile.uid) {
-                                TextButton(onClick = {
-                                    vm.saveAccountsDirectory(snapshot.accounts.filterNot { it.uid == acc.uid && it.email == acc.email })
-                                }) {
-                                    Text("Remove", color = accents.danger)
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                    Text("Remove", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = accents.danger)
                                 }
                             }
                         }
@@ -519,6 +679,20 @@ fun AppAccountsScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: (
                 }
             }
         }
+    }
+
+    confirmRemoveTarget?.let { target ->
+        SarimConfirmDialog(
+            title = "Remove Account?",
+            message = "Remove ${target.displayName} (${target.email}) from workspace access?",
+            confirmText = "Remove",
+            danger = true,
+            onConfirm = {
+                vm.removeMember(target.uid, target.email)
+                confirmRemoveTarget = null
+            },
+            onDismiss = { confirmRemoveTarget = null }
+        )
     }
 }
 
@@ -532,18 +706,23 @@ private fun RoleGridSelector(allRoles: List<String>, activeRoles: List<String>, 
                     val sel = role in activeRoles
                     Surface(
                         onClick = { onToggle(role) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = CircleShape,
                         color = if (sel) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (sel) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
                             .weight(1f)
                             .defaultMinSize(minHeight = 40.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 9.dp, horizontal = 6.dp)) {
                             Text(
-                                role.replaceFirstChar { it.uppercase() },
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium),
-                                color = if (sel) accents.emerald else MaterialTheme.colorScheme.onSurface
+                                text = FinanceEngine.ROLE_LABELS[role] ?: role.replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontFamily = JakartaFont,
+                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (sel) accents.emerald else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1133,6 +1312,39 @@ private val RECYCLE_TAB_FILTERS = listOf(
     RecycleTabFilter("tab_formulas", "Formula Store", setOf("formulas", "stores"))
 )
 
+private fun recycleBreadcrumb(collection: String): String = when (collection.lowercase(Locale.ROOT)) {
+    "sales" -> "Sales Tab › Customer Sale"
+    "customers" -> "Sales Tab › Customer"
+    "rep" -> "Rep Tab › Rep Sale"
+    "clients" -> "Rep Tab › Rep Client"
+    "production" -> "Manufacturing Tab › Production"
+    "returns" -> "Manufacturing Tab › Stock Return"
+    "calculator" -> "Calculator Tab › Settlement"
+    "factory" -> "Factory Tab › Factory Batch"
+    "inventory" -> "Factory Tab › Raw Material"
+    "transactions" -> "Payments Tab › Transaction"
+    "expenses" -> "Payments Tab › Expense"
+    "entities" -> "Payments Tab › Entity"
+    "daily_ledger" -> "Daily Ledger › Entry"
+    "formulas" -> "Formula Store › Formula"
+    "stores" -> "Formula Store › Store"
+    else -> collection.replaceFirstChar { it.uppercase() }
+}
+
+private fun formatRecycleAge(deletedAt: Long): String {
+    if (deletedAt <= 0L) return "recently"
+    val diffMs = max(0L, System.currentTimeMillis() - deletedAt)
+    val mins = diffMs / 60_000L
+    val hours = diffMs / 3_600_000L
+    val days = diffMs / 86_400_000L
+    return when {
+        days >= 1L -> "${days}d ago"
+        hours >= 1L -> "${hours}h ago"
+        mins >= 1L -> "${mins}m ago"
+        else -> "just now"
+    }
+}
+
 @Composable
 fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: () -> Unit) {
     val accents = LocalSarimAccents.current
@@ -1141,6 +1353,7 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
     val hideAllMoney = snapshot.settings.hideSensitiveMoney
 
     var colFilter by remember { mutableStateOf("all") }
+    var filterMenuExpanded by remember { mutableStateOf(false) }
     var confirmPurgeItem by remember { mutableStateOf<DeletionTombstone?>(null) }
     var confirmEmptyBin by remember { mutableStateOf(false) }
 
@@ -1163,54 +1376,114 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SarimSubpageHeader(
-            title = "Recycle Bin",
-            subtitle = "${sortedDeletions.size} item(s)",
-            onBack = onBack,
-            trailingContent = if (session.mode == "admin" && visible.isNotEmpty()) {
-                {
-                    Surface(
-                        onClick = { confirmEmptyBin = true },
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.danger.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
-                        modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("bin_empty_btn")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(Icons.Rounded.DeleteSweep, contentDescription = "Empty Bin", tint = accents.danger, modifier = Modifier.size(16.dp))
-                            Text("Empty Bin", style = MaterialTheme.typography.labelMedium, color = accents.danger)
+        SarimSubpageHeader(title = "RECYCLE BIN", onBack = onBack)
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "${sortedDeletions.size} deleted records\n(kept for 90 days)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accents.textMuted,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (availableFilters.size > 1) {
+                        Box {
+                            Surface(
+                                onClick = { filterMenuExpanded = true },
+                                shape = CircleShape,
+                                color = accents.headerFrosted,
+                                border = BorderStroke(1.dp, accents.emerald),
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 44.dp)
+                                    .testTag("bin_filter_dropdown")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = activeFilterObj.label,
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Icon(
+                                        Icons.Rounded.KeyboardArrowDown,
+                                        contentDescription = "Filter by tab",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = filterMenuExpanded,
+                                onDismissRequest = { filterMenuExpanded = false }
+                            ) {
+                                availableFilters.forEach { tab ->
+                                    val selected = tab.key == activeFilterObj.key
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = tab.label,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                                ),
+                                                color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        onClick = {
+                                            colFilter = tab.key
+                                            filterMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
-                }
-            } else null
-        )
-
-        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (availableFilters.size > 1) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        availableFilters.forEach { tab ->
-                            FilterChip(
-                                selected = colFilter == tab.key,
-                                onClick = { colFilter = tab.key },
-                                label = { Text(tab.label) }
-                            )
-                        }
+                    if (session.mode == "admin" && visible.isNotEmpty()) {
+                        SarimDangerButton(
+                            text = "Empty Bin (${visible.size})",
+                            leadingIcon = Icons.Rounded.DeleteOutline,
+                            onClick = { confirmEmptyBin = true },
+                            testTag = "bin_empty_btn"
+                        )
                     }
                 }
             }
 
             item {
-                SarimNoteBanner("Restore puts the record back to its original collection. Records expire after 90 days. Use Delete Forever to erase a record immediately and permanently.")
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (accents.isDark) accents.danger.copy(alpha = 0.08f) else Color(0xFFFFF2F2),
+                    border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = buildAnnotatedString {
+                            append("Restore puts the record back to its original collection. Records expire after ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                                append("90 days")
+                            }
+                            append(". Use ")
+                            withStyle(SpanStyle(color = accents.danger, fontWeight = FontWeight.Bold)) {
+                                append("Delete Forever")
+                            }
+                            append(" to erase a record immediately and permanently.")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
             }
 
             if (visible.isEmpty()) {
@@ -1219,9 +1492,14 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                 }
             } else {
                 items(visible, key = { it.id.ifBlank { "${it.collection}_${it.recordId}" } }) { t ->
-                    val deletedDate = remember(t.deletedAt) {
-                        if (t.deletedAt > 0L) SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(t.deletedAt)) else ""
+                    val deletedDateTime = remember(t.deletedAt) {
+                        if (t.deletedAt > 0L) {
+                            SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+                                .format(Date(t.deletedAt))
+                                .uppercase(Locale.ENGLISH)
+                        } else ""
                     }
+                    val ageLabel = remember(t.deletedAt) { formatRecycleAge(t.deletedAt) }
                     val daysLeft = remember(t.expiresAt) {
                         if (t.expiresAt > 0L) max(0L, (t.expiresAt - System.currentTimeMillis()) / (24L * 60L * 60L * 1000L)) else 90L
                     }
@@ -1229,42 +1507,150 @@ fun RecycleBinScreen(snapshot: WorkspaceSnapshot, vm: SarimViewModel, onBack: ()
                         if (hideAllMoney) null
                         else FinanceEngine.recycleAmountText(t.displayAmount, session)
                     }
-                    SarimCard {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
+                    val titleText = remember(t.displayName, t.recordId) {
+                        t.displayName.ifBlank { t.recordId }.uppercase(Locale.ROOT)
+                    }
+                    val detailText = remember(t.displayDetail) {
+                        t.displayDetail.trim().uppercase(Locale.ROOT)
+                    }
+                    SarimCard(contentPadding = PaddingValues(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(accents.emerald)
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = titleText,
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontFamily = JakartaFont,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (!safeAmount.isNullOrBlank()) {
+                                        Text(
+                                            text = safeAmount,
+                                            style = MaterialTheme.typography.titleSmall.copy(
+                                                fontFamily = JakartaFont,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = accents.emerald,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = t.displayName.ifBlank { t.recordId },
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                    text = recycleBreadcrumb(t.collection),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                val subtitleParts = listOfNotNull(
-                                    t.collection.uppercase(Locale.ROOT),
-                                    t.displayDetail.takeIf { it.isNotBlank() },
-                                    safeAmount,
-                                    deletedDate.takeIf { it.isNotBlank() },
-                                    "${daysLeft}d left"
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    if (detailText.isNotBlank()) {
+                                        Text(
+                                            text = detailText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = accents.textMuted,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
+                                    Text(
+                                        text = if (t.syncedToCloud) "synced" else "local",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = if (t.syncedToCloud) accents.emerald else accents.gold
+                                    )
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = accents.danger,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = t.deletedBy.ifBlank { "Admin" },
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                        color = accents.danger,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Text(
-                                    text = subtitleParts.joinToString(" • "),
+                                    text = buildString {
+                                        append("Deleted ")
+                                        append(ageLabel)
+                                        if (deletedDateTime.isNotBlank()) {
+                                            append(" · ")
+                                            append(deletedDateTime)
+                                        }
+                                        append(" · expires in ")
+                                        append(daysLeft)
+                                        append("d")
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = accents.textMuted
                                 )
                             }
-                            IconButton(
-                                onClick = { vm.restoreTombstone(t) },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("bin_restore_${t.recordId}")
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Rounded.Restore, contentDescription = "Restore record", tint = accents.emerald)
-                            }
-                            if (session.mode == "admin") {
-                                IconButton(
-                                    onClick = { confirmPurgeItem = t },
+                                Surface(
+                                    onClick = { vm.restoreTombstone(t) },
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                    border = BorderStroke(1.dp, accents.borderSubtle),
                                     modifier = Modifier
-                                        .size(48.dp)
-                                        .testTag("bin_purge_${t.recordId}")
+                                        .defaultMinSize(minHeight = 44.dp)
+                                        .testTag("bin_restore_${t.recordId}")
                                 ) {
-                                    Icon(Icons.Rounded.DeleteForever, contentDescription = "Delete forever", tint = accents.danger)
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.CloudUpload,
+                                            contentDescription = "Restore record",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            "Restore",
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+                                        )
+                                    }
+                                }
+                                if (session.mode == "admin") {
+                                    SarimDangerButton(
+                                        text = "Delete Forever",
+                                        leadingIcon = Icons.Rounded.DeleteOutline,
+                                        onClick = { confirmPurgeItem = t },
+                                        testTag = "bin_purge_${t.recordId}"
+                                    )
                                 }
                             }
                         }

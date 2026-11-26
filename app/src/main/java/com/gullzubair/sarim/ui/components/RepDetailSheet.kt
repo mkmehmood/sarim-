@@ -79,10 +79,16 @@ fun RepDetailSheet(
     }
     val canEdit = !r.isMerged && r.usedInCalcId.isBlank() && !r.isRepTransfer && !isOldDebt
 
+    val isUnpaidCredit = r.paymentType == "CREDIT" && !r.creditReceived && !r.isMerged
+    val sheetTone = when {
+        isUnpaidCredit || isOldDebt || isMoneyOut -> SheetSurfaceTone.WARN_STRIPES
+        else -> SheetSurfaceTone.GOOD
+    }
     SarimDetailBottomSheet(
         title = r.customerName.uppercase(),
         rightTitle = InputGuards.formatMoney(displayAmount, currency, masked),
         subtitle = "${DateUtils.formatPretty(r.date).uppercase()} • $typeLabel • ${r.salesRep.ifBlank { "Rep" }}",
+        surfaceTone = sheetTone,
         onDismiss = onDismiss,
         content = {
             HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))

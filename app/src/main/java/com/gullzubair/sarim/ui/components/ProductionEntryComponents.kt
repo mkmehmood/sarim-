@@ -184,13 +184,19 @@ fun ProductionEntryCard(
 
         Spacer(Modifier.height(12.dp))
 
-        // Select Date
-        DatePickerField("Select Date", date, onDateChange, "prod_date")
-
-        Spacer(Modifier.height(10.dp))
-
-        // Gross Weight & Container Weight
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Date & Gross Weight 2-col row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            DatePickerField(
+                label = "Select Date",
+                dateIso = date,
+                onDateSelected = onDateChange,
+                testTag = "prod_date",
+                modifier = Modifier.weight(1f)
+            )
             DecimalField(
                 label = "Gross Weight (kg)",
                 value = grossStr,
@@ -199,86 +205,119 @@ fun ProductionEntryCard(
                 modifier = Modifier.weight(1f),
                 suffix = "kg"
             )
-            DecimalField(
-                label = "Container Weight (kg)",
-                value = containerStr,
-                onValueChange = onContainerChange,
-                testTag = "prod_container_input",
-                modifier = Modifier.weight(1f),
-                suffix = "kg"
-            )
         }
 
         Spacer(Modifier.height(10.dp))
 
-        // Net Production (kg) Read-only + Dynamic Cost Value underneath
-        SarimPillInput(
-            value = if (net > 0.0) InputGuards.fmtNum(net) else "0.00",
-            onValueChange = {},
-            label = "Net Production (kg)",
-            readOnly = true,
-            suffix = { Text("kg", style = MaterialTheme.typography.bodySmall) },
-            testTag = "prod_net_display"
+        // Half-width Container Weight
+        DecimalField(
+            label = "Container Weight (kg)",
+            value = containerStr,
+            onValueChange = onContainerChange,
+            testTag = "prod_container_input",
+            modifier = Modifier.fillMaxWidth(0.49f),
+            suffix = "kg"
         )
-        if (!hideMoneyPanels) {
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Dynamic Cost Value: ",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = accents.textMuted
-                )
-                Text(
-                    text = InputGuards.formatMoney(net * dynamicCost.dynamicCostPerKg, currency, masked),
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                    color = accents.danger
-                )
-            }
-        }
 
         Spacer(Modifier.height(12.dp))
 
-        // Select Store Toggle Group (#storeSelectorToggleGroup)
-        Text(
-            text = "Select Store:",
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-            color = accents.textMuted,
-            modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
-        )
-        if (activeStores.isEmpty()) {
-            Text(
-                "No active stores configured. Add stores in Factory Formulas.",
-                style = MaterialTheme.typography.bodySmall,
-                color = accents.gold
-            )
-        } else {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                activeStores.forEach { st ->
-                    val selected = selectedStore?.key == st.key
-                    Surface(
-                        onClick = { onSelectStore(st) },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (selected) accents.softPillFill else accents.inputFill,
-                        border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
-                        modifier = Modifier
-                            .defaultMinSize(minHeight = 48.dp)
-                            .testTag("prod_store_pill_${st.key}")
+        // 2-col row: Dashed Net Production + Dynamic Cost left | Select Store pills right
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "NET PRODUCTION (KG)",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.textMuted,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 52.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(accents.inputFill.copy(alpha = 0.65f))
+                        .dashedBorder(width = 1.2.dp, color = accents.inputBorder, cornerRadius = 18.dp)
+                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .testTag("prod_net_display"),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = st.name,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (selected) accents.emerald else accents.textMuted
-                            )
+                        Text(
+                            text = if (net > 0.0) InputGuards.fmtNum(net) else "0.00",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text("kg", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    }
+                }
+                if (!hideMoneyPanels) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Dynamic Cost Value: ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accents.textMuted
+                        )
+                        Text(
+                            text = InputGuards.formatMoney(net * dynamicCost.dynamicCostPerKg, currency, masked),
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = accents.danger
+                        )
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "SELECT STORE:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.textMuted,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
+                )
+                if (activeStores.isEmpty()) {
+                    Text(
+                        "No active stores configured.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accents.gold
+                    )
+                } else {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        activeStores.forEach { st ->
+                            val selected = selectedStore?.key == st.key
+                            Surface(
+                                onClick = { onSelectStore(st) },
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (selected) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 40.dp)
+                                    .testTag("prod_store_pill_${st.key}")
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = st.name,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                        ),
+                                        color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -287,7 +326,7 @@ fun ProductionEntryCard(
 
         Spacer(Modifier.height(12.dp))
 
-        // Formula Units Used + Sale Price (per kg) + Camera Photo Button
+        // Formula Units Used + Sale Price (per kg) + Circular Camera Photo Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -310,21 +349,12 @@ fun ProductionEntryCard(
             }
 
             Column(modifier = Modifier.weight(1f)) {
-                if (!hideMoneyPanels) {
-                    Text(
-                        text = "Sale Price (per kg)",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = accents.textMuted,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 5.dp)
-                    )
-                } else {
-                    Text(
-                        text = "SCALE PHOTOS",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = accents.textMuted,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 5.dp)
-                    )
-                }
+                Text(
+                    text = if (!hideMoneyPanels) "SALE PRICE (PER KG)" else "SCALE PHOTOS",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.textMuted,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 5.dp)
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -353,9 +383,9 @@ fun ProductionEntryCard(
                         Surface(
                             onClick = onAttachPhotoClick,
                             enabled = photoSlots.size < 6,
-                            shape = RoundedCornerShape(16.dp),
-                            color = accents.softPillFill,
-                            border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.6f)),
+                            shape = CircleShape,
+                            color = accents.inputFill,
+                            border = BorderStroke(1.dp, accents.borderSubtle),
                             modifier = Modifier
                                 .size(48.dp)
                                 .testTag("prod_attach_photo_btn")

@@ -55,7 +55,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class AppRepository(
     val db: FirebaseFirestore?,
     val offlineRepo: OfflineSyncRepository? = null,
-    private val appContext: Context? = null
+    internal val appContext: Context? = null
 ) {
 
     constructor(context: Context) : this(

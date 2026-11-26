@@ -96,41 +96,47 @@ fun CustomersDirectoryCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(999.dp),
                     color = accents.softPillFill
                 ) {
                     Text(
-                        text = "${directory.totalCount} customers",
+                        text = "${directory.totalCount} active",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = accents.emerald,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
                     onClick = onExportAllPdf,
-                    modifier = Modifier.size(48.dp).testTag("sales_export_all_customers_pdf")
+                    shape = CircleShape,
+                    color = accents.inputFill,
+                    border = BorderStroke(1.dp, accents.borderSubtle),
+                    modifier = Modifier.size(44.dp).testTag("sales_export_all_customers_pdf")
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PictureAsPdf,
-                        contentDescription = "Download All Customers PDF",
-                        tint = accents.cyan
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Rounded.PictureAsPdf,
+                            contentDescription = "Download All Customers PDF",
+                            tint = accents.cyan,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
                 Surface(
                     onClick = onAddCustomer,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = CircleShape,
                     color = accents.softPillFill,
                     border = BorderStroke(1.dp, accents.emerald),
-                    modifier = Modifier.size(48.dp).testTag("sales_add_customer_btn")
+                    modifier = Modifier.size(44.dp).testTag("sales_add_customer_btn")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Rounded.Add,
                             contentDescription = "Add New Customer",
                             tint = accents.emerald,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -172,10 +178,10 @@ fun CustomersDirectoryCard(
                     val creditColor = when {
                         isSettled -> accents.emerald
                         item.credit < 0.0 -> accents.cyan
-                        else -> accents.gold
+                        else -> accents.danger
                     }
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier
@@ -189,56 +195,58 @@ fun CustomersDirectoryCard(
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (!item.photoUri.isNullOrBlank()) {
-                                DecodedDataUrlImage(
-                                    dataUrl = item.photoUri,
-                                    contentDescription = "${item.name} photo",
-                                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(accents.softPillFill),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = initials,
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                        color = accents.emerald
+                            Box(modifier = Modifier.size(46.dp)) {
+                                if (!item.photoUri.isNullOrBlank()) {
+                                    DecodedDataUrlImage(
+                                        dataUrl = item.photoUri,
+                                        contentDescription = "${item.name} photo",
+                                        modifier = Modifier.size(42.dp).clip(CircleShape).align(Alignment.Center)
                                     )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(accents.softPillFill)
+                                            .align(Alignment.Center),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = initials,
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = accents.emerald
+                                        )
+                                    }
+                                }
+                                if (item.ledgerPage.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(1.dp, accents.emerald),
+                                        modifier = Modifier.align(Alignment.BottomEnd)
+                                    ) {
+                                        Text(
+                                            text = item.ledgerPage,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                            color = accents.emerald,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = item.name,
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (item.ledgerPage.isNotBlank()) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = accents.cyan.copy(alpha = 0.14f)
-                                        ) {
-                                            Text(
-                                                text = "P.${item.ledgerPage}",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                color = accents.cyan,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                }
+                                Text(
+                                    text = item.name.uppercase(),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                                 if (item.phone.isNotBlank()) {
                                     Text(
                                         text = item.phone,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = accents.cyan,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = accents.emerald,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.clickable {
@@ -254,7 +262,7 @@ fun CustomersDirectoryCard(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = InputGuards.formatMoney(if (isSettled) 0.0 else item.credit, currency, masked),
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
                                 color = creditColor
                             )
                         }
@@ -266,19 +274,38 @@ fun CustomersDirectoryCard(
         Spacer(Modifier.height(10.dp))
         HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SalesKpiTile(
-                label = "Outstanding credit",
-                value = InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked),
-                toneColor = if (directory.totalOutstandingCredit > 0.01) accents.gold else accents.emerald,
-                modifier = Modifier.weight(1f)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                Text("Outstanding credit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = InputGuards.formatMoney(directory.totalOutstandingCredit, currency, masked),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = if (directory.totalOutstandingCredit > 0.01) accents.danger else accents.emerald,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(34.dp)
+                    .background(accents.borderSubtle)
             )
-            SalesKpiTile(
-                label = "Quantity sold",
-                value = InputGuards.formatKg(directory.totalSoldKg),
-                toneColor = accents.cyan,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("Quantity sold", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = InputGuards.formatKg(directory.totalSoldKg),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accents.cyan,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -672,10 +699,18 @@ fun SalesHistoryRowCard(
         else -> s.totalValue
     }
 
+    val isUnpaidCredit = s.paymentType == "CREDIT" && !s.creditReceived && !s.isMerged
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
-        border = BorderStroke(1.dp, if (isSelectedDate) accents.cyan.copy(alpha = 0.65f) else accents.borderSubtle),
+        border = BorderStroke(
+            1.dp,
+            when {
+                isSelectedDate -> accents.cyan.copy(alpha = 0.65f)
+                isUnpaidCredit -> accents.gold.copy(alpha = 0.45f)
+                else -> accents.borderSubtle
+            }
+        ),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -684,6 +719,7 @@ fun SalesHistoryRowCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (isUnpaidCredit) Modifier.diagonalWarningStripes(accents.gold, accents.gold) else Modifier)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically

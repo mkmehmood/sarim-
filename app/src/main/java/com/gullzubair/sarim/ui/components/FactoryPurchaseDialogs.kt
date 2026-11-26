@@ -35,6 +35,12 @@ import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 @Composable
 fun FactoryBatchDetailSheet(
     rec: FactoryRecord,
@@ -48,39 +54,97 @@ fun FactoryBatchDetailSheet(
 ) {
     val accents = LocalSarimAccents.current
     val canEdit = !rec.isMerged
+    var showBreakdown by remember(rec.id) { mutableStateOf(false) }
+    val mats = remember(rec) { rec.materialsUsed.ifEmpty { rec.rawMaterialsUsed } }
+    val totalRawKg = remember(mats) {
+        mats.sumOf { m -> (m["qty"] as? Number)?.toDouble() ?: (m["quantity"] as? Number)?.toDouble() ?: 0.0 }
+    }
+    val timeText = remember(rec.timestamp) {
+        if (rec.timestamp > 0L) " " + SimpleDateFormat("hh:mm a", Locale.ENGLISH).format(Date(rec.timestamp)) else ""
+    }
+    val perUnit = if (rec.units > 0.0) rec.totalCost / rec.units else 0.0
+
     SarimDetailBottomSheet(
-        title = rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, stores).ifBlank { "Factory Batch" } },
+        title = rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, stores).ifBlank { "STANDARD" } }.uppercase(),
         rightTitle = InputGuards.formatMoney(rec.totalCost, currency, masked),
-        subtitle = "${DateUtils.formatPretty(rec.date).uppercase()} • ${InputGuards.fmtNum(rec.units)} UNITS",
+        subtitle = "${DateUtils.formatPretty(rec.date).uppercase()}$timeText",
+        surfaceTone = SheetSurfaceTone.INFO_DOTS,
         onDismiss = onDismiss,
         content = {
-            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Materials Cost", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                Text(InputGuards.formatMoney(rec.materialsCost, currency, masked), style = MaterialTheme.typography.titleSmall)
-            }
-            if (rec.additionalCost > 0.0) {
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Additional Cost", style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
-                    Text(InputGuards.formatMoney(rec.additionalCost, currency, masked), style = MaterialTheme.typography.titleSmall)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FactorySheetKvRow("Material cost", InputGuards.formatMoney(rec.materialsCost, currency, masked))
+                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                FactorySheetKvRow("Additional cost", InputGuards.formatMoney(rec.additionalCost, currency, masked))
+                HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                FactorySheetKvRow("Per unit cost", InputGuards.formatMoney(perUnit, currency, masked))
+                if (totalRawKg > 0.0) {
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                    FactorySheetKvRow("Raw materials used", InputGuards.formatKg(totalRawKg))
                 }
             }
-            val mats = rec.materialsUsed.ifEmpty { rec.rawMaterialsUsed }
             if (mats.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text("Materials Used", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
-                mats.forEach { m ->
-                    val qty = (m["qty"] as? Number)?.toDouble() ?: (m["quantity"] as? Number)?.toDouble() ?: 0.0
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(m["name"]?.toString().orEmpty(), style = MaterialTheme.typography.bodySmall)
-                        Text(InputGuards.formatKg(qty), style = MaterialTheme.typography.bodySmall, color = accents.emerald)
+                Spacer(Modifier.height(12.dp))
+                val mintBg = if (accents.isDark) accents.softPillFill else Color(0xFFECFDF7).copy(alpha = 0.88f)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = mintBg,
+                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.28f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showBreakdown = !showBreakdown }
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .testTag("factory_sheet_breakdown_toggle"),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "MATERIALS BREAKDOWN",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = if (showBreakdown) MaterialTheme.colorScheme.onSurface else accents.emerald
+                            )
+                        }
+                        if (showBreakdown) {
+                            Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+                                mats.forEachIndexed { idx, m ->
+                                    if (idx > 0) HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                                    val qty = (m["qty"] as? Number)?.toDouble() ?: (m["quantity"] as? Number)?.toDouble() ?: 0.0
+                                    val costPerKg = (m["cost"] as? Number)?.toDouble() ?: 0.0
+                                    val lineCost = (m["totalCost"] as? Number)?.toDouble()
+                                        ?: (m["total"] as? Number)?.toDouble()
+                                        ?: (qty * costPerKg)
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            m["name"]?.toString().orEmpty().uppercase(),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(InputGuards.formatKg(qty), style = MaterialTheme.typography.bodySmall)
+                                            if (lineCost > 0.0) {
+                                                Text(
+                                                    InputGuards.formatMoney(lineCost, currency, masked),
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                                    color = accents.danger
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             if (rec.notes.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(rec.notes, style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
             }
             if (rec.editHistory.isNotEmpty() || rec.timestamp > 0L) {
@@ -98,7 +162,7 @@ fun FactoryBatchDetailSheet(
         footer = {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SarimDangerButton(
-                    text = "Delete",
+                    text = "Delete & Restore",
                     onClick = {
                         vm.softDeleteRecord(
                             collection = "factory",
@@ -110,23 +174,32 @@ fun FactoryBatchDetailSheet(
                         )
                         onDismiss()
                     },
-                    modifier = Modifier.weight(if (canEdit) 0.45f else 1f),
+                    modifier = Modifier.weight(if (canEdit) 0.44f else 1f),
                     testTag = "factory_delete_${rec.id}"
                 )
                 if (canEdit) {
                     SarimGradientButton(
-                        text = "Edit Batch",
+                        text = "Edit",
                         onClick = {
                             onDismiss()
                             onEdit(rec)
                         },
-                        modifier = Modifier.weight(0.55f),
+                        modifier = Modifier.weight(0.56f),
                         testTag = "factory_edit_${rec.id}"
                     )
                 }
             }
         }
     )
+}
+
+@Composable
+private fun FactorySheetKvRow(label: String, value: String) {
+    val accents = LocalSarimAccents.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+        Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+    }
 }
 
 @Composable

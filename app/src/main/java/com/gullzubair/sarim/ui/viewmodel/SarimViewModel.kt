@@ -995,6 +995,36 @@ class SarimViewModel(
         }
     }
 
+    fun createAccount(email: String, password: String, displayName: String, roles: List<String>) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = ops.createAccountWithPassword(
+                profile = snap.profile,
+                email = email,
+                password = password,
+                displayName = displayName,
+                roles = roles,
+                existingSettings = snap.settings,
+                existingAccounts = snap.accounts
+            )
+            handleResult(res, "Account created")
+        }
+    }
+
+    fun removeMember(uid: String, email: String) {
+        val snap = currentSnapshot() ?: return
+        viewModelScope.launch {
+            val res = ops.removeMember(
+                profile = snap.profile,
+                targetUid = uid,
+                targetEmail = email,
+                existingAccounts = snap.accounts,
+                invites = snap.invites
+            )
+            handleResult(res, "Account removed")
+        }
+    }
+
     fun inviteMember(email: String, displayName: String, roles: List<String>) {
         val snap = currentSnapshot() ?: return
         viewModelScope.launch {
@@ -1009,8 +1039,16 @@ class SarimViewModel(
     }
 
     fun updateMemberRoles(memberUid: String, roles: List<String>, approved: Boolean) {
+        val snap = currentSnapshot() ?: return
         viewModelScope.launch {
-            handleResult(ops.updateMemberRoles(memberUid, roles, approved), "Permissions updated")
+            val res = ops.updateMemberRoles(memberUid, roles, approved)
+            if (res.isSuccess && snap.accounts.any { it.uid == memberUid }) {
+                val updatedAccounts = snap.accounts.map {
+                    if (it.uid == memberUid) it.copy(roles = roles, approved = approved) else it
+                }
+                dispatcher.saveAccountsDirectory(snap, updatedAccounts)
+            }
+            handleResult(res, "Permissions updated")
         }
     }
 

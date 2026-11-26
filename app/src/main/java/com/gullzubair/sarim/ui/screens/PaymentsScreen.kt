@@ -49,10 +49,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.EntityRecord
@@ -84,6 +87,7 @@ import com.gullzubair.sarim.ui.components.blockingAlert
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
 import com.gullzubair.sarim.ui.viewmodel.ToastKind
 import com.gullzubair.sarim.util.CaptionedPhotoSharer
@@ -434,70 +438,80 @@ fun PaymentsScreen(
                     ) {
                         Text(
                             if (isEditing) "Editing Transaction" else "Transaction Manager",
-                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = PlayfairFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
                             color = if (isEditing) accents.cyan else MaterialTheme.colorScheme.onSurface
                         )
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle)
-                        ) {
-                            Text(
-                                "ID: ${editingTx?.id ?: editingExp?.id ?: "—"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = accents.textMuted,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
+                        if (isEditing) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = accents.inputFill,
+                                border = BorderStroke(1.dp, accents.borderSubtle)
+                            ) {
+                                Text(
+                                    "ID: ${editingTx?.id ?: editingExp?.id ?: "—"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accents.textMuted,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                     Surface(
                         onClick = {
                             if (isEditing) showDiscardEdit = true else resetForm(clearName = true)
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = CircleShape,
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.testTag(if (isEditing) "pay_cancel_edit_btn" else "pay_clear_btn")
                     ) {
                         Text(
                             if (isEditing) "Cancel Edit" else "Clear",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = accents.textMuted,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                         )
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
-                DatePickerField("Date", date, { date = it }, "pay_date")
-                Spacer(Modifier.height(10.dp))
-
-                SarimPillInput(
-                    value = customName,
-                    onValueChange = { v ->
-                        customName = v.take(80)
-                        val hit = activeEntities.firstOrNull { !it.isExpenseEntity && it.name.equals(v.trim(), true) }
-                        selectedEntity = hit
-                        if (!isEditing) {
-                            if (hit != null && txKind == "EXPENSE") txKind = "OUT"
-                            else if (hit == null && expenseNames.any { it.equals(v.trim(), true) } && txKind != "EXPENSE") {
-                                txKind = "EXPENSE"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    DatePickerField("DATE", date, { date = it }, "pay_date", Modifier.weight(0.45f))
+                    SarimPillInput(
+                        value = customName,
+                        onValueChange = { v ->
+                            customName = v.take(80)
+                            val hit = activeEntities.firstOrNull { !it.isExpenseEntity && it.name.equals(v.trim(), true) }
+                            selectedEntity = hit
+                            if (!isEditing) {
+                                if (hit != null && txKind == "EXPENSE") txKind = "OUT"
+                                else if (hit == null && expenseNames.any { it.equals(v.trim(), true) } && txKind != "EXPENSE") {
+                                    txKind = "EXPENSE"
+                                }
                             }
-                        }
-                    },
-                    label = "NAME/ENTITY",
-                    placeholder = "Search expenses or entities...",
-                    testTag = "pay_name_input"
-                )
+                        },
+                        label = "NAME/ENTITY",
+                        placeholder = "Search expenses or entities...",
+                        testTag = "pay_name_input",
+                        modifier = Modifier.weight(0.55f)
+                    )
+                }
 
                 if (q.isNotEmpty() && !isEditing && !entityMatchExact && !expenseMatchExact) {
                     val expMatches = expenseNames.filter { it.lowercase().contains(q) }
                     val entMatches = activeEntities.filter { !it.isExpenseEntity && it.name.lowercase().contains(q) }
                     Spacer(Modifier.height(6.dp))
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = accents.inputFill,
+                        shape = RoundedCornerShape(16.dp),
+                        color = accents.cardElevated,
+                        shadowElevation = 6.dp,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth().testTag("pay_search_results")
                     ) {
@@ -518,6 +532,18 @@ fun PaymentsScreen(
                             }
                             expMatches.take(6).forEach { nm ->
                                 val n = activeExpenses.count { it.name.equals(nm, true) }
+                                val highlighted = remember(nm, q, accents.emerald) {
+                                    buildAnnotatedString {
+                                        val start = nm.indexOf(q, ignoreCase = true)
+                                        if (start >= 0 && q.isNotEmpty()) {
+                                            append(nm.substring(0, start))
+                                            withStyle(SpanStyle(color = accents.emerald, fontWeight = FontWeight.ExtraBold)) {
+                                                append(nm.substring(start, start + q.length))
+                                            }
+                                            append(nm.substring(start + q.length))
+                                        } else append(nm)
+                                    }
+                                }
                                 Row(
                                     Modifier.fillMaxWidth().clickable {
                                         customName = nm
@@ -526,7 +552,7 @@ fun PaymentsScreen(
                                     }.padding(horizontal = 12.dp, vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(nm, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                    Text(highlighted, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                                     Text("$n expense records", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                 }
                             }
@@ -546,6 +572,18 @@ fun PaymentsScreen(
                             }
                             entMatches.take(6).forEach { ent ->
                                 val n = activeTx.count { it.entityId == ent.id }
+                                val highlighted = remember(ent.name, q, accents.emerald) {
+                                    buildAnnotatedString {
+                                        val start = ent.name.indexOf(q, ignoreCase = true)
+                                        if (start >= 0 && q.isNotEmpty()) {
+                                            append(ent.name.substring(0, start))
+                                            withStyle(SpanStyle(color = accents.emerald, fontWeight = FontWeight.ExtraBold)) {
+                                                append(ent.name.substring(start, start + q.length))
+                                            }
+                                            append(ent.name.substring(start + q.length))
+                                        } else append(ent.name)
+                                    }
+                                }
                                 Row(
                                     Modifier.fillMaxWidth().clickable {
                                         customName = ent.name
@@ -554,7 +592,7 @@ fun PaymentsScreen(
                                     }.padding(horizontal = 12.dp, vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(ent.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                    Text(highlighted, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                                     Text(if (n > 0) "$n transactions" else "", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
                                 }
                             }
@@ -563,15 +601,13 @@ fun PaymentsScreen(
                 }
 
                 Spacer(Modifier.height(10.dp))
-                DecimalField("Amount", amountStr, { amountStr = it }, "pay_amount_input")
-                Spacer(Modifier.height(10.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    DecimalField("AMOUNT", amountStr, { amountStr = it }, "pay_amount_input", Modifier.weight(0.34f))
+                    Box(modifier = Modifier.weight(0.66f)) {
                         SarimPillInput(
                             value = notes,
                             onValueChange = { notes = it.take(500) },
@@ -584,7 +620,7 @@ fun PaymentsScreen(
                         onClick = {
                             photoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = CircleShape,
                         color = accents.inputFill,
                         border = BorderStroke(
                             1.dp,
@@ -598,7 +634,7 @@ fun PaymentsScreen(
                             Icon(
                                 Icons.Rounded.CameraAlt,
                                 contentDescription = if (hasAttachedPhoto) "Photo attached — tap to replace" else "Attach photo",
-                                tint = if (hasAttachedPhoto) accents.emerald else accents.gold,
+                                tint = accents.emerald,
                                 modifier = Modifier.size(20.dp)
                             )
                             if (hasAttachedPhoto) {
@@ -643,32 +679,40 @@ fun PaymentsScreen(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Transaction Type", style = MaterialTheme.typography.labelLarge, color = accents.textMuted)
+                Text(
+                    "TRANSACTION TYPE",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                    color = accents.textMuted
+                )
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(
                         Triple("EXPENSE", "Operating Expense", operatingLocked),
-                        Triple("IN", "Payment IN\n(Cash In +)", paymentLocked),
-                        Triple("OUT", "Payment OUT\n(Cash Out \u2212)", paymentLocked)
+                        Triple("IN", "Payment IN (Cash In +)", paymentLocked),
+                        Triple("OUT", "Payment OUT (Cash Out \u2212)", paymentLocked)
                     ).forEach { (key, title, locked) ->
                         val selected = txKind == key
                         val canTap = !isEditing && !locked
                         Surface(
                             onClick = { if (canTap) txKind = key },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier
                                 .weight(1f)
+                                .defaultMinSize(minHeight = 40.dp)
                                 .alpha(if (locked || (isEditing && !selected)) 0.4f else 1f)
                                 .testTag("pay_type_${key.lowercase()}")
                         ) {
-                            Box(Modifier.padding(vertical = 9.dp, horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.padding(vertical = 8.dp, horizontal = 4.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     title,
-                                    style = MaterialTheme.typography.labelMedium,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     textAlign = TextAlign.Center,
-                                    color = if (selected) accents.emerald else accents.textMuted
+                                    maxLines = 2,
+                                    lineHeight = 12.sp,
+                                    color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -698,7 +742,10 @@ fun PaymentsScreen(
                             onCheckedChange = { addToLedger = it },
                             modifier = Modifier.testTag("pay_ledger_switch")
                         )
-                        Text("Add to Daily Ledger", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "ADD TO DAILY LEDGER",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
                     }
                 }
 

@@ -2,6 +2,7 @@ package com.gullzubair.sarim.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -40,10 +42,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.StoreConfig
@@ -51,6 +58,7 @@ import com.gullzubair.sarim.domain.DateUtils
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import kotlin.math.max
 
 enum class SalesEntryMode {
@@ -131,7 +139,7 @@ fun SalesEntryCard(
     var showCustomerSuggestions by remember { mutableStateOf(false) }
 
     SarimCard(contentPadding = PaddingValues(16.dp)) {
-        // Header + ID badge + Sale / Collection toggle (web: #new-sale-id-display + "Sale" / "Collection")
+        // Header + optional edit ID badge + Sale / Collection pills
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -139,24 +147,28 @@ fun SalesEntryCard(
         ) {
             Text(
                 text = "New Sale",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
                 color = accents.emerald,
                 modifier = Modifier.weight(1f)
             )
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = accents.inputFill,
-                border = BorderStroke(1.dp, accents.borderSubtle),
-                modifier = Modifier
-                    .padding(end = 6.dp)
-                    .testTag("sales_entry_id_badge")
-            ) {
-                Text(
-                    text = "ID: ${editingId?.take(8) ?: "—"}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = accents.textMuted,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+            if (isEditing && !editingId.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = accents.inputFill,
+                    border = BorderStroke(1.dp, accents.borderSubtle),
+                    modifier = Modifier
+                        .padding(end = 6.dp)
+                        .testTag("sales_entry_id_badge")
+                ) {
+                    Text(
+                        text = "ID: ${editingId.take(8)}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = accents.textMuted,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(
@@ -166,7 +178,7 @@ fun SalesEntryCard(
                     val selected = entryMode == mode
                     Surface(
                         onClick = { onSelectEntryMode(mode) },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = if (selected) accents.softPillFill else accents.inputFill,
                         border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                         modifier = Modifier
@@ -174,15 +186,15 @@ fun SalesEntryCard(
                             .testTag("sales_entry_mode_${mode.name.lowercase()}")
                     ) {
                         Box(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
                                 ),
-                                color = if (selected) accents.emerald else accents.textMuted,
+                                color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1
                             )
                         }
@@ -193,13 +205,71 @@ fun SalesEntryCard(
 
         Spacer(Modifier.height(12.dp))
 
-        // Date (#cust-date)
-        DatePickerField(
-            label = "Date",
-            dateIso = dateIso,
-            onDateSelected = onDateChange,
-            testTag = "sales_date"
-        )
+        // Date (#cust-date) + Customer Name (#cust-name) 2-column row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            DatePickerField(
+                label = "Date",
+                dateIso = dateIso,
+                onDateSelected = onDateChange,
+                testTag = "sales_date",
+                modifier = Modifier.weight(0.92f)
+            )
+            if (isRepSelected) {
+                Column(modifier = Modifier.weight(1.08f)) {
+                    Text(
+                        text = "CUSTOMER NAME",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = accents.textMuted,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 52.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(accents.inputFill.copy(alpha = 0.65f))
+                            .dashedBorder(width = 1.2.dp, color = accents.inputBorder, cornerRadius = 18.dp)
+                            .padding(horizontal = 14.dp, vertical = 14.dp)
+                            .testTag("sales_customer_input"),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = customerName.uppercase(),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            } else {
+                SarimPillInput(
+                    value = customerName,
+                    onValueChange = { raw ->
+                        onCustomerNameChange(raw.take(80))
+                        showCustomerSuggestions = raw.isNotBlank()
+                    },
+                    label = "CUSTOMER NAME",
+                    placeholder = "Search or type new...",
+                    trailingIcon = if (customerName.isNotBlank()) {
+                        {
+                            TextButton(onClick = {
+                                onCustomerNameChange("")
+                                showCustomerSuggestions = false
+                            }) {
+                                Text("Clear", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                            }
+                        }
+                    } else null,
+                    testTag = "sales_customer_input",
+                    modifier = Modifier.weight(1.08f)
+                )
+            }
+        }
         if (entryMode == SalesEntryMode.SALE && !isEditing && dateIso != todayIso) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -209,60 +279,51 @@ fun SalesEntryCard(
             )
         }
 
-        Spacer(Modifier.height(10.dp))
-
-        // Customer Name + Autocomplete Search (#cust-name)
-        SarimPillInput(
-            value = customerName,
-            onValueChange = { raw ->
-                onCustomerNameChange(raw.take(80))
-                showCustomerSuggestions = raw.isNotBlank()
-            },
-            label = "Customer Name",
-            placeholder = "Search or type new...",
-            readOnly = isRepSelected,
-            trailingIcon = if (!isRepSelected && customerName.isNotBlank()) {
-                {
-                    TextButton(onClick = {
-                        onCustomerNameChange("")
-                        showCustomerSuggestions = false
-                    }) {
-                        Text("Clear", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                    }
-                }
-            } else null,
-            testTag = "sales_customer_input"
-        )
-
         if (!isRepSelected && showCustomerSuggestions && customerName.isNotBlank()) {
             val matches = customerSuggestions.take(6)
             val exactExists = customerSuggestions.any { it.name.equals(customerName.trim(), ignoreCase = true) }
             if (matches.isNotEmpty() && !exactExists) {
+                val query = customerName.trim()
                 Spacer(Modifier.height(6.dp))
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = accents.inputFill,
+                    shape = RoundedCornerShape(16.dp),
+                    color = accents.cardElevated,
+                    shadowElevation = 6.dp,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(vertical = 4.dp)) {
                         matches.forEachIndexed { idx, item ->
+                            val highlightedName = remember(item.name, query, accents.emerald) {
+                                buildAnnotatedString {
+                                    val start = item.name.indexOf(query, ignoreCase = true)
+                                    if (start >= 0 && query.isNotEmpty()) {
+                                        append(item.name.substring(0, start))
+                                        withStyle(SpanStyle(color = accents.emerald, fontWeight = FontWeight.ExtraBold)) {
+                                            append(item.name.substring(start, start + query.length))
+                                        }
+                                        append(item.name.substring(start + query.length))
+                                    } else {
+                                        append(item.name)
+                                    }
+                                }
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .defaultMinSize(minHeight = 44.dp)
+                                    .defaultMinSize(minHeight = 46.dp)
                                     .clickable {
                                         onCustomerNameChange(item.name)
                                         showCustomerSuggestions = false
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 9.dp)
                                     .testTag("sales_cust_suggest_$idx"),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = item.name,
+                                        text = highlightedName,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -275,7 +336,7 @@ fun SalesEntryCard(
                                     Text(
                                         text = InputGuards.formatMoney(item.credit, currency, masked),
                                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = if (item.credit > 0.01) accents.gold else accents.emerald
+                                        color = if (item.credit > 0.01) accents.danger else accents.emerald
                                     )
                                 }
                             }
@@ -394,7 +455,8 @@ fun SalesEntryCard(
                     value = qtyStr,
                     onValueChange = onQtyChange,
                     testTag = "sales_qty_input",
-                    suffix = "kg"
+                    suffix = "kg",
+                    modifier = Modifier.fillMaxWidth(0.49f)
                 )
             }
         }
@@ -482,28 +544,28 @@ fun SalesEntryCard(
             entryMode == SalesEntryMode.COLLECTION -> {
                 val colVal = collectedStr.toDoubleOrNull() ?: 0.0
                 val expVal = expiredStr.toDoubleOrNull() ?: 0.0
-                if (!isSalesRestricted && customerName.isNotBlank()) {
+                if (!isSalesRestricted) {
                     val afterBal = InputGuards.round2(max(0.0, existingCredit - colVal - goodsCreditPlan.value))
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.inputFill,
                         border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Balance After Collection:", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                                Text("Balance After Collection:", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
                                 Text(
                                     InputGuards.formatMoney(afterBal, currency, masked),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = if (afterBal > 0.01) accents.gold else accents.emerald
                                 )
                             }
-                            if (expVal > 0.0) {
+                            if (expVal > 0.0 && customerName.isNotBlank()) {
                                 Text(
                                     text = if (goodsCreditPlan.value > 0.0) {
                                         "Expired credit: ${InputGuards.formatMoney(goodsCreditPlan.value, currency, masked)} (${InputGuards.formatKg(expVal)} × ${InputGuards.formatMoney(goodsCreditRate, currency, masked)}${if (goodsCreditPlan.capped) ", limited to owed" else ""}) -> CHORA"
@@ -522,7 +584,7 @@ fun SalesEntryCard(
             else -> {
                 // Supply (#supply-store-toggles)
                 Text(
-                    text = "Supply",
+                    text = "SUPPLY",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = accents.textMuted,
                     modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
@@ -552,9 +614,9 @@ fun SalesEntryCard(
 
                 Spacer(Modifier.height(12.dp))
 
-                // Payment: (#btn-payment-cash / #btn-payment-credit)
+                // Payment: (#btn-payment-cash / #btn-payment-credit) compact left-aligned pills
                 Text(
-                    text = "Payment:",
+                    text = "PAYMENT:",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = accents.textMuted,
                     modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
@@ -565,7 +627,7 @@ fun SalesEntryCard(
                         val selected = paymentType == key
                         Surface(
                             onClick = { if (enabled) onSelectPaymentType(key) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(999.dp),
                             color = when {
                                 !enabled -> accents.inputFill.copy(alpha = 0.4f)
                                 selected -> accents.softPillFill
@@ -580,20 +642,20 @@ fun SalesEntryCard(
                                 }
                             ),
                             modifier = Modifier
-                                .weight(1f)
-                                .defaultMinSize(minHeight = 42.dp)
+                                .wrapContentWidth()
+                                .defaultMinSize(minHeight = 40.dp)
                                 .testTag("sales_pay_type_$key")
                         ) {
-                            Box(Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.padding(horizontal = 18.dp, vertical = 9.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = title,
                                     style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
                                     ),
                                     color = when {
                                         !enabled -> accents.textMuted.copy(alpha = 0.45f)
                                         selected -> if (key == "CREDIT") accents.gold else accents.emerald
-                                        else -> accents.textMuted
+                                        else -> MaterialTheme.colorScheme.onSurface
                                     }
                                 )
                             }
@@ -610,10 +672,10 @@ fun SalesEntryCard(
                     )
                 }
 
-                // Result box (web #sale-result-card): stacked rows, then the stock tile
+                // Result box (web #sale-result-card): stacked rows + dashed divider + stock tile
                 Spacer(Modifier.height(10.dp))
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = accents.inputFill,
                     border = BorderStroke(1.dp, accents.borderSubtle),
                     modifier = Modifier.fillMaxWidth()
@@ -621,8 +683,8 @@ fun SalesEntryCard(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         if (!isSalesRestricted) {
                             SalesResultRow(
@@ -641,6 +703,20 @@ fun SalesEntryCard(
                                 label = "Profit:",
                                 value = InputGuards.formatMoney(previewProfit, currency, masked),
                                 color = if (previewProfit >= 0.0) accents.emerald else accents.danger
+                            )
+                        }
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .padding(vertical = 1.dp)
+                        ) {
+                            drawLine(
+                                color = accents.borderSubtle,
+                                start = Offset(0f, 0f),
+                                end = Offset(size.width, 0f),
+                                strokeWidth = 1.2.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                             )
                         }
                         SalesStockTile(stockTile = stockTile)

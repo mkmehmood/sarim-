@@ -35,13 +35,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.domain.InputGuards
 import com.gullzubair.sarim.domain.RepSalesAnalyticsEngine
 import com.gullzubair.sarim.domain.SalesAnalyticsEngine
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
+import com.gullzubair.sarim.ui.theme.PlayfairFont
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -121,7 +126,9 @@ fun RepEntryCard(
         ) {
             Text(
                 text = cardTitle,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                fontFamily = PlayfairFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
                 color = accents.emerald,
                 modifier = Modifier.weight(1f)
             )
@@ -131,9 +138,9 @@ fun RepEntryCard(
                     shape = RoundedCornerShape(999.dp),
                     color = accents.danger.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.45f)),
-                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).testTag("rep_cancel_edit_btn")
+                    modifier = Modifier.defaultMinSize(minHeight = 40.dp).testTag("rep_cancel_edit_btn")
                 ) {
-                    Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
                         Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger)
                     }
                 }
@@ -150,14 +157,16 @@ fun RepEntryCard(
                             color = if (selected) accents.softPillFill else accents.inputFill,
                             border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                             modifier = Modifier
-                                .defaultMinSize(minHeight = 48.dp)
+                                .defaultMinSize(minHeight = 38.dp)
                                 .testTag("rep_mode_${mode.name.lowercase()}")
                         ) {
                             Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = label,
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = if (selected) accents.emerald else accents.textMuted
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
+                                    ),
+                                    color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -167,36 +176,41 @@ fun RepEntryCard(
         }
 
         Spacer(Modifier.height(12.dp))
-        DatePickerField("Date", dateIso, onDateChange, "rep_date")
-
-        Spacer(Modifier.height(10.dp))
-        SarimPillInput(
-            value = customerName,
-            onValueChange = {
-                onCustomerNameChange(it.take(80))
-                showSuggestions = it.isNotBlank()
-            },
-            label = "Customer Name",
-            placeholder = "Search customer...",
-            trailingIcon = if (customerName.isNotBlank()) {
-                {
-                    Surface(
-                        onClick = {
-                            onClearCustomer()
-                            showSuggestions = false
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.Transparent,
-                        modifier = Modifier.size(48.dp).testTag("rep_clear_cust_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(18.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            DatePickerField("DATE", dateIso, onDateChange, "rep_date", Modifier.weight(0.92f))
+            SarimPillInput(
+                value = customerName,
+                onValueChange = {
+                    onCustomerNameChange(it.take(80))
+                    showSuggestions = it.isNotBlank()
+                },
+                label = "CUSTOMER NAME",
+                placeholder = "Search customer...",
+                trailingIcon = if (customerName.isNotBlank()) {
+                    {
+                        Surface(
+                            onClick = {
+                                onClearCustomer()
+                                showSuggestions = false
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.Transparent,
+                            modifier = Modifier.size(48.dp).testTag("rep_clear_cust_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear customer filter", tint = accents.textMuted, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
-                }
-            } else null,
-            testTag = "rep_customer_input"
-        )
+                } else null,
+                testTag = "rep_customer_input",
+                modifier = Modifier.weight(1.08f)
+            )
+        }
 
         // Autocomplete suggestions (#rep-customer-search-results)
         val topSuggestions = remember(customerSuggestions, customerName) {
@@ -204,18 +218,32 @@ fun RepEntryCard(
             if (clean.isEmpty()) emptyList()
             else customerSuggestions.filter {
                 !it.name.equals(clean, ignoreCase = true)
-            }.take(5)
+            }.take(6)
         }
         AnimatedVisibility(visible = showSuggestions && topSuggestions.isNotEmpty()) {
+            val query = customerName.trim()
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = accents.inputFill,
+                shape = RoundedCornerShape(16.dp),
+                color = accents.cardElevated,
+                shadowElevation = 6.dp,
                 border = BorderStroke(1.dp, accents.borderSubtle),
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
             ) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     topSuggestions.forEachIndexed { idx, item ->
                         if (idx > 0) HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                        val highlighted = remember(item.name, query, accents.emerald) {
+                            buildAnnotatedString {
+                                val start = item.name.indexOf(query, ignoreCase = true)
+                                if (start >= 0 && query.isNotEmpty()) {
+                                    append(item.name.substring(0, start))
+                                    withStyle(SpanStyle(color = accents.emerald, fontWeight = FontWeight.ExtraBold)) {
+                                        append(item.name.substring(start, start + query.length))
+                                    }
+                                    append(item.name.substring(start + query.length))
+                                } else append(item.name)
+                            }
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -223,12 +251,12 @@ fun RepEntryCard(
                                     onCustomerNameChange(item.name)
                                     showSuggestions = false
                                 }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(item.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(highlighted, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 val sub = listOfNotNull(
                                     item.phone.takeIf { it.isNotBlank() },
                                     item.ledgerPage.takeIf { it.isNotBlank() }?.let { "Page $it" }
@@ -283,39 +311,39 @@ fun RepEntryCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.Top
             ) {
                 DecimalField(
-                    label = "Quantity (kg)",
+                    label = "QUANTITY (KG)",
                     value = qtyStr,
                     onValueChange = onQtyChange,
                     testTag = "rep_qty_input",
-                    modifier = Modifier.weight(1f),
-                    suffix = "kg"
+                    modifier = Modifier.weight(0.5f)
                 )
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(0.5f)) {
                     Text(
-                        text = "Payment Type",
+                        text = "PAYMENT TYPE",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = accents.textMuted,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 5.dp)
+                        modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("CREDIT" to "Credit", "CASH" to "Cash").forEach { (key, label) ->
                             val selected = paymentType == key
-                            val activeColor = if (key == "CREDIT") accents.gold else accents.emerald
                             Surface(
                                 onClick = { onSelectPaymentType(key) },
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (selected) activeColor.copy(alpha = 0.14f) else accents.inputFill,
-                                border = BorderStroke(1.dp, if (selected) activeColor else accents.borderSubtle),
-                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).testTag("rep_pay_$key")
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (selected) accents.softPillFill else accents.inputFill,
+                                border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
+                                modifier = Modifier.weight(1f).defaultMinSize(minHeight = 46.dp).testTag("rep_pay_$key")
                             ) {
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 10.dp)) {
                                     Text(
                                         text = label,
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                        color = if (selected) activeColor else accents.textMuted
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
+                                        ),
+                                        color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -331,22 +359,26 @@ fun RepEntryCard(
         } else {
             // Collection (#rep-coll-inputs) or legacy Money Out
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DecimalField(
-                    label = if (editingSpecialType == "MONEY_OUT") "Payout Amount" else "Amount Received (${if (currency.isBlank()) "₨" else currency})",
+                SarimPillInput(
                     value = collectedStr,
-                    onValueChange = onCollectedChange,
+                    onValueChange = { raw ->
+                        if (raw.isEmpty() || raw.matches(Regex("^\\d*\\.?\\d{0,3}$"))) {
+                            onCollectedChange(raw)
+                        }
+                    },
+                    label = if (editingSpecialType == "MONEY_OUT") "PAYOUT AMOUNT" else "AMOUNT RECEIVED (${if (currency.isBlank()) "Rp" else currency})",
+                    placeholder = "Cash received from customer",
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     testTag = "rep_cash_input",
-                    modifier = Modifier.weight(1f),
-                    suffix = currency
+                    modifier = Modifier.weight(1f)
                 )
                 if (editingSpecialType == null) {
                     DecimalField(
-                        label = "Expired / Damage Qty (kg)",
+                        label = "EXPIRED / DAMAGE QTY (KG)",
                         value = expiredStr,
                         onValueChange = onExpiredChange,
                         testTag = "rep_expired_input",
-                        modifier = Modifier.weight(1f),
-                        suffix = "kg"
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -411,13 +443,13 @@ fun RepEntryCard(
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(14.dp))
 
         // Result Summary Box (#rep-result-label + #rep-total-value)
         val resultLabel = when {
             editingSpecialType == "REP_RETURN" -> "Return Value:"
-            entryMode == RepEntryMode.COLLECTION -> "Balance After Collection:"
-            else -> "Transaction Value:"
+            entryMode == RepEntryMode.COLLECTION -> "New Balance After Collection:"
+            else -> "Total Sale Value:"
         }
         val resultVal = when {
             editingSpecialType == "REP_RETURN" -> InputGuards.formatMoney(previewTotalValue, currency, masked)
@@ -427,30 +459,22 @@ fun RepEntryCard(
             }
             else -> InputGuards.formatMoney(previewTotalValue, currency, masked)
         }
-        val resultColor = when {
-            entryMode == RepEntryMode.COLLECTION -> {
-                val remaining = max(0.0, existingDebt - collected - goodsCreditPlan.value)
-                if (remaining > 0.01) accents.gold else accents.emerald
-            }
-            paymentType == "CASH" -> accents.emerald
-            else -> accents.cyan
-        }
         Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = accents.inputFill,
+            shape = RoundedCornerShape(999.dp),
+            color = accents.softPillFill.copy(alpha = 0.55f),
             border = BorderStroke(1.dp, accents.borderSubtle),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(resultLabel, style = MaterialTheme.typography.bodyMedium, color = accents.textMuted)
+                Text(resultLabel, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
                 Text(
                     text = resultVal,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = resultColor
+                    color = accents.emerald
                 )
             }
         }

@@ -72,10 +72,13 @@ fun SalesDetailSheet(
     }
     val canEdit = !s.isMerged && !s.isTransfer && !s.isRepTransfer && !isOldDebt && !isMoneyOut
 
+    val isUnpaidCredit = s.paymentType == "CREDIT" && !s.creditReceived && !s.isMerged
+
     SarimDetailBottomSheet(
         title = s.customerName.uppercase(),
         rightTitle = if (isSalesRestricted) "" else InputGuards.formatMoney(displayVal, currency, masked),
         subtitle = "${DateUtils.formatPretty(s.date).uppercase()} • $typeLabel",
+        surfaceTone = if (isUnpaidCredit) SheetSurfaceTone.WARN_STRIPES else SheetSurfaceTone.DEFAULT,
         onDismiss = onDismiss,
         content = {
             HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.6f))
@@ -202,7 +205,7 @@ fun SalesDetailSheet(
                             }
                         }
                     },
-                    modifier = Modifier.weight(0.32f),
+                    modifier = Modifier.weight(0.30f),
                     testTag = "sales_delete_${s.id}"
                 )
                 if (canEdit) {
@@ -217,13 +220,13 @@ fun SalesDetailSheet(
                                 onEditEntry(s)
                             }
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(999.dp),
                         color = accents.softPillFill,
                         border = BorderStroke(1.dp, accents.emerald),
-                        modifier = Modifier.weight(0.34f).testTag("sales_edit_${s.id}")
+                        modifier = Modifier.weight(0.35f).testTag("sales_edit_${s.id}")
                     ) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 13.dp), horizontalArrangement = Arrangement.Center) {
-                            Text("Edit Entry", style = MaterialTheme.typography.labelLarge, color = accents.emerald, maxLines = 1)
+                            Text("Edit Entry", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = accents.emerald, maxLines = 1)
                         }
                     }
                 }
@@ -234,7 +237,7 @@ fun SalesDetailSheet(
                             onDismiss()
                             onOpenCustomerDetail(s.customerName)
                         },
-                        modifier = Modifier.weight(0.34f),
+                        modifier = Modifier.weight(0.35f),
                         testTag = "sales_detail_statement_btn"
                     )
                 }

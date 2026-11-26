@@ -293,41 +293,29 @@ fun ProductionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TabHeading("Manufacturing")
-                }
-                if (!isMoneyRestrictedMode) {
-                    Spacer(Modifier.height(10.dp))
-                    // #prod-toggle-container (Combined vs Store Entry)
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = accents.inputFill,
-                        border = BorderStroke(1.dp, accents.borderSubtle),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
+                    if (!isMoneyRestrictedMode) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("combined" to "Combined", "store" to "Store Entry").forEach { (key, title) ->
                                 val selected = effectiveView == key
                                 Surface(
                                     onClick = { prodView = key },
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(999.dp),
                                     color = if (selected) accents.softPillFill else accents.inputFill,
-                                    border = if (selected) BorderStroke(1.dp, accents.emerald) else null,
+                                    border = BorderStroke(1.dp, if (selected) accents.emerald else accents.borderSubtle),
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp)
+                                        .defaultMinSize(minHeight = 40.dp)
                                         .testTag("prod_view_$key")
                                 ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 10.dp)) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
+                                    ) {
                                         Text(
                                             text = title,
-                                            style = MaterialTheme.typography.labelLarge.copy(
+                                            style = MaterialTheme.typography.labelMedium.copy(
                                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                             ),
-                                            color = if (selected) accents.emerald else accents.textMuted
+                                            color = if (selected) accents.emerald else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }

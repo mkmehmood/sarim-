@@ -2,6 +2,7 @@ package com.gullzubair.sarim.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,16 +12,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,9 +41,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gullzubair.sarim.data.model.FactoryRecord
@@ -56,15 +72,20 @@ import com.gullzubair.sarim.ui.components.FactoryBatchDetailSheet
 import com.gullzubair.sarim.ui.components.MaterialPurchaseLotsSheet
 import com.gullzubair.sarim.ui.components.SarimCard
 import com.gullzubair.sarim.ui.components.SarimGradientButton
+import com.gullzubair.sarim.ui.components.SarimHalfRingKpiBox
 import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.components.TabHeading
+import com.gullzubair.sarim.ui.components.cyanDotMatrixPattern
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
 import com.gullzubair.sarim.ui.theme.ManropeFont
 import com.gullzubair.sarim.ui.theme.PlayfairFont
 import com.gullzubair.sarim.ui.viewmodel.SarimViewModel
+import java.text.SimpleDateFormat
 import java.time.temporal.ChronoUnit
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun FactoryScreen(
@@ -186,30 +207,36 @@ fun FactoryScreen(
         // 1. New Production Entry
         item {
             SarimCard {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    FactoryCardTitle(if (editingBatch != null) "Edit Factory Batch" else "New Production Entry", accent = true)
-                    if (editingBatch != null) {
-                        Surface(
-                            onClick = { showDiscardEdit = true },
-                            shape = RoundedCornerShape(50),
-                            color = accents.danger.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
-                            modifier = Modifier.testTag("factory_cancel_edit_btn")
-                        ) {
-                            Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        FactoryCardTitle(if (editingBatch != null) "Edit Factory Batch" else "New Production Entry", accent = true)
+                        if (editingBatch != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Surface(
+                                onClick = { showDiscardEdit = true },
+                                shape = RoundedCornerShape(50),
+                                color = accents.danger.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.4f)),
+                                modifier = Modifier.testTag("factory_cancel_edit_btn")
+                            ) {
+                                Text("Cancel Edit", style = MaterialTheme.typography.labelMedium, color = accents.danger, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                            }
                         }
                     }
+                    DatePickerField("Date", date, { date = it }, "factory_date", Modifier.width(164.dp))
                 }
                 Spacer(Modifier.height(12.dp))
-                DatePickerField("Date", date, { date = it }, "factory_date")
-                Spacer(Modifier.height(12.dp))
-                Text("Formula", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
+                FactorySectionLabel("Formula")
                 Spacer(Modifier.height(6.dp))
                 if (snapshot.formulas.isEmpty()) {
                     Text("Select a store...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
                 } else {
                     FactoryChoiceRow(
-                        options = snapshot.formulas.map { it.name },
+                        options = snapshot.formulas.map { it.name.uppercase() },
                         selectedIndex = snapshot.formulas.indexOfFirst { it.id == selectedFormula?.id },
                         onSelect = { selectedFormula = snapshot.formulas[it] },
                         tagPrefix = "factory_formula_chip_"
@@ -219,16 +246,28 @@ fun FactoryScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                     Box(Modifier.weight(1f)) { DecimalField("Units to Produce", unitsStr, { unitsStr = it }, "factory_units_input") }
                     Column(Modifier.weight(1f)) {
-                        Text("Total Cost", style = MaterialTheme.typography.labelMedium, color = accents.textMuted)
-                        Spacer(Modifier.height(6.dp))
-                        FactoryCallout {
-                            Text(
-                                InputGuards.formatMoney(estCost, currency, masked),
-                                fontFamily = ManropeFont,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.sp,
-                                color = accents.gold
-                            )
+                        Text(
+                            "TOTAL COST",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                            color = accents.textMuted,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                        )
+                        val pinkBg = if (accents.isDark) accents.danger.copy(alpha = 0.14f) else Color(0xFFFFF1F2)
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = pinkBg,
+                            border = BorderStroke(1.dp, accents.danger.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
+                        ) {
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    InputGuards.formatMoney(estCost, currency, masked),
+                                    fontFamily = ManropeFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.5.sp,
+                                    color = accents.danger
+                                )
+                            }
                         }
                     }
                 }
@@ -241,30 +280,66 @@ fun FactoryScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                 }
-                FactoryCallout {
-                    if (reqLines.isEmpty()) {
-                        Text("Select a store...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
-                    } else {
-                        Column(Modifier.fillMaxWidth()) {
+                val mintBg = if (accents.isDark) accents.softPillFill else Color(0xFFECFDF7)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = mintBg,
+                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        if (reqLines.isEmpty()) {
+                            Text("Select a formula...", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                        } else {
+                            Text(
+                                "${selectedFormula?.name?.uppercase() ?: "STANDARD"} FORMULA (${InputGuards.fmtNum(units)} UNITS)",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(8.dp))
                             reqLines.forEach { line ->
                                 val need = InputGuards.round4(line.quantity * units)
                                 val mat = materials.firstOrNull { it.id == line.id }
                                     ?: materials.firstOrNull { it.name.trim().equals(line.name.trim(), ignoreCase = true) }
                                 val have = (mat?.quantity ?: 0.0) + (mat?.id?.let { restoredById[it] } ?: 0.0)
                                 val ok = have + 0.001 >= need
-                                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                                val lineCost = InputGuards.round2(need * (mat?.cost ?: line.cost))
+                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(
-                                        "Need ${InputGuards.formatKg(need)} / Have ${InputGuards.formatKg(have)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (ok) accents.emerald else accents.danger
+                                        text = if (ok) "${line.name.uppercase()} (${InputGuards.fmtNum(need)} kg)"
+                                        else "${line.name.uppercase()} (${InputGuards.fmtNum(need)} kg · Have ${InputGuards.fmtNum(have)} kg)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (ok) MaterialTheme.colorScheme.onSurface else accents.danger,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = InputGuards.formatMoney(lineCost, currency, masked),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = if (ok) MaterialTheme.colorScheme.onSurface else accents.danger
+                                    )
+                                }
+                            }
+                            val addCostUnit = selectedFormula?.additionalCost ?: 0.0
+                            val addCostTotal = InputGuards.round2(addCostUnit * units)
+                            if (addCostUnit > 0.0) {
+                                Spacer(Modifier.height(2.dp))
+                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        "Additional Cost (${InputGuards.fmtNum(addCostUnit)} per unit)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = accents.danger
+                                    )
+                                    Text(
+                                        InputGuards.formatMoney(addCostTotal, currency, masked),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = accents.danger
                                     )
                                 }
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 SarimGradientButton(
                     text = when {
                         !allInStock && reqLines.isNotEmpty() -> "Insufficient Raw Material"
@@ -506,22 +581,31 @@ fun FactoryScreen(
                 }
                 val avgAdditionalCostPerDay = if (totalAdditionalCost > 0.0) totalAdditionalCost / periodDays else 0.0
 
+                var showMaterialsBreakdown by remember { mutableStateOf(false) }
+
                 SarimCard {
-                    FactoryCardTitle("Performance Summary")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FactoryCardTitle("Performance Summary")
+                        Spacer(Modifier.width(8.dp))
+                        FactoryChoiceRow(
+                            options = listOf("Daily", "Weekly", "Monthly", "Yearly", "All Times"),
+                            selectedIndex = listOf("daily", "weekly", "monthly", "yearly", "all").indexOf(summaryMode),
+                            onSelect = { summaryMode = listOf("daily", "weekly", "monthly", "yearly", "all")[it] },
+                            tagPrefix = "factory_summary_chip_",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
-                    FactoryChoiceRow(
-                        options = listOf("Daily", "Weekly", "Monthly", "Yearly", "All Times"),
-                        selectedIndex = listOf("daily", "weekly", "monthly", "yearly", "all").indexOf(summaryMode),
-                        onSelect = { summaryMode = listOf("daily", "weekly", "monthly", "yearly", "all")[it] },
-                        tagPrefix = "factory_summary_chip_"
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("Total profit", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Text("TOTAL PROFIT", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = accents.textMuted)
                     Text(
                         InputGuards.formatMoney(sumTotalProfit, currency, masked),
                         fontFamily = ManropeFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 22.sp,
+                        fontSize = 24.sp,
                         color = if (sumTotalProfit >= 0.0) accents.emerald else accents.danger
                     )
                     Text(
@@ -529,37 +613,88 @@ fun FactoryScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = accents.textMuted
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         FactorySectionLabel("Units")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FactoryStatTile("Available", InputGuards.fmtNum(sumAvailable), accents.emerald, Modifier.weight(1f))
-                            FactoryStatTile("Used", InputGuards.fmtNum(sumConsumed), accents.gold, Modifier.weight(1f))
-                            FactoryStatTile(
-                                "Cost / day",
-                                InputGuards.formatMoney(avgAdditionalCostPerDay, currency, masked),
-                                accents.danger,
-                                Modifier.weight(1f),
-                                subLabel = "average extra"
+                            SarimHalfRingKpiBox("AVAILABLE", InputGuards.fmtNum(sumAvailable), accents.emerald, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("USED", InputGuards.fmtNum(sumConsumed), accents.gold, Modifier.weight(1f))
+                            FactoryHalfRingSubKpiBox(
+                                label = "COST / DAY",
+                                value = InputGuards.formatMoney(avgAdditionalCostPerDay, currency, masked),
+                                subLabel = "average extra",
+                                ringColor = accents.danger,
+                                modifier = Modifier.weight(1f)
                             )
                         }
                         FactorySectionLabel("Output")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FactoryStatTile("Quantity", "${InputGuards.fmtNum(sumOutput)} kg", accents.emerald, Modifier.weight(1f))
-                            FactoryStatTile("Raw used", "${InputGuards.fmtNum(sumRawUsed)} kg", accents.cyan, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("QUANTITY", "${InputGuards.fmtNum(sumOutput)} kg", accents.emerald, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("RAW USED", "${InputGuards.fmtNum(sumRawUsed)} kg", accents.cyan, Modifier.weight(1f))
                         }
                         if (rawByMaterial.isNotEmpty()) {
-                            FactoryCallout {
-                                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("Materials breakdown (${rawByMaterial.size})", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                                    rawByMaterial.forEach { (matName, pair) ->
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(matName, style = MaterialTheme.typography.bodySmall)
+                            val breakdownMint = if (accents.isDark) accents.softPillFill else Color(0xFFDCFCE7).copy(alpha = 0.7f)
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = breakdownMint,
+                                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showMaterialsBreakdown = !showMaterialsBreakdown }
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                            .testTag("factory_materials_breakdown_toggle"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "MATERIALS BREAKDOWN",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = accents.emerald
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             Text(
-                                                "${InputGuards.fmtNum(pair.first)} kg • ${InputGuards.formatMoney(pair.second, currency, masked)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = accents.danger
+                                                "${rawByMaterial.size}",
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
+                                            Icon(
+                                                if (showMaterialsBreakdown) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                                                contentDescription = "Toggle materials breakdown",
+                                                tint = accents.emerald,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    if (showMaterialsBreakdown) {
+                                        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+                                            rawByMaterial.forEachIndexed { idx, (matName, pair) ->
+                                                if (idx > 0) HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.55f))
+                                                Row(
+                                                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        matName.uppercase(),
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    Text(
+                                                        buildAnnotatedString {
+                                                            append("${InputGuards.fmtNum(pair.first)} kg · ")
+                                                            withStyle(SpanStyle(color = accents.danger, fontWeight = FontWeight.Medium)) {
+                                                                append(InputGuards.formatMoney(pair.second, currency, masked))
+                                                            }
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -567,9 +702,9 @@ fun FactoryScreen(
                         }
                         FactorySectionLabel("Cost")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FactoryStatTile("Per unit", InputGuards.formatMoney(avgCostPerUnit, currency, masked), accents.danger, Modifier.weight(1f))
-                            FactoryStatTile("Total", InputGuards.formatMoney(sumTotalCost, currency, masked), accents.gold, Modifier.weight(1f))
-                            FactoryStatTile("Materials", InputGuards.formatMoney(sumMatVal, currency, masked), accents.danger, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("PER UNIT", InputGuards.formatMoney(avgCostPerUnit, currency, masked), accents.danger, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("TOTAL", InputGuards.formatMoney(sumTotalCost, currency, masked), accents.gold, Modifier.weight(1f))
+                            SarimHalfRingKpiBox("MATERIALS", InputGuards.formatMoney(sumMatVal, currency, masked), accents.danger, Modifier.weight(1f))
                         }
                     }
                 }
@@ -586,28 +721,49 @@ fun FactoryScreen(
                         SarimYearMonthDayTree(
                             items = periodFactory,
                             dateOf = { it.date },
-                            summaryLabel = { list -> InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked) },
+                            summaryLabel = { list -> "Cost: ${InputGuards.formatMoney(list.sumOf { it.totalCost }, currency, masked)}" },
                             itemRow = { rec ->
+                                val timeStr = remember(rec.timestamp) {
+                                    if (rec.timestamp > 0L) SimpleDateFormat("hh:mm a", Locale.ENGLISH).format(Date(rec.timestamp)) else ""
+                                }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(accents.cyan.copy(alpha = 0.08f))
+                                        .cyanDotMatrixPattern(accents.cyan, accents.cyan)
                                         .clickable { selectedFactoryRec = rec }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        .padding(vertical = 10.dp, horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(Modifier.weight(1f)) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text(rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { "Factory Batch" } }, style = MaterialTheme.typography.titleSmall)
+                                            Box(
+                                                Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.onSurface)
+                                            )
+                                            Text(
+                                                rec.formulaName.ifBlank { FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { "Factory Batch" } }.uppercase(),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                                            )
+                                            Text(
+                                                "${InputGuards.fmtNum(rec.units)} UNITS",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accents.textMuted
+                                            )
                                             EditedBadge(rec.isEdited)
                                         }
-                                        Text("${InputGuards.fmtNum(rec.units)} units", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                        if (timeStr.isNotBlank()) {
+                                            Text(timeStr, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                                        }
                                     }
                                     Text(
                                         InputGuards.formatMoney(rec.totalCost, currency, masked),
                                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = accents.emerald
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -724,13 +880,75 @@ private fun FactoryPill(label: String, selected: Boolean, onClick: () -> Unit, m
 }
 
 @Composable
-private fun FactoryChoiceRow(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, tagPrefix: String) {
+private fun FactoryChoiceRow(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    tagPrefix: String,
+    modifier: Modifier = Modifier
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        modifier = modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         options.forEachIndexed { idx, label ->
             FactoryPill(label, selected = idx == selectedIndex, onClick = { onSelect(idx) }, modifier = Modifier.testTag("$tagPrefix$idx"))
+        }
+    }
+}
+
+@Composable
+private fun FactoryHalfRingSubKpiBox(
+    label: String,
+    value: String,
+    subLabel: String,
+    ringColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val accents = LocalSarimAccents.current
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(accents.inputFill.copy(alpha = 0.72f))
+            .border(1.dp, accents.borderSubtle, shape)
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val strokePx = 2.5.dp.toPx()
+            val arcDiameter = size.height
+            drawArc(
+                color = ringColor,
+                startAngle = 90f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = Offset(strokePx / 2f, strokePx / 2f),
+                size = Size(arcDiameter - strokePx, size.height - strokePx),
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+        }
+        Column(modifier = Modifier.padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, letterSpacing = 0.6.sp),
+                color = accents.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = ringColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subLabel,
+                fontSize = 9.5.sp,
+                color = accents.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

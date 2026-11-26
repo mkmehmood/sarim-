@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Checkbox
@@ -39,8 +42,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +61,7 @@ import com.gullzubair.sarim.ui.components.CalculatorItemListDialog
 import com.gullzubair.sarim.ui.components.CalculatorPerformanceChartCard
 import com.gullzubair.sarim.ui.components.ConfirmRequest
 import com.gullzubair.sarim.ui.components.ConfirmRequestHost
-import com.gullzubair.sarim.ui.components.DatePickerField
+import com.gullzubair.sarim.ui.components.DateRangePickerField
 import com.gullzubair.sarim.ui.components.DecimalField
 import com.gullzubair.sarim.ui.components.DialogTone
 import com.gullzubair.sarim.ui.components.DiscardEditDialog
@@ -74,6 +80,7 @@ import com.gullzubair.sarim.ui.components.SarimYearMonthDayTree
 import com.gullzubair.sarim.ui.components.SimpleBarChart
 import com.gullzubair.sarim.ui.components.TabHeading
 import com.gullzubair.sarim.ui.components.blockingAlert
+import com.gullzubair.sarim.ui.components.dashedBorder
 import com.gullzubair.sarim.ui.components.saveConfirmRequest
 import com.gullzubair.sarim.ui.theme.JakartaFont
 import com.gullzubair.sarim.ui.theme.LocalSarimAccents
@@ -388,37 +395,47 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
         // 1. TOP SELECTOR + ENTRY / COMPARISON CARD
         item {
             SarimCard {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (editingCalc != null) "Edit Entry (${editingCalc!!.seller})" else "Sales Representative",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (editingCalc != null) accents.cyan else accents.textMuted
-                    )
-                    if (editingCalc != null) {
+                if (editingCalc != null) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Edit Entry (${editingCalc!!.seller})",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = accents.cyan
+                        )
                         IconButton(onClick = { showDiscardDialog = true }, modifier = Modifier.size(48.dp).testTag("calc_cancel_edit_btn")) {
                             Icon(Icons.Rounded.Close, contentDescription = "Cancel edit")
                         }
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                PickerField(
-                    label = "Sales Representative",
-                    selectedLabel = selectedSellerOptionLabel,
-                    items = sellerOptions,
-                    itemLabel = { it.second },
-                    onSelect = { selectedSeller = it.first },
-                    testTag = "calc_seller_picker"
-                )
-                Spacer(Modifier.height(10.dp))
-                Text("Date Range · $rangeDisplayLabel", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DatePickerField("From", dateFrom, { dateFrom = it }, "calc_date_from", Modifier.weight(1f))
-                    DatePickerField("To", date, { date = it }, "calc_date", Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    PickerField(
+                        label = "Sales Representative",
+                        selectedLabel = selectedSellerOptionLabel,
+                        items = sellerOptions,
+                        itemLabel = { it.second },
+                        onSelect = { selectedSeller = it.first },
+                        testTag = "calc_seller_picker",
+                        modifier = Modifier.weight(0.46f)
+                    )
+                    DateRangePickerField(
+                        label = "Date Range",
+                        fromIso = dateFrom,
+                        toIso = date,
+                        onRangeSelected = { f, t ->
+                            dateFrom = f
+                            date = t
+                        },
+                        testTag = "calc_date",
+                        modifier = Modifier.weight(0.54f)
+                    )
                 }
 
                 // Entry section shown when a rep is selected
@@ -440,61 +457,81 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     }
 
                     Spacer(Modifier.height(14.dp))
-                    Text("Product Quantities", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
-                    Spacer(Modifier.height(8.dp))
-                    PickerField(
-                        label = "Store",
-                        selectedLabel = selectedStore?.name ?: "Select Store",
-                        items = activeStores,
-                        itemLabel = { it.name },
-                        onSelect = {
-                            selectedStore = it
-                            if (it.salePrice > 0.0) rateStr = it.salePrice.toString()
-                        },
-                        testTag = "calc_store_picker"
+                    Text(
+                        "Product Quantities",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                        color = accents.emerald
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DecimalField("Total Sold Qty", soldStr, { soldStr = it }, "calc_sold_input", Modifier.weight(1f), "kg")
-                        DecimalField("Returned Qty", returnStr, { returnStr = it }, "calc_return_input", Modifier.weight(1f), "kg")
+                    if (activeStores.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        PickerField(
+                            label = "Store",
+                            selectedLabel = selectedStore?.name ?: "Select Store",
+                            items = activeStores,
+                            itemLabel = { it.name },
+                            onSelect = {
+                                selectedStore = it
+                                if (it.salePrice > 0.0) rateStr = it.salePrice.toString()
+                            },
+                            testTag = "calc_store_picker"
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DecimalField("Expired / Damage Qty", expiredStr, { expiredStr = it }, "calc_expired_input", Modifier.weight(1f), "kg")
-                        DecimalField("Shared (Deduction)", sharedKgStr, { sharedKgStr = it }, "calc_shared_kg_input", Modifier.weight(1f), "kg")
+                        CalcDashedDecimalField("TOTAL SOLD QTY", soldStr, { soldStr = it }, "calc_sold_input", Modifier.weight(1f))
+                        CalcDashedDecimalField("RETURNED QTY", returnStr, { returnStr = it }, "calc_return_input", Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.weight(1f)
+                        CalcDashedDecimalField("EXPIRED / DAMAGE QTY", expiredStr, { expiredStr = it }, "calc_expired_input", Modifier.weight(1f))
+                        DecimalField("Shared (Deduction)", sharedKgStr, { sharedKgStr = it }, "calc_shared_kg_input", Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.fillMaxWidth(0.5f).padding(end = 5.dp)) {
+                        Text(
+                            text = "NET SOLD QTY",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                            color = accents.textMuted,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 52.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(accents.inputFill.copy(alpha = 0.7f))
+                                .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text("Net Sold Qty", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-                                Text(
-                                    InputGuards.formatKg(netSold),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = accents.emerald
-                                )
-                            }
+                            Text(
+                                text = InputGuards.fmtNum(netSold),
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                        DecimalField("Credit Sales Qty", creditQtyStr, { creditQtyStr = it }, "calc_credit_qty_input", Modifier.weight(1f), "kg")
                     }
 
                     if (returned > 0.0) {
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
+                        val amberBg = if (accents.isDark) accents.gold.copy(alpha = 0.09f) else Color(0xFFFFF7ED)
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.cyan.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(16.dp),
+                            color = amberBg,
+                            border = BorderStroke(1.dp, accents.gold.copy(alpha = 0.65f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text("Return Stock To Physical Inventory:", style = MaterialTheme.typography.labelLarge, color = accents.cyan)
-                                Spacer(Modifier.height(6.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(
+                                    "RETURN STOCK TO PHYSICAL INVENTORY:",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = accents.gold
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     activeStores.forEach { st ->
                                         val isChosen = returnTarget == "store" && selectedStore?.key.equals(st.key, true)
                                         Surface(
@@ -502,34 +539,40 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                                 returnTarget = "store"
                                                 selectedStore = st
                                             },
-                                            shape = RoundedCornerShape(12.dp),
+                                            shape = RoundedCornerShape(999.dp),
                                             color = if (isChosen) accents.softPillFill else MaterialTheme.colorScheme.surface,
                                             border = BorderStroke(1.dp, if (isChosen) accents.emerald else accents.borderSubtle),
-                                            modifier = Modifier.weight(1f).testTag("ret_store_${st.key.lowercase()}")
+                                            modifier = Modifier.testTag("ret_store_${st.key.lowercase()}")
                                         ) {
-                                            Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                                Text(st.name.uppercase(), style = MaterialTheme.typography.labelMedium, color = if (isChosen) accents.emerald else accents.textMuted)
-                                            }
+                                            Text(
+                                                st.name.uppercase(),
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isChosen) FontWeight.Bold else FontWeight.SemiBold),
+                                                color = if (isChosen) accents.emerald else MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                                            )
                                         }
                                     }
                                     val isRepTransfer = returnTarget == "rep"
                                     Surface(
                                         onClick = { returnTarget = "rep" },
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(999.dp),
                                         color = if (isRepTransfer) accents.softPillFill else MaterialTheme.colorScheme.surface,
                                         border = BorderStroke(1.dp, if (isRepTransfer) accents.emerald else accents.borderSubtle),
-                                        modifier = Modifier.weight(1f).testTag("ret_rep_btn")
+                                        modifier = Modifier.testTag("ret_rep_btn")
                                     ) {
-                                        Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                            Text("Rep Transfer", style = MaterialTheme.typography.labelMedium, color = if (isRepTransfer) accents.emerald else accents.textMuted)
-                                        }
+                                        Text(
+                                            "Rep Transfer",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isRepTransfer) FontWeight.Bold else FontWeight.SemiBold),
+                                            color = if (isRepTransfer) accents.emerald else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                                        )
                                     }
                                 }
                                 if (returnTarget == "rep") {
                                     Spacer(Modifier.height(8.dp))
                                     SarimPillInput(returnTargetRep, { returnTargetRep = it }, label = "RECEIVING REP", testTag = "calc_target_rep_input")
                                 }
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Text(
                                     "* This will increase the store's stock level without creating a new production record.",
                                     style = MaterialTheme.typography.bodySmall,
@@ -537,6 +580,16 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 )
                             }
                         }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Box(Modifier.fillMaxWidth(0.5f).padding(end = 5.dp)) {
+                        CalcTintedDecimalField(
+                            label = "CREDIT SALES QTY",
+                            value = creditQtyStr,
+                            onValueChange = { creditQtyStr = it },
+                            testTag = "calc_credit_qty_input"
+                        )
                     }
 
                     if (expired > 0.0) {
@@ -560,63 +613,103 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                     }
 
                     Spacer(Modifier.height(14.dp))
-                    Text("Commission", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                    Text(
+                        "Commission",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                        color = accents.emerald
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                         DecimalField("Commission / Unit", commissionPerUnitStr, { commissionPerUnitStr = it }, "calc_comm_per_unit_input", Modifier.weight(1f))
-                        Surface(
-                            onClick = { showCommissionPopup = true },
-                            shape = RoundedCornerShape(16.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.weight(1f).testTag("calc_open_comm_popup")
-                        ) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text("Commission Paid (Advance/Paid)", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "COMMISSION PAID (ADVANCE/PAID)",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                                color = accents.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = 52.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(accents.inputFill.copy(alpha = 0.65f))
+                                    .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
+                                    .clickable { showCommissionPopup = true }
+                                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                                    .testTag("calc_open_comm_popup"),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
                                 Text(
-                                    if (commTotal > 0.0) InputGuards.formatMoney(commTotal, currency, masked) else "Tap to add commission",
+                                    text = if (commTotal > 0.0) InputGuards.formatMoney(commTotal, currency, masked) else "Tap to add commission",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = if (commTotal > 0.0) accents.emerald else accents.textMuted,
-                                    maxLines = 1
+                                    color = if (commTotal > 0.0) accents.emerald else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
 
                     Spacer(Modifier.height(14.dp))
-                    Text("Collections & Handover Cash", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = accents.emerald)
+                    Text(
+                        "Collections & Handover Cash",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                        color = accents.emerald
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DecimalField("Recovered Credit", prevCollStr, { prevCollStr = it }, "calc_prev_coll_input", Modifier.weight(1f))
-                        Surface(
-                            onClick = { showExpensePopup = true },
-                            shape = RoundedCornerShape(16.dp),
-                            color = accents.inputFill,
-                            border = BorderStroke(1.dp, accents.borderSubtle),
-                            modifier = Modifier.weight(1f).testTag("calc_open_exp_popup")
-                        ) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text("Field Expenses", style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                        CalcTintedDecimalField(
+                            label = "RECOVERED CREDIT",
+                            value = prevCollStr,
+                            onValueChange = { prevCollStr = it },
+                            testTag = "calc_prev_coll_input",
+                            modifier = Modifier.weight(1f)
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "FIELD EXPENSES",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+                                color = accents.textMuted,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = 52.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(accents.inputFill.copy(alpha = 0.65f))
+                                    .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
+                                    .clickable { showExpensePopup = true }
+                                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                                    .testTag("calc_open_exp_popup"),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
                                 Text(
-                                    if (expTotal > 0.0) InputGuards.formatMoney(expTotal, currency, masked) else "Tap to add expenses",
+                                    text = if (expTotal > 0.0) InputGuards.formatMoney(expTotal, currency, masked) else "Tap to add expenses",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = if (expTotal > 0.0) accents.danger else accents.textMuted,
-                                    maxLines = 1
+                                    color = if (expTotal > 0.0) accents.danger else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    DecimalField("Physical Cash Received from Rep", physicalCashStr, { physicalCashStr = it }, "calc_physical_cash_input")
+                    Box(Modifier.fillMaxWidth(0.5f).padding(end = 5.dp)) {
+                        DecimalField("Physical Cash Received from Rep", physicalCashStr, { physicalCashStr = it }, "calc_physical_cash_input")
+                    }
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = accents.softPillFill,
-                        border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f)),
+                        border = BorderStroke(1.dp, accents.borderSubtle),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val discText = when {
                                 abs(variance) < 0.01 -> "PERFECT MATCH"
                                 variance < 0 -> "SHORT: ${InputGuards.formatMoney(abs(variance), currency, masked)}"
@@ -646,7 +739,10 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
                                 onCheckedChange = { addToLedger = it },
                                 modifier = Modifier.testTag("calc_ledger_switch")
                             )
-                            Text("Add cash received, expenses and commission to Daily Ledger", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "ADD CASH RECEIVED, EXPENSES AND COMMISSION TO DAILY LEDGER",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -1115,6 +1211,127 @@ fun CalculatorScreen(snapshot: WorkspaceSnapshot, todayIso: String, vm: SarimVie
             },
             onDismiss = { showDiscardDialog = false }
         )
+    }
+}
+
+@Composable
+private fun CalcDashedDecimalField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val accents = LocalSarimAccents.current
+    Column(modifier = modifier) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+            color = accents.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 52.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(accents.inputFill.copy(alpha = 0.65f))
+                .dashedBorder(1.1.dp, accents.inputBorder, cornerRadius = 18.dp)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = { raw ->
+                    if (raw.isEmpty() || raw.matches(Regex("^\\d*\\.?\\d{0,3}$"))) {
+                        onValueChange(raw)
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                textStyle = TextStyle(
+                    fontFamily = JakartaFont,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                cursorBrush = SolidColor(accents.emerald),
+                modifier = Modifier.fillMaxWidth().testTag(testTag),
+                decorationBox = { innerTextField ->
+                    if (value.isEmpty()) {
+                        Text(
+                            "0.00",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = accents.textMuted.copy(alpha = 0.65f)
+                        )
+                    }
+                    innerTextField()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalcTintedDecimalField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val accents = LocalSarimAccents.current
+    Column(modifier = modifier) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JakartaFont, fontWeight = FontWeight.Bold),
+            color = accents.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = accents.softPillFill,
+            border = BorderStroke(1.2.dp, accents.emerald),
+            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { raw ->
+                        if (raw.isEmpty() || raw.matches(Regex("^\\d*\\.?\\d{0,3}$"))) {
+                            onValueChange(raw)
+                        }
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    textStyle = TextStyle(
+                        fontFamily = JakartaFont,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        color = accents.emerald
+                    ),
+                    cursorBrush = SolidColor(accents.emerald),
+                    modifier = Modifier.fillMaxWidth().testTag(testTag),
+                    decorationBox = { innerTextField ->
+                        if (value.isEmpty()) {
+                            Text(
+                                "0.00",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = accents.emerald.copy(alpha = 0.85f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+        }
     }
 }
 

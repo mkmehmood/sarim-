@@ -436,25 +436,7 @@ fun RepSalesScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TabHeading("Rep Sales")
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.35f))
-                ) {
-                    Text(
-                        text = activeRepProfile,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = accents.emerald,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                    )
-                }
-            }
+            TabHeading("Rep Sales")
         }
 
         // 1. Unified Rep Entry Form

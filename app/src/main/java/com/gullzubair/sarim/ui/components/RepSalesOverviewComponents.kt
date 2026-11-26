@@ -602,14 +602,25 @@ fun RepHistoryRowCard(
         else -> r.totalValue
     }
 
+    val isUnpaidCredit = r.paymentType == "CREDIT" && !r.creditReceived && !r.isMerged
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (isSelectedDate) accents.cyan.copy(alpha = 0.08f) else accents.inputFill,
-        border = BorderStroke(1.dp, if (isSelectedDate) accents.cyan.copy(alpha = 0.6f) else accents.borderSubtle),
+        border = BorderStroke(
+            1.dp,
+            when {
+                isSelectedDate -> accents.cyan.copy(alpha = 0.6f)
+                isUnpaidCredit -> accents.gold.copy(alpha = 0.45f)
+                else -> accents.borderSubtle
+            }
+        ),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("rep_hist_row_${r.id}")
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (isUnpaidCredit) Modifier.diagonalWarningStripes(accents.gold, accents.gold) else Modifier)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

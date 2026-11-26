@@ -494,37 +494,58 @@ private fun WorkspaceNavContainer(
                             .shadow(
                                 elevation = if (accents.isDark) 0.dp else 7.dp,
                                 shape = headerShape,
-                                ambientColor = Color(0x1A059669),
-                                spotColor = Color(0x1A059669)
+                                ambientColor = Color(0x160891B2),
+                                spotColor = Color(0x160891B2)
                             ),
                         color = accents.headerFrosted,
                         shape = headerShape,
-                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.75f))
+                        border = BorderStroke(1.dp, accents.borderSubtle.copy(alpha = 0.72f))
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                onClick = {
-                                    FeedbackHelper.triggerHaptic(context)
-                                    scope.launch { drawerState.open() }
-                                },
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            Box(
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .testTag("drawer_menu_btn")
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        FeedbackHelper.triggerHaptic(context)
+                                        scope.launch { drawerState.open() }
+                                    }
+                                    .testTag("drawer_menu_btn"),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Menu,
-                                        contentDescription = "Open navigation menu",
-                                        tint = accents.emerald,
-                                        modifier = Modifier.size(22.dp)
+                                val menuBrush = Brush.horizontalGradient(
+                                    listOf(accents.emerald, accents.cyan)
+                                )
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.5.dp),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(22.dp)
+                                            .height(2.4.dp)
+                                            .clip(CircleShape)
+                                            .background(menuBrush)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .width(14.dp)
+                                            .height(2.4.dp)
+                                            .clip(CircleShape)
+                                            .background(menuBrush)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .width(18.dp)
+                                            .height(2.4.dp)
+                                            .clip(CircleShape)
+                                            .background(menuBrush)
                                     )
                                 }
                             }
@@ -545,40 +566,14 @@ private fun WorkspaceNavContainer(
                                     fontFamily = JakartaFont,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 14.sp,
-                                    letterSpacing = 1.2.sp,
+                                    letterSpacing = 1.0.sp,
                                     color = accents.emerald,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
 
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = accents.softPillFill,
-                                border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.25f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = tabIcon(effectiveTab, selected = true),
-                                        contentDescription = null,
-                                        tint = accents.emerald,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = effectiveTab.label,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontFamily = JakartaFont,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = accents.emerald,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
+                            Spacer(Modifier.size(48.dp))
                         }
                     }
                 }

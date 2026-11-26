@@ -118,12 +118,12 @@ private val DarkColorScheme = darkColorScheme(
 
 private val LightColorScheme = lightColorScheme(
     primary = EmeraldBright,
-    onPrimary = Color.White,
+    onPrimary = CtaTextDark,
     primaryContainer = EmeraldLightContainer,
     onPrimaryContainer = EmeraldOnLightContainer,
     secondary = CyanLight,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD2F3F7),
+    secondaryContainer = Color(0xFFE0F7FA),
     onSecondaryContainer = Color(0xFF053944),
     tertiary = GoldLight,
     onTertiary = Color.White,
