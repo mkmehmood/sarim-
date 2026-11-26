@@ -1,5 +1,16 @@
 package com.gullzubair.sarim.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -551,6 +562,10 @@ private fun ProdMetricRow(
     }
 }
 
+/**
+ * Production history card — mirrors the web `hcCard`: tone accent bar, lead icon, title/date,
+ * kg amount + tag, and an expandable body with the metric grid, photo strip and actions.
+ */
 @Composable
 fun ProductionHistoryRowCard(
     rec: ProductionRecord,
@@ -561,160 +576,279 @@ fun ProductionHistoryRowCard(
     currency: String,
     masked: Boolean,
     isPhotoSelected: Boolean,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onTogglePhotoSelect: (Boolean) -> Unit,
-    onOpenLightbox: (List<String>) -> Unit,
-    onClick: () -> Unit
+    onOpenLightbox: (List<String>, Int) -> Unit,
+    onOpenDetails: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: () -> Unit
 ) {
     val accents = LocalSarimAccents.current
     val storeLabel = FormulaEngine.storeLabelFor(rec.store, stores).ifBlank { rec.store }
+    val peerLabel = FormulaEngine.storeLabelFor(rec.transferPeerStore, stores).ifBlank { rec.transferPeerStore }
     val recPhotos = rec.photoKeys.mapNotNull { k ->
         photoStore[k]?.takeIf { !it.deleted && it.dataUri.isNotBlank() }?.dataUri
     }
     val hasPhotos = recPhotos.isNotEmpty() && !rec.isReturn && !rec.isTransfer
     val isSelectedDate = rec.date.take(10) == selectedDate.take(10)
+    val isOut = rec.isTransfer && rec.transferDirection == "out"
+    val money = { v: Double -> InputGuards.formatMoney(v, currency, masked) }
 
     val title = when {
-        rec.isTransfer && rec.transferDirection == "out" ->
-            "Transfer out to ${FormulaEngine.storeLabelFor(rec.transferPeerStore, stores).ifBlank { rec.transferPeerStore }}"
-        rec.isTransfer ->
-            "Transfer in from ${FormulaEngine.storeLabelFor(rec.transferPeerStore, stores).ifBlank { rec.transferPeerStore }}"
-        rec.isReturn ->
-            "${if (rec.isMerged) "Merged returns by" else "Returned by"} ${rec.returnedBy.ifBlank { "Representative" }}"
+        isOut -> "Transfer out to $peerLabel"
+        rec.isTransfer -> "Transfer in from $peerLabel"
+        rec.isReturn -> "${if (rec.isMerged) "Merged returns by" else "Returned by"} ${rec.returnedBy.ifBlank { "Representative" }}"
         else -> "$storeLabel production"
     }
-
     val tagText = when {
-        rec.isTransfer && rec.transferDirection == "out" -> "Out"
+        isOut -> "Out"
         rec.isTransfer -> "In"
         rec.isReturn -> "Return"
-        else -> "Profit ${InputGuards.formatMoney(rec.profit, currency, masked)}"
+        else -> "Profit ${money(rec.profit)}"
+    }
+    val tone = when {
+        isOut -> accents.danger
+        rec.isTransfer || rec.isReturn -> accents.emerald
+        rec.profit >= 0.0 -> accents.cyan
+        else -> accents.danger
     }
     val tagColor = when {
-        rec.isTransfer && rec.transferDirection == "out" -> accents.danger
+        isOut -> accents.danger
         rec.isTransfer || rec.isReturn -> accents.emerald
         rec.profit >= 0.0 -> accents.emerald
         else -> accents.danger
     }
+    val leadIcon = when {
+        rec.isTransfer -> Icons.Default.SwapHoriz
+        rec.isReturn -> Icons.Default.Replay
+        else -> Icons.Default.Inventory2
+    }
+    val canEdit = onEdit != null && !rec.isMerged && !rec.isReturn && !rec.isTransfer
+    val canDelete = !rec.isMerged
+
+    // (label, value, colour, wide) — same order and wording as the web production card
+    val metrics = buildList<Triple<String, String, Color>> {
+        if (!rec.isReturn && !rec.isTransfer) {
+            if (rec.grossWt > 0.0) add(Triple("Gross weight", InputGuards.formatKg(rec.grossWt), accents.emerald))
+            if (rec.contWt > 0.0) add(Triple("Container", InputGuards.formatKg(rec.contWt), accents.textMuted))
+            if (!masked) {
+                add(Triple("Cost price", "${InputGuards.fmtNum(rec.cp)}/kg", accents.danger))
+                add(Triple("Sale price", "${InputGuards.fmtNum(rec.sp)}/kg", accents.emerald))
+                add(Triple("Total cost", money(rec.totalCost), accents.danger))
+                add(Triple("Total value", money(rec.totalSale), accents.emerald))
+            }
+            if (rec.formulaUnits > 0.0) add(Triple("Formula units", InputGuards.fmtNum(rec.formulaUnits), accents.emerald))
+            if (!masked && rec.formulaCost > 0.0) add(Triple("Formula cost", money(rec.formulaCost), accents.danger))
+        }
+    }
+    val note = rec.returnNote.ifBlank { rec.transferNote }
 
     SarimCard(
         accentBorder = if (isSelectedDate) accents.emerald.copy(alpha = 0.45f) else null,
-        contentPadding = PaddingValues(12.dp),
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .testTag("prod_hist_card_${rec.id}")
+        contentPadding = PaddingValues(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        modifier = Modifier.testTag("prod_hist_card_${rec.id}")
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (hasPhotos) {
-                Checkbox(
-                    checked = isPhotoSelected,
-                    onCheckedChange = onTogglePhotoSelect,
-                    modifier = Modifier.testTag("prod_photo_check_${rec.id}")
+        Column(
+            modifier = Modifier.drawBehind {
+                // web `.hc-card::before` — 3dp tone bar on the left edge
+                drawRoundRect(
+                    color = tone.copy(alpha = 0.85f),
+                    topLeft = Offset(-15.dp.toPx(), 2.dp.toPx()),
+                    size = Size(3.dp.toPx(), (size.height - 4.dp.toPx()).coerceAtLeast(0f)),
+                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
                 )
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // ---- head (tap to expand/collapse)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onToggleExpand)
+                    .testTag("prod_hist_head_${rec.id}"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (hasPhotos) {
+                    Checkbox(
+                        checked = isPhotoSelected,
+                        onCheckedChange = onTogglePhotoSelect,
+                        modifier = Modifier.testTag("prod_photo_check_${rec.id}")
+                    )
+                }
+                Box(
+                    modifier = Modifier.size(38.dp).clip(CircleShape).background(tone.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (showStoreChip && storeLabel.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = accents.softPillFill
-                        ) {
-                            Text(
-                                storeLabel,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = accents.emerald,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    Icon(leadIcon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        EditedBadge(rec.isEdited)
+                    }
+                    val dateSub = buildString {
+                        append(DateUtils.formatPretty(rec.date))
+                        if (rec.time.isNotBlank()) append(" ${rec.time}")
+                        if (isSelectedDate) append(" (Selected)")
+                    }
+                    Text(dateSub, style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = InputGuards.formatKg(abs(rec.net)),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                        color = if (isOut) accents.danger else accents.emerald,
+                        maxLines = 1
+                    )
+                    if (!(masked && !rec.isReturn && !rec.isTransfer)) {
+                        Text(
+                            text = tagText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = tagColor,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            // ---- body (web `.hc-body`)
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
+                    HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(8.dp))
+
+                    // chips
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        if (showStoreChip && storeLabel.isNotBlank()) HistoryChip(storeLabel, accents.cyan)
+                        if (rec.managedBy.isNotBlank()) HistoryChip(rec.managedBy, accents.gold)
+                        if (rec.createdBy.isNotBlank() && !rec.createdBy.contains("-") && rec.createdBy.length < 32) HistoryChip(rec.createdBy, accents.purple)
+                        if (rec.isMerged) HistoryChip("Merged", accents.gold)
+                    }
+
+                    // metrics grid: two columns, Net profit spans the full width
+                    if (metrics.isNotEmpty() || (!rec.isReturn && !rec.isTransfer && !masked)) {
+                        Spacer(Modifier.height(8.dp))
+                        metrics.chunked(2).forEach { pair ->
+                            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                pair.forEach { (label, value, color) -> HistoryMetricTile(label, value, color, Modifier.weight(1f)) }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                        if (!rec.isReturn && !rec.isTransfer && !masked) {
+                            HistoryMetricTile(
+                                "Net profit", money(rec.profit),
+                                if (rec.profit >= 0.0) accents.emerald else accents.danger,
+                                Modifier.fillMaxWidth()
                             )
                         }
                     }
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    EditedBadge(rec.isEdited)
-                }
-                Spacer(Modifier.height(2.dp))
-                val dateSub = buildString {
-                    append(DateUtils.formatPretty(rec.date))
-                    if (rec.time.isNotBlank()) append(" ${rec.time}")
-                    if (isSelectedDate) append(" (Selected)")
-                    if (rec.managedBy.isNotBlank()) append(" · ${rec.managedBy}")
-                }
-                Text(dateSub, style = MaterialTheme.typography.labelSmall, color = accents.textMuted)
-            }
 
-            if (hasPhotos) {
-                Surface(
-                    onClick = { onOpenLightbox(recPhotos) },
-                    shape = RoundedCornerShape(10.dp),
-                    color = accents.softPillFill,
-                    border = BorderStroke(1.dp, accents.emerald.copy(alpha = 0.4f)),
-                    modifier = Modifier
-                        .padding(horizontal = 6.dp)
-                        .testTag("prod_row_photo_${rec.id}")
-                ) {
-                    Row(Modifier.padding(horizontal = 7.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.PhotoLibrary, contentDescription = "View photos", tint = accents.emerald, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("${recPhotos.size}", style = MaterialTheme.typography.labelSmall, color = accents.emerald)
+                    if (note.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Note: $note", style = MaterialTheme.typography.bodySmall, color = accents.textMuted)
+                    }
+
+                    // photo strip (web `prodPhotoStripHtml`)
+                    if (hasPhotos) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            recPhotos.forEachIndexed { idx, uri ->
+                                DecodedDataUrlImage(
+                                    dataUrl = uri,
+                                    contentDescription = "Product photo ${idx + 1}",
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onOpenLightbox(recPhotos, idx) }
+                                        .testTag("prod_hist_photo_${rec.id}_$idx")
+                                )
+                            }
+                        }
+                    }
+
+                    // actions row (web `.tbl-action-row`: Edit + Delete)
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HistoryActionButton("Details", Icons.Default.Info, accents.textMuted, Modifier.weight(1f), "prod_hist_details_${rec.id}", onOpenDetails)
+                        if (canEdit) {
+                            HistoryActionButton("Edit", Icons.Default.Edit, accents.emerald, Modifier.weight(1f), "prod_hist_edit_${rec.id}") { onEdit?.invoke() }
+                        }
+                        if (canDelete) {
+                            HistoryActionButton(
+                                if (rec.isTransfer) "Recycle" else "Delete", Icons.Default.Delete, accents.danger,
+                                Modifier.weight(1f), "prod_hist_delete_${rec.id}", onDelete
+                            )
+                        }
                     }
                 }
             }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = InputGuards.formatKg(abs(rec.net)),
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = if (rec.isTransfer && rec.transferDirection == "out") accents.danger else accents.emerald
-                )
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = tagColor.copy(alpha = 0.14f)
-                ) {
-                    Text(
-                        text = tagText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = tagColor,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
         }
+    }
+}
 
-        if (!rec.isTransfer && !rec.isReturn && !masked) {
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = accents.borderSubtle.copy(alpha = 0.5f))
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Cost ${InputGuards.fmtNum(rec.cp)}/kg · Sale ${InputGuards.fmtNum(rec.sp)}/kg",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = accents.textMuted
-                )
-                if (rec.formulaUnits > 0.0) {
-                    Text(
-                        "${InputGuards.fmtNum(rec.formulaUnits)} units · ${InputGuards.formatMoney(rec.totalSale, currency, false)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = accents.textMuted
-                    )
-                }
-            }
-        }
-        val note = rec.returnNote.ifBlank { rec.transferNote }
-        if (note.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text("Note: $note", style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+@Composable
+private fun HistoryChip(text: String, color: Color) {
+    Surface(shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.14f)) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = color,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+}
+
+@Composable
+private fun HistoryMetricTile(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    val accents = LocalSarimAccents.current
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(accents.inputFill.copy(alpha = 0.7f))
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    ) {
+        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = accents.textMuted, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = color, maxLines = 1)
+    }
+}
+
+@Composable
+private fun HistoryActionButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    modifier: Modifier,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = color.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
+        modifier = modifier.testTag(tag)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(5.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = color, maxLines = 1)
         }
     }
 }

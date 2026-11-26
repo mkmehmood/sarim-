@@ -31,6 +31,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import kotlin.math.max
 import androidx.compose.runtime.Composable
+import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -125,6 +128,8 @@ fun ProductionScreen(
 
     // Detail, Lightbox & Multi-photo Share
     var selectedRecord by remember { mutableStateOf<ProductionRecord?>(null) }
+    var expandedHistoryId by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<ProductionRecord?>(null) }
     var lightboxState by remember { mutableStateOf<Triple<List<String>, Int, ProductionRecord?>?>(null) }
     var selectedPhotoRecIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -506,11 +511,15 @@ fun ProductionScreen(
                             currency = currency,
                             masked = masked,
                             isPhotoSelected = rec.id in selectedPhotoRecIds,
+                            expanded = expandedHistoryId == rec.id,
+                            onToggleExpand = { expandedHistoryId = if (expandedHistoryId == rec.id) null else rec.id },
                             onTogglePhotoSelect = { on ->
                                 selectedPhotoRecIds = if (on) selectedPhotoRecIds + rec.id else selectedPhotoRecIds - rec.id
                             },
-                            onOpenLightbox = { photos -> lightboxState = Triple(photos, 0, rec) },
-                            onClick = { selectedRecord = rec }
+                            onOpenLightbox = { photos, idx -> lightboxState = Triple(photos, idx, rec) },
+                            onOpenDetails = { selectedRecord = rec },
+                            onEdit = { startEditing(rec) },
+                            onDelete = { pendingDelete = rec }
                         )
                     }
                 } else {
@@ -529,11 +538,15 @@ fun ProductionScreen(
                                     currency = currency,
                                     masked = masked,
                                     isPhotoSelected = rec.id in selectedPhotoRecIds,
+                                    expanded = expandedHistoryId == rec.id,
+                                    onToggleExpand = { expandedHistoryId = if (expandedHistoryId == rec.id) null else rec.id },
                                     onTogglePhotoSelect = { on ->
                                         selectedPhotoRecIds = if (on) selectedPhotoRecIds + rec.id else selectedPhotoRecIds - rec.id
                                     },
-                                    onOpenLightbox = { photos -> lightboxState = Triple(photos, 0, rec) },
-                                    onClick = { selectedRecord = rec }
+                                    onOpenLightbox = { photos, idx -> lightboxState = Triple(photos, idx, rec) },
+                                    onOpenDetails = { selectedRecord = rec },
+                                    onEdit = { startEditing(rec) },
+                                    onDelete = { pendingDelete = rec }
                                 )
                             }
                         )
@@ -557,6 +570,39 @@ fun ProductionScreen(
                 }
             },
             modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+
+    pendingDelete?.let { rec ->
+        val label = FormulaEngine.storeLabelFor(rec.store, snapshot.stores).ifBlank { rec.store }
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(if (rec.isTransfer) "Recycle transfer?" else "Delete production entry?") },
+            text = {
+                Text(
+                    "$label · ${DateUtils.formatPretty(rec.date)} · ${InputGuards.formatKg(rec.net)}\n" +
+                        if (rec.isTransfer) "Both sides of this transfer move to the Recycle Bin." else "It moves to the Recycle Bin and can be restored."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (rec.isTransfer) {
+                        vm.recyclePair("production", rec.transferPairId, rec.id, "$label (${rec.date})")
+                    } else {
+                        vm.softDeleteRecord(
+                            collection = "production",
+                            docId = rec.id,
+                            displayName = label,
+                            displayDetail = rec.date,
+                            displayAmount = InputGuards.formatKg(rec.net),
+                            snapshotMap = WorkspaceJsonCodec.productionToMap(rec)
+                        )
+                    }
+                    if (expandedHistoryId == rec.id) expandedHistoryId = null
+                    pendingDelete = null
+                }) { Text("Delete", color = accents.danger) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
         )
     }
 
