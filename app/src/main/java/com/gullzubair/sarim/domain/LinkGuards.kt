@@ -22,6 +22,10 @@ object LinkGuards {
     fun deleteCashDrop(tx: PaymentTransaction): Double =
         if (isCashRelevant(tx) && tx.type == "IN") tx.amount else 0.0
 
+    /** Cash that must be available to put this payment back (only cash payments OUT count). */
+    fun restoreCashNeed(tx: PaymentTransaction): Double =
+        if (isCashRelevant(tx) && tx.type == "OUT" && !tx.isPayable) tx.amount else 0.0
+
     fun batchCashDrop(txs: List<PaymentTransaction>): Double = txs.sumOf { deleteCashDrop(it) }
 
     fun cashShortIssue(need: Double, available: Double, what: String): String {
@@ -32,7 +36,7 @@ object LinkGuards {
     }
 
     /** Same figure the Payments dashboard shows as "Net cash in hand" (all time). */
-    private fun availableCash(snapshot: WorkspaceSnapshot): Double =
+    internal fun availableCash(snapshot: WorkspaceSnapshot): Double =
         FinanceEngine.calculateEconomicHealth(snapshot, "all").cashInHand
 
     private fun plural(n: Int, word: String) = "$n $word${if (n != 1) "s" else ""}"

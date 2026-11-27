@@ -194,7 +194,9 @@ fun ProductionDetailSheet(
                                 displayName = storeLabel,
                                 displayDetail = rec.date,
                                 displayAmount = InputGuards.formatKg(rec.net),
-                                snapshotMap = WorkspaceJsonCodec.productionToMap(rec)
+                                snapshotMap = WorkspaceJsonCodec.productionToMap(rec) +
+                            (com.gullzubair.sarim.domain.RecoveryGuards.DELETE_ORIGIN_FIELD to
+                                com.gullzubair.sarim.domain.RecoveryGuards.ORIGIN_PROD_TAB)
                             )
                         }
                         onDismiss()

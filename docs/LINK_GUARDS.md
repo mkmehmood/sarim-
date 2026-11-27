@@ -13,6 +13,18 @@
 
 "Cash in hand" is `FinanceEngine.calculateEconomicHealth(snapshot, "all").cashInHand`, the number shown on the Payments dashboard.
 
+## Recycle-bin recovery guards (`domain/RecoveryGuards.kt`)
+Checked in `SarimViewModel.restoreTombstone` (error toast, nothing restored when blocked):
+
+| Record | Recovery blocked when |
+|---|---|
+| Rep stock transfer sale | created by a calculator record - re-enter the calculation |
+| Production return / return log | created by a calculator record (deletes made from the Production tab are stamped `_deleteOrigin=prod-tab` and stay recoverable; the marker is stripped on restore) |
+| Partial-payment child (sales/rep) | parent sale missing, no longer CREDIT, or recovering would exceed the sale value |
+| Collection (sales/rep) | a sale it paid is missing or already settled |
+| Material (inventory) | its supplier entity is gone |
+| Payment | its entity is gone; the other side of a transfer was permanently deleted; or putting a cash OUT back would push cash below zero |
+
 ## Not yet ported
 - Stacked-collection check (a newer collection applied to the same sale) - Android stores `collectionAllocs` as an unordered map, so ordering needs a model change.
-- Recovery-side guards/relinking, rename cascade, edit-time link issues (`getEditLinkIssue`, old-debt, settle toggle).
+- Recovery re-linking (re-attach parent partial payments / re-apply collections, ID remap, stock re-deduction, CHORA re-add), calculator restore planning, by-date stock overdraw check, rename cascade, edit-time link issues (`getEditLinkIssue`, old-debt, settle toggle).

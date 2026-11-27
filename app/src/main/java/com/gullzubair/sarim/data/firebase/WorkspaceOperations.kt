@@ -256,6 +256,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
             val restoredMap = WorkspaceJsonCodec.jsonToMap(tombstone.snapshotJson).toMutableMap().apply {
                 put("id", tombstone.recordId.ifBlank { tombstone.id })
                 remove("deletedAt")
+                remove(com.gullzubair.sarim.domain.RecoveryGuards.DELETE_ORIGIN_FIELD)
             }
             val col = tombstone.collection
             val docId = tombstone.recordId.ifBlank { tombstone.id }

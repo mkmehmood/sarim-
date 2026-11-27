@@ -1,6 +1,7 @@
 package com.gullzubair.sarim.ui.viewmodel
 
 import com.gullzubair.sarim.domain.LinkGuards
+import com.gullzubair.sarim.domain.RecoveryGuards
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -960,6 +961,11 @@ class SarimViewModel(
 
     fun restoreTombstone(tombstone: DeletionTombstone) {
         val snap = currentSnapshot() ?: return
+        val blocked = RecoveryGuards.recoverBlockReason(snap, tombstone)
+        if (blocked.isNotBlank()) {
+            showToast(blocked, ToastKind.ERROR, 6000L)
+            return
+        }
         viewModelScope.launch {
             handleResult(ops.restoreFromRecycleBin(snap.profile, tombstone), "Record restored")
         }
