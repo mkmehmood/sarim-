@@ -1,0 +1,318 @@
+overview	01	3M
+overview	02	12M
+overview	03	Sales
+overview	04	Production
+overview	05	Money
+overview	06	Stock
+overview	07	Checks 48
+overview	08	Activity
+prod	01	Combined
+prod	02	Store Entry
+prod	03	25 NOV 2026
+prod	04	ZUBAIR
+prod	05	MAHMOOD
+prod	06	Save Production
+prod	07	Store Entry
+prod	08	ASAAN
+sales	01	Collection
+sales	02	25 NOV 2026
+sales	03	Direct
+sales	04	Download PDF
+sales	05	Add New Customer
+sales	06	RK RYAZ KTK 03439391729 14,0
+sales	07	NB NAIK BADSHA 03321336833 1
+sales	08	NS NORAN SHAH No phone 1,83,
+sales	09	FK FAKHIR KTK 0344 9806152 1
+sales	10	NA NOOR AZAM 03189021362 1,2
+sales	11	N NURULLAH 03372111919 53,80
+sales	12	AH Al QURISH HOTEL +92 336 7
+sales	13	AW AJIZ WAZIR 03239322774 30
+sales	14	AU AKRAM ULLAH 03363887783 2
+sales	15	AN ASHIQ NOOR 03369734972 20
+sales	16	NS NOMAN SHAH No phone 20,00
+sales	17	IK IHSAN KHAN 03201968919 9,
+sales	18	AW ALEEM ULLAH WAZIR 0333818
+sales	19	AS ATHA ULLAH SHAH 033280807
+sales	20	AK ARIF KTK 0346 5392100 4,0
+sales	21	BA BILAL AHMED 0332 5752930 
+sales	22	AK AHMAD KHAN 03362400035 3,
+sales	23	Sale
+sales	24	Save Collection
+sales	25	AZ ABU ZARR 03340578782 1,50
+sales	26	JH JAHANGEER HOTEL No phone 
+sales	27	RM RAFID MIRAKHEL 0336976929
+sales	28	ZK ZMAN KTK 0300 5757416 0
+sales	29	S SHOWAA 03325982182 0
+sales	30	DK DI KHAN 03345355475 0
+sales	31	AU ATIQ UREHMAN 03069394874 
+sales	32	R RAZMAQ 03351984039 0
+sales	33	BU BAIT ULLAH No phone 0
+sales	34	NK NOOR ULLAH KALA 033120305
+sales	35	RA RASOOL BADSHA AJIZ 032393
+sales	36	M MASOOM 03369657252 0
+sales	37	I IMDAD No phone 0
+sales	38	rect
+sales	39	circle
+sales	40	Weekly
+sales	41	Monthly
+sales	42	Yearly
+sales	43	All Time
+sales	44	2026 10,714.05 kg sold Sold 
+sales	45	NOV 2026 4,295.4 kg sold Sol
+calc	01	COMPARISON
+calc	02	26 Nov 2026
+calc	03	Week
+calc	04	Month
+calc	05	Net Profit (Value)
+calc	06	Daily
+calc	07	Weekly
+calc	08	Monthly
+calc	09	Yearly
+calc	10	All Time
+calc	11	2026 22 entries Revenue 15,7
+calc	12	NOV 2026 5 entries Revenue 5
+calc	13	17 Tue 1 entry Revenue: 1,48
+calc	14	6 Fri 1 entry Revenue: 1,22,
+calc	15	4 Wed 1 entry Revenue: 34,40
+calc	16	1 Sun 2 entries Revenue: 2,0
+calc	17	OCT 2026 17 entries Revenue 
+calc	18	Year
+calc	19	Daily
+calc	20	Expenses breakdown
+calc	21	17 NOV 2026 SHORT: 13,700 NO
+calc	22	06 NOV 2026 OVER: 9,640 NOMA
+calc	23	28 Wed 1 entry Revenue: 32,6
+calc	24	27 Tue 1 entry Revenue: 1,35
+calc	25	26 Mon 1 entry Revenue: 27,2
+calc	26	24 Sat 1 entry Revenue: 30,6
+calc	27	22 Thu 2 entries Revenue: 1,
+calc	28	17 Sat 2 entries Revenue: 1,
+calc	29	16 Fri 1 entry Revenue: 30,4
+calc	30	15 Thu 1 entry Revenue: 32,0
+calc	31	13 Tue 1 entry Revenue: 30,8
+calc	32	12 Mon 1 entry Revenue: 1,38
+calc	33	11 Sun 1 entry Revenue: 28,0
+calc	34	9 Fri 1 entry Revenue: 32,80
+calc	35	7 Wed 2 entries Revenue: 1,6
+calc	36	3 Sat 1 entry Revenue: 32,80
+calc	37	26 OCT 2026 OVER: 200 NORAN 
+calc	38	22 OCT 2026 OVER: 14,050 NOM
+calc	39	22 OCT 2026 OVER: 1,690 NORA
+calc	40	15 OCT 2026 SHORT: 200 NORAN
+calc	41	13 OCT 2026 OVER: 260 NORAN 
+calc	42	12 OCT 2026 SHORT: 3,500 NOM
+calc	43	11 OCT 2026 PERFECT MATCH NO
+calc	44	09 OCT 2026 SHORT: 60 NORAN 
+calc	45	03 OCT 2026 SHORT: 60 NORAN 
+factory	01	25 NOV 2026
+factory	02	STANDARD
+factory	03	ASAAN
+factory	04	Save Factory Production
+factory	05	Material ▲
+factory	06	Total Value ⇅
+factory	07	ALMUNIA 0.02 kg Collected 1 
+factory	08	BARLANZA 1,106.14 kg Collect
+factory	09	CALCIUM CARBONATE 7.02 Bag (
+factory	10	CALCIUM HYDROXIDE 4.38 Bag (
+factory	11	CHORA 304.8 kg Collected 304
+factory	12	GUAR GUM 0.2 Bag (9.84 kg) C
+factory	13	KHAKA 01 107.21 Bag (5,360.7
+factory	14	KHAKA 02 11.44 Bag (571.8 kg
+factory	15	MENTHOL 0.01 kg Collected 1 
+factory	16	PANJAB ASH 386.44 kg Collect
+factory	17	TAMAN 3.12 Bag (156.17 kg) C
+factory	18	TOBACCO AFGHANISTAN 1 Bag (6
+factory	19	TOBACCO FARMAN 1.12 BAG (67.
+factory	20	TOBACCO GREEN 109.36 BAG (5,
+factory	21	TOBACCO GREEN FARMAN 12 BAG 
+factory	22	TOBACCO POWDER 118.9 Bag (5,
+factory	23	TOBACCO WHITE 71.34 Bag (4,2
+factory	24	TOBACCO WHITE 02 110.51 Bag 
+factory	25	TOBACCO YELLOW 16.71 Bah (1,
+factory	26	Daily
+factory	27	Weekly
+factory	28	Monthly
+factory	29	Yearly
+factory	30	All Times
+factory	31	Material ⇅
+factory	32	Total Value ▲
+factory	33	All Times
+factory	34	MATERIALS BREAKDOWN 11
+factory	35	2026 7 entries Cost 1,72,578
+factory	36	Total Value ▼
+payments	01	26 NOV 2026
+payments	02	Save Transaction
+payments	03	Daily
+payments	04	Weekly
+payments	05	Monthly
+payments	06	Yearly
+payments	07	All Times
+payments	08	Download PDF
+payments	09	Entities & Balances
+payments	10	This Month
+payments	11	NA NOOR ALAM 03329537200 0
+payments	12	HU HIKMAT ULLAH 03348801005 
+payments	13	BS BARKAT SIKANDERI 03309280
+payments	14	LZ LAIQ ZMAN 03344266920 0
+payments	15	AA ASGHAR ALI No contact 0
+payments	16	A ARAFATH 03339723498 0
+payments	17	UA UMER AYAZ 03339704691 0
+payments	18	MA MULVI ABDURAHMAN 03339745
+payments	19	AA ANWAR ALI No contact 0
+payments	20	GD GHANI NASWAR DEALERS 0333
+payments	21	FN FARMAN KHAN NAWRANG No co
+payments	22	2026 3 entries In 3,50,000 ·
+payments	23	NOV 2026 2 entries In 3,50,0
+payments	24	OCT 2026 1 entry In 0 · Out 
+payments	25	Operating Expense
+payments	26	Payment OUT (Cash Out −)
+payments	27	Daily
+payments	28	8 Thu 1 entry In: 0 | Out: 0
+rep	01	25 NOV 2026
+rep	02	Credit
+rep	03	Cash
+rep	04	Save Transaction
+rep	05	—
+rep	06	25 NOV 2026
+rep	07	+
+rep	08	−
+rep	09	Leaflet
+rep	10	Daily
+rep	11	Weekly
+rep	12	Monthly
+rep	13	Download PDF
+rep	14	Add New Customer
+rep	15	Collection
+rep	16	Credit
+rep	17	Daily
+sidebar	01	OVERVIEW
+daily-ledger	01	Export Daily Ledger to PDF
+daily-ledger	02	- Out
+daily-ledger	03	Transfer
+daily-ledger	04	26 NOV 2026
+daily-ledger	05	Cash + 5,19,250
+daily-ledger	06	UBL BANK + 2,19,297
+daily-ledger	07	Bank Transfer - 1,85,297
+daily-ledger	08	10 Tue 2 entries Total: 7,24
+daily-ledger	09	+ In
+daily-ledger	10	2026 2 entries Total 7,24,70
+settings	01	Back
+settings	02	BACKUP & RESTORE
+settings	03	RECYCLE BIN
+settings	04	DATABASE STRUCTURE
+settings	05	THEME: DARK
+settings	06	SOUND & HAPTICS
+settings	07	ENABLE FINGERPRINT LOCK
+settings	08	APP ACCOUNTS
+settings	09	STORE MANAGER
+settings	10	THEME: AUTO
+settings	11	THEME: LIGHT
+formula-store	01	RAMADAN SPECIAL 01 (1 UNIT) 
+formula-store	02	ROCK POWDER (1 UNIT) TAMAN (
+formula-store	03	STANDARD (1 UNIT) TOBACCO ST
+formula-store	04	ASAAN (1 UNIT) ROCK POWDER ·
+formula-store	05	MUMTAZ AHMADANI (1 UNIT) CAL
+formula-store	06	WAFADA (1 UNIT) TOBACCO (20 
+formula-store	07	CHEMICAL FARMULA (1 UNIT) CA
+formula-store	08	TOBACCO STANDARD (1 UNIT) TO
+formula-store	09	Formula actions
+formula-store	10	DIV
+payment-transfer	01	26 NOV 2026
+payment-transfer	02	Transfer Payment
+raw-material	01	26 NOV 2026
+raw-material	02	Existing
+raw-material	03	New
+raw-material	04	Save Purchase
+sidebar	01	OVERVIEW
+settings	01	Back
+settings	02	BACKUP & RESTORE
+settings	03	RECYCLE BIN
+settings	04	DATABASE STRUCTURE
+settings	05	THEME: DARK
+settings	06	SOUND & HAPTICS
+settings	07	ENABLE FINGERPRINT LOCK
+settings	08	APP ACCOUNTS
+settings	09	STORE MANAGER
+settings	10	THEME: AUTO
+settings	11	THEME: LIGHT
+daily-ledger	01	Export Daily Ledger to PDF
+daily-ledger	02	- Out
+daily-ledger	03	Transfer
+daily-ledger	04	26 NOV 2026
+daily-ledger	05	Cash + 5,19,250
+daily-ledger	06	UBL BANK + 2,19,297
+daily-ledger	07	Bank Transfer - 1,85,297
+daily-ledger	08	10 Tue 2 entries Total: 7,24
+daily-ledger	09	+ In
+daily-ledger	10	2026 2 entries Total 7,24,70
+raw-material	01	26 NOV 2026
+raw-material	02	Existing
+raw-material	03	New
+raw-material	04	Save Purchase
+formula-store	01	RAMADAN SPECIAL 01 (1 UNIT) 
+formula-store	02	ROCK POWDER (1 UNIT) TAMAN (
+formula-store	03	STANDARD (1 UNIT) TOBACCO ST
+formula-store	04	ASAAN (1 UNIT) ROCK POWDER ·
+formula-store	05	MUMTAZ AHMADANI (1 UNIT) CAL
+formula-store	06	WAFADA (1 UNIT) TOBACCO (20 
+formula-store	07	CHEMICAL FARMULA (1 UNIT) CA
+formula-store	08	TOBACCO STANDARD (1 UNIT) TO
+formula-store	09	Formula actions
+formula-store	10	DIV
+payment-transfer	01	26 NOV 2026
+payment-transfer	02	Transfer Payment
+stock-transfer	01	ZUBAIR
+stock-transfer	02	MAHMOOD
+stock-transfer	03	26 NOV 2026
+stock-transfer	04	Transfer Stock
+stock-transfer	05	2026 69 kg
+add-entity	01	Save Entity
+store-manager	01	Select formula
+store-manager	02	Add Store
+recycle-bin	01	All Tabs
+customer-ledger	01	More actions
+customer-ledger	02	Money Out (Cash Out −)
+customer-ledger	03	Cash
+customer-ledger	04	Payments
+customer-ledger	05	Unpaid
+customer-ledger	06	NOV 2026 816.8 kg sold Sold 
+customer-ledger	07	24 Tue Credit sale PENDING 6
+customer-ledger	08	Invoice
+customer-ledger	09	22 Sun Credit sale PENDING 6
+customer-ledger	10	Invoice
+customer-ledger	11	18 Wed Money out Paid out to
+customer-ledger	12	Collection Amount received ·
+customer-ledger	13	Credit sale PAID 60.4 kg @ 3
+customer-ledger	14	Invoice
+customer-ledger	15	14 Sat Credit sale PAID 65 k
+customer-ledger	16	Invoice
+customer-ledger	17	12 Thu Credit sale PAID 56.3
+customer-ledger	18	Invoice
+customer-ledger	19	9 Mon Credit sale PAID 65.8 
+customer-ledger	20	Invoice
+customer-ledger	21	6 Fri Credit sale PAID 66.2 
+customer-ledger	22	Invoice
+customer-ledger	23	5 Thu Credit sale PAID 38.2 
+customer-ledger	24	Credit sale PAID 53 kg @ 310
+customer-ledger	25	Credit sale PAID 57.2 kg @ 3
+customer-ledger	26	Invoice
+customer-ledger	27	3 Tue Credit sale PAID 63.7 
+customer-ledger	28	Invoice
+customer-ledger	29	2 Mon Credit sale PAID 57.6 
+batch-mix	01	Select formula
+batch-mix	02	g
+batch-mix	03	Units
+batch-mix	04	Ingredient
+batch-mix	05	Weight
+batch-fix	01	Select formula
+batch-fix	02	g
+batch-fix	03	Mixed differently than the f
+batch-fix	04	g
+formula-store-edit	01	+ Add Ingredient Row
+formula-store-edit	02	Save Formula
+app-accounts	01	Add Account
+app-accounts	02	↻ Refresh
+feedback	01	Test
+feedback	02	Medium Balanced standard tac
+feedback	03	Play
+feedback	04	Standard (Crisp) Crisp digit
