@@ -73,6 +73,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.gullzubair.sarim.push.ApprovalPush
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -218,7 +222,11 @@ fun MainFeatureScreen(currentUserId: String) {
                             todayIso = todayIso,
                             vm = vm,
                             onSignOut = {
-                                signOutUser(credentialManager = credentialManager, scope = scope)
+                                signOutUser(
+                                    credentialManager = credentialManager,
+                                    scope = scope,
+                                    onBeforeFirebaseSignOut = { ApprovalPush.unregister(context) }
+                                )
                             }
                         )
                     }
@@ -256,6 +264,30 @@ private fun WorkspaceNavContainer(
     val visibleTabs = remember(snapshot.profile) { vm.visibleTabsFor(snapshot.profile) }
     val effectiveTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.firstOrNull() ?: MainTab.OVERVIEW
     val pendingCount = remember(snapshot.pendingApprovals) { snapshot.pendingApprovals.count { it.status == "pending" } }
+
+    // Approval push: admins register this device (after granting notification permission on
+    // Android 13+); tapping a notification opens the Approvals screen.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) scope.launch { ApprovalPush.register(context.applicationContext, snapshot.profile) }
+    }
+    LaunchedEffect(snapshot.profile.uid, snapshot.profile.isAdmin, snapshot.profile.approved) {
+        if (!snapshot.profile.isAdmin || !snapshot.profile.approved) return@LaunchedEffect
+        if (!ApprovalPush.hasNotificationPermission(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ApprovalPush.register(context.applicationContext, snapshot.profile)
+        }
+    }
+    val pushOpenRequest by ApprovalPush.openRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(pushOpenRequest, isAdminSession) {
+        if (pushOpenRequest == null) return@LaunchedEffect
+        if (isAdminSession) {
+            navController.navigate(AppRoute.Approvals) { launchSingleTop = true }
+        }
+        ApprovalPush.consumeOpenRequest()
+    }
 
     LaunchedEffect(visibleTabs, selectedTab) {
         if (visibleTabs.isNotEmpty() && selectedTab !in visibleTabs) {

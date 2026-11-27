@@ -1,5 +1,6 @@
 package com.gullzubair.sarim
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -22,6 +23,7 @@ import com.google.firebase.auth.auth
 import com.gullzubair.sarim.data.firebase.LocalSessionStore
 import com.gullzubair.sarim.data.firebase.authStateFlow
 import com.gullzubair.sarim.data.firebase.isFirebaseConfigured
+import com.gullzubair.sarim.push.ApprovalPush
 import com.gullzubair.sarim.ui.components.AuthScreen
 import com.gullzubair.sarim.ui.components.SarimSplashScreen
 import com.gullzubair.sarim.ui.screens.MainFeatureScreen
@@ -37,9 +39,17 @@ class MainActivity : FragmentActivity() {
             )
         )
         super.onCreate(savedInstanceState)
+        ApprovalPush.ensureChannel(this)
+        if (savedInstanceState == null) ApprovalPush.handleLaunchIntent(intent)
         setContent {
             AppNavigation()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        ApprovalPush.handleLaunchIntent(intent)
     }
 }
 

@@ -11,6 +11,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import com.gullzubair.sarim.data.local.OfflineSyncRepository
 import com.gullzubair.sarim.data.local.WorkspaceJsonCodec
+import com.gullzubair.sarim.push.ApprovalPush
 import com.gullzubair.sarim.data.model.DeletionTombstone
 import com.gullzubair.sarim.data.model.PendingApproval
 import com.gullzubair.sarim.data.model.UserProfile
@@ -133,6 +134,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
                 executeRemoteOrKeepQueued(outboxId) {
                     workspaceCol(ownerUid, "pending").document(pendingId).set(pendingMap, SetOptions.merge()).await()
                     pingWorkspaceOwner(ownerUid, profile)
+                    ApprovalPush.notifyAdmins(pendingId)
                 }
                 Result.success("PENDING:$pendingId")
             }
@@ -230,6 +232,7 @@ class WorkspaceOperations(private val repo: AppRepository) {
                 executeRemoteOrKeepQueued(outboxId) {
                     workspaceCol(ownerUid, "pending").document(pendingId).set(pendingMap, SetOptions.merge()).await()
                     pingWorkspaceOwner(ownerUid, profile)
+                    ApprovalPush.notifyAdmins(pendingId)
                 }
             }
             Result.success(Unit)

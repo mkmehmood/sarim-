@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.gullzubair.sarim.push.ApprovalPush
 import com.gullzubair.sarim.data.model.CalculatorRecord
 import com.gullzubair.sarim.data.model.CustomerRecord
 import com.gullzubair.sarim.data.model.DailyLedgerEntry
@@ -597,6 +598,8 @@ class OfflineSyncRepository(private val dao: OfflineDao) {
             }
             "PENDING" -> {
                 userRef.collection("pending").document(op.docId).set(rawMap, SetOptions.merge()).await()
+                // Submission that was queued while offline: alert the admins now it has landed.
+                if (rawMap["status"] == "pending") ApprovalPush.notifyAdmins(op.docId)
             }
             "OWNER_PING" -> {
                 userRef.update("lastWrite", System.currentTimeMillis()).await()
