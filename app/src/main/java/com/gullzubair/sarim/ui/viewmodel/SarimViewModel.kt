@@ -1,5 +1,6 @@
 package com.gullzubair.sarim.ui.viewmodel
 
+import com.gullzubair.sarim.domain.LinkGuards
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -897,6 +898,12 @@ class SarimViewModel(
         }
     }
 
+    /** Why this record can't be deleted right now ("" if it can). Lets screens warn before confirming. */
+    fun deleteBlockReason(collection: String, docId: String): String {
+        val snap = currentSnapshot() ?: return ""
+        return LinkGuards.deleteBlockReason(snap, collection, docId)
+    }
+
     fun softDeleteRecord(
         collection: String,
         docId: String,
@@ -906,6 +913,11 @@ class SarimViewModel(
         snapshotMap: Map<String, Any> = emptyMap()
     ) {
         val snap = currentSnapshot() ?: return
+        val blocked = LinkGuards.deleteBlockReason(snap, collection, docId)
+        if (blocked.isNotBlank()) {
+            showToast(blocked, ToastKind.ERROR, 6000L)
+            return
+        }
         viewModelScope.launch {
             val res = ops.softDeleteToRecycleBin(snap.profile, collection, docId, displayName, displayDetail, displayAmount, snapshotMap)
             if (res.isSuccess && collection in setOf("sales", "transactions", "expenses", "calculator", "inventory")) {

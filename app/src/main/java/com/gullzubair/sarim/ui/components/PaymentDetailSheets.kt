@@ -1,6 +1,7 @@
 package com.gullzubair.sarim.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import com.gullzubair.sarim.ui.viewmodel.ToastKind
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -124,6 +125,11 @@ fun PaymentTxDetailSheet(
                     text = "Delete",
                     onClick = {
                         val isPair = tx.isTransfer && tx.transferPairId.isNotBlank()
+                        val blocked = vm.deleteBlockReason("transactions", tx.id)
+                        if (blocked.isNotBlank()) {
+                            vm.showToast(blocked, ToastKind.ERROR, 6000L)
+                            return@SarimDangerButton
+                        }
                         confirmReq = ConfirmRequest(
                             title = if (isPair) "Delete Transfer Pair?" else "Delete Payment ${tx.type}?",
                             message = deleteConfirmMessage(listOf(
@@ -268,6 +274,11 @@ fun ExpenseTxDetailSheet(
                 SarimDangerButton(
                     text = "Delete",
                     onClick = {
+                        val blocked = vm.deleteBlockReason("expenses", exp.id)
+                        if (blocked.isNotBlank()) {
+                            vm.showToast(blocked, ToastKind.ERROR, 6000L)
+                            return@SarimDangerButton
+                        }
                         confirmReq = ConfirmRequest(
                             title = "Delete Expense?",
                             message = deleteConfirmMessage(listOf(

@@ -669,6 +669,15 @@ object SalesAnalyticsEngine {
         if (sale.collectionAllocs.isNotEmpty()) {
             return "This sale was paid through a collection. Delete or edit that collection first."
         }
+        if (!forEdit) {
+            val children = snapshot.sales.count {
+                it.deletedAt == null && it.id != sale.id && it.relatedSaleId == sale.id
+            }
+            if (children > 0) {
+                return "This sale has $children linked payment record${if (children != 1) "s" else ""}. " +
+                    "Delete the payment record${if (children != 1) "s" else ""} first."
+            }
+        }
         if (sale.isCollection || sale.paymentType == "COLLECTION") {
             val expApplied = if (sale.expiredQty > 0.0 && sale.expiredApplied > 0.0) sale.expiredApplied else 0.0
             if (expApplied > 0.0 && !forEdit) {
